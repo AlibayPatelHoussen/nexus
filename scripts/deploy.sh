@@ -1,0 +1,39 @@
+#!/bin/bash
+# ═══════════════════════════════════════════════════════
+# Nexus — Deployment Script
+# Usage: bash scripts/deploy.sh
+# ═══════════════════════════════════════════════════════
+
+set -e
+
+NEXUS_DIR="/opt/nexus"
+LOG_DIR="$NEXUS_DIR/logs"
+
+echo "🚀 Nexus deployment starting..."
+
+# ── Create dirs ──────────────────────────────────────
+mkdir -p "$LOG_DIR"
+
+# ── Pull latest code ─────────────────────────────────
+cd "$NEXUS_DIR"
+git pull origin main
+
+# ── Install dependencies ─────────────────────────────
+echo "📦 Installing dependencies..."
+npm ci --omit=dev
+
+# ── Build backend ────────────────────────────────────
+echo "🔨 Building backend..."
+npm run build --workspace=backend
+
+# ── Build frontend ───────────────────────────────────
+echo "🎨 Building frontend..."
+npm run build --workspace=frontend
+
+# ── Restart PM2 ──────────────────────────────────────
+echo "♻️  Restarting services..."
+pm2 reload ecosystem.config.cjs --env production || pm2 start ecosystem.config.cjs --env production
+pm2 save
+
+echo "✅ Deployment complete!"
+pm2 status nexus-backend

@@ -1,0 +1,39 @@
+# ═══════════════════════════════════════════════════════
+# Cloudflare Tunnel config for Nexus
+# Path: /etc/cloudflared/config.yml  (or ~/.cloudflared/config.yml)
+# ═══════════════════════════════════════════════════════
+#
+# Setup steps:
+#   1. cloudflared tunnel login
+#   2. cloudflared tunnel create nexus-tunnel
+#   3. Copy the tunnel UUID below
+#   4. cloudflared tunnel route dns nexus-tunnel nexus.houssen-serveur.com
+#   5. sudo systemctl restart cloudflared
+
+tunnel: YOUR_TUNNEL_UUID_HERE
+credentials-file: /home/houssen/.cloudflared/YOUR_TUNNEL_UUID_HERE.json
+
+ingress:
+  # ── Nexus (main app) ───────────────────────────────
+  - hostname: nexus.houssen-serveur.com
+    service: http://localhost:3001
+    originRequest:
+      noTLSVerify: false
+      connectTimeout: 30s
+      # WebSocket support (required for terminal + stats)
+      httpHostHeader: nexus.houssen-serveur.com
+
+  # ── Existing services (keep them) ──────────────────
+  - hostname: cockpit.houssen-serveur.com
+    service: https://localhost:9090
+    originRequest:
+      noTLSVerify: true
+
+  - hostname: jellyfin.houssen-serveur.com
+    service: http://localhost:8096
+
+  - hostname: files.houssen-serveur.com
+    service: http://localhost:8080
+
+  # ── Catch-all ──────────────────────────────────────
+  - service: http_status:404

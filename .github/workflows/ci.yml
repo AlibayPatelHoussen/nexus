@@ -1,0 +1,184 @@
+name: Nexus CI/CD
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+env:
+  NODE_VERSION: '20.x'
+
+jobs:
+  # ─── LINT & TYPECHECK ───────────────────────────────
+  lint:
+    name: Lint & Typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Lint backend
+        run: npm run lint --workspace=backend
+
+      - name: Lint frontend
+        run: npm run lint --workspace=frontend
+
+      - name: Typecheck backend
+        run: npm run typecheck --workspace=backend
+
+      - name: Typecheck frontend
+        run: npm run typecheck --workspace=frontend
+
+  # ─── TESTS BACKEND ──────────────────────────────────
+  test-backend:
+    name: Backend Tests
+    runs-on: ubuntu-latest
+    needs: lint
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: nexus_user
+          POSTGRES_PASSWORD: test_password
+          POSTGRES_DB: nexus_test
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+        ports:
+          - 5432:5432
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run backend tests
+        working-directory: backend
+        env:
+          NODE_ENV: test
+          DB_HOST: localhost
+          DB_PORT: 5432
+          DB_NAME: nexus_test
+          DB_USER: nexus_user
+          DB_PASSWORD: test_password
+          JWT_SECRET: test_jwt_secret_for_ci_only_not_production
+        run: npm test
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: backend/coverage/
+
+  # ─── TESTS FRONTEND ─────────────────────────────────
+  test-frontend:
+    name: Frontend Tests
+    runs-on: ubuntu-latest
+    needs: lint
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run frontend tests
+        working-directory: frontend
+        run: npm test
+
+      - name: Upload coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: frontend/coverage/
+
+  # ─── BUILD ──────────────────────────────────────────
+  build:
+    name: Build
+    runs-on: ubuntu-latest
+    needs: [test-backend, test-frontend]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build backend
+        run: npm run build --workspace=backend
+
+      - name: Build frontend
+        run: npm run build --workspace=frontend
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: nexus-build
+          path: |
+            backend/dist/
+            frontend/dist/
+
+  # ─── DEPLOY ─────────────────────────────────────────
+  deploy:
+    name: Deploy to Server
+    runs-on: ubuntu-latest
+    needs: build
+    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: nexus-build
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.0.3
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          key: ${{ secrets.SERVER_SSH_KEY }}
+          script: |
+            cd /opt/nexus
+            git pull origin main
+            npm ci --omit=dev
+            npm run build
+            pm2 restart nexus-backend || pm2 start dist/index.js --name nexus-backend
+            pm2 save

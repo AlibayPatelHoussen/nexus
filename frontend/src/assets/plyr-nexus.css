@@ -1,0 +1,147 @@
+/* ═══════════════════════════════════════════════════════
+   Nexus — Plyr Custom Skin
+   Overrides Plyr's default styles to match Nexus design
+   ═══════════════════════════════════════════════════════ */
+
+:root {
+  --plyr-color-main:           #4f8ef7;
+  --plyr-video-background:     #000;
+  --plyr-video-control-color:  rgba(255, 255, 255, 0.9);
+  --plyr-video-control-color-hover: #ffffff;
+  --plyr-control-spacing:      12px;
+  --plyr-control-icon-size:    18px;
+  --plyr-font-size-base:       13px;
+  --plyr-font-size-small:      11px;
+  --plyr-font-family:          'Geist', system-ui, sans-serif;
+  --plyr-font-weight-regular:  400;
+  --plyr-font-weight-bold:     600;
+  --plyr-range-thumb-height:   14px;
+  --plyr-range-thumb-background: #4f8ef7;
+  --plyr-range-fill-background: #4f8ef7;
+  --plyr-range-track-height:   4px;
+  --plyr-video-controls-background: linear-gradient(
+    to top,
+    rgba(0, 0, 0, 0.85) 0%,
+    rgba(0, 0, 0, 0.4) 60%,
+    transparent 100%
+  );
+  --plyr-menu-background:       #13131e;
+  --plyr-menu-color:            #f0f0f8;
+  --plyr-menu-border-color:     rgba(255, 255, 255, 0.07);
+  --plyr-menu-border-shadow-color: transparent;
+  --plyr-menu-radius:           10px;
+  --plyr-tooltip-background:    #13131e;
+  --plyr-tooltip-color:         #f0f0f8;
+  --plyr-tooltip-padding:       6px 10px;
+  --plyr-tooltip-radius:        8px;
+  --plyr-tooltip-shadow:        0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+/* Controls container */
+.plyr--video .plyr__controls {
+  padding: 12px 16px 16px;
+  border-radius: 0 0 12px 12px;
+}
+
+/* Progress bar */
+.plyr__progress input[type='range'] {
+  height: 4px;
+}
+
+.plyr__progress input[type='range']::-webkit-slider-thumb {
+  width:  14px;
+  height: 14px;
+  border: none;
+  box-shadow: 0 0 8px rgba(79, 142, 247, 0.5);
+}
+
+/* Buffer bar */
+.plyr__progress .plyr__progress__buffer {
+  background: rgba(255, 255, 255, 0.15);
+}
+
+/* Volume slider */
+.plyr__volume input[type='range'] {
+  width: 80px;
+}
+
+/* Control buttons */
+.plyr--video .plyr__control:hover,
+.plyr--video .plyr__control.plyr__tab-focus {
+  background: rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+}
+
+.plyr--video .plyr__control--overlaid {
+  background: rgba(79, 142, 247, 0.9);
+  border-radius: 50%;
+  width:  64px;
+  height: 64px;
+  box-shadow: 0 0 24px rgba(79, 142, 247, 0.4);
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+
+.plyr--video .plyr__control--overlaid:hover {
+  background: rgba(79, 142, 247, 1);
+  transform: scale(1.05);
+}
+
+/* Time display */
+.plyr__time {
+  font-family: 'Geist Mono', monospace;
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.plyr__time + .plyr__time::before {
+  color: rgba(255, 255, 255, 0.3);
+}
+
+/* Menu */
+.plyr__menu__container {
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  overflow: hidden;
+  font-size: 13px;
+}
+
+.plyr__menu__container .plyr__control {
+  border-radius: 0;
+  padding: 8px 14px;
+}
+
+.plyr__menu__container .plyr__control[role='menuitemradio']::after {
+  background: var(--plyr-color-main);
+}
+
+/* Captions */
+.plyr__captions {
+  font-family: 'Geist', system-ui, sans-serif;
+  font-size: 16px;
+  padding: 0 16px 32px;
+}
+
+.plyr__caption {
+  background: rgba(0, 0, 0, 0.7);
+  border-radius: 6px;
+  padding: 4px 10px;
+  backdrop-filter: blur(8px);
+}
+
+/* Fullscreen */
+.plyr--fullscreen-enabled .plyr__control[data-plyr='fullscreen'] svg {
+  opacity: 0.85;
+}
+
+/* Seek tooltip */
+.plyr__tooltip {
+  font-family: 'Geist Mono', monospace;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+/* Light theme overrides */
+.light .plyr--video .plyr__controls {
+  --plyr-video-control-color: rgba(255, 255, 255, 0.9);
+}

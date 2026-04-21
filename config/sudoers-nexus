@@ -1,0 +1,31 @@
+# ═══════════════════════════════════════════════════════
+# Nexus sudoers — allow backend to control services
+# Install: sudo visudo -f /etc/sudoers.d/nexus
+# ═══════════════════════════════════════════════════════
+
+# Allow the nexus process (running as 'houssen') to
+# start/stop/restart specific services without password
+
+houssen ALL=(ALL) NOPASSWD: /bin/systemctl start cloudflared
+houssen ALL=(ALL) NOPASSWD: /bin/systemctl stop cloudflared
+houssen ALL=(ALL) NOPASSWD: /bin/systemctl restart cloudflared
+
+houssen ALL=(ALL) NOPASSWD: /bin/systemctl start jellyfin
+houssen ALL=(ALL) NOPASSWD: /bin/systemctl stop jellyfin
+houssen ALL=(ALL) NOPASSWD: /bin/systemctl restart jellyfin
+
+houssen ALL=(ALL) NOPASSWD: /bin/systemctl start filebrowser
+houssen ALL=(ALL) NOPASSWD: /bin/systemctl stop filebrowser
+houssen ALL=(ALL) NOPASSWD: /bin/systemctl restart filebrowser
+
+houssen ALL=(ALL) NOPASSWD: /bin/systemctl start cockpit
+houssen ALL=(ALL) NOPASSWD: /bin/systemctl stop cockpit
+houssen ALL=(ALL) NOPASSWD: /bin/systemctl restart cockpit
+
+houssen ALL=(ALL) NOPASSWD: /bin/systemctl start wifi
+houssen ALL=(ALL) NOPASSWD: /bin/systemctl stop wifi
+houssen ALL=(ALL) NOPASSWD: /bin/systemctl restart wifi
+
+houssen ALL=(ALL) NOPASSWD: /bin/systemctl start postgresql
+houssen ALL=(ALL) NOPASSWD: /bin/systemctl stop postgresql
+houssen ALL=(ALL) NOPASSWD: /bin/systemctl restart postgresql

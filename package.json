@@ -1,0 +1,23 @@
+{
+  "name": "nexus",
+  "version": "1.0.0",
+  "description": "Nexus — Self-hosted server control panel & media center",
+  "private": true,
+  "workspaces": [
+    "frontend",
+    "backend"
+  ],
+  "scripts": {
+    "dev": "concurrently \"npm run dev --workspace=backend\" \"npm run dev --workspace=frontend\"",
+    "build": "npm run build --workspace=backend && npm run build --workspace=frontend",
+    "test": "npm run test --workspace=backend && npm run test --workspace=frontend",
+    "lint": "npm run lint --workspace=backend && npm run lint --workspace=frontend"
+  },
+  "devDependencies": {
+    "concurrently": "^8.2.2"
+  },
+  "engines": {
+    "node": ">=20.0.0",
+    "npm": ">=10.0.0"
+  }
+}
