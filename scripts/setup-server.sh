@@ -104,10 +104,16 @@ EOF
   echo "✅ Created .env — edit TMDB_API_KEY manually"
 fi
 
-# ── Run schema ───────────────────────────────────────
+# ── Run schema (as postgres superuser to avoid permission issues) ─────
 echo "🗄️  Running database schema..."
 cd "$NEXUS_DIR"
-PGPASSWORD="$DB_PASS" psql -h localhost -U "$DB_USER" -d "$DB_NAME" -f backend/src/db/schema.sql 2>/dev/null || true
+sudo -u postgres psql -d "$DB_NAME" -f backend/src/db/schema.sql 2>/dev/null || true
+
+# Grant table-level privileges to nexus_user
+sudo -u postgres psql -d "$DB_NAME" -c "GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO $DB_USER;" 2>/dev/null || true
+sudo -u postgres psql -d "$DB_NAME" -c "GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO $DB_USER;" 2>/dev/null || true
+sudo -u postgres psql -d "$DB_NAME" -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO $DB_USER;" 2>/dev/null || true
+sudo -u postgres psql -d "$DB_NAME" -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO $DB_USER;" 2>/dev/null || true
 
 # ── Create admin user ────────────────────────────────
 echo ""
