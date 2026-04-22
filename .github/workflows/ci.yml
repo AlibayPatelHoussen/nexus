@@ -163,7 +163,7 @@ jobs:
     name: Deploy to Server
     runs-on: ubuntu-latest
     needs: build
-    if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+    if: false # Deploy disabled until SSH secrets are configured
 
     steps:
       - name: Checkout
