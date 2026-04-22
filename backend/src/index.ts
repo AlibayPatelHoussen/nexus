@@ -32,7 +32,20 @@ const io     = new SocketServer(server, {
 
 const PORT = parseInt(process.env.PORT || '3001', 10)
 
-app.use(helmet({ crossOriginResourcePolicy: { policy: 'cross-origin' } }))
+app.use(helmet({
+  crossOriginResourcePolicy: { policy: 'cross-origin' },
+  contentSecurityPolicy: {
+    directives: {
+      defaultSrc:  ["'self'"],
+      scriptSrc:   ["'self'", "'unsafe-inline'"],
+      styleSrc:    ["'self'", "'unsafe-inline'"],
+      imgSrc:      ["'self'", 'data:', 'blob:', 'https://image.tmdb.org', 'https://img.anilist.co', 'https://uploads.mangadex.org'],
+      connectSrc:  ["'self'", 'wss:', 'ws:'],
+      mediaSrc:    ["'self'", 'blob:'],
+      fontSrc:     ["'self'", 'data:'],
+    },
+  },
+}))
 app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:5173', credentials: true }))
 app.use(compression())
 app.use(express.json({ limit: '10mb' }))
