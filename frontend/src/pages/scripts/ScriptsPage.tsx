@@ -37,6 +37,7 @@ function ScriptCard({ script }: { script: ScriptInfo }) {
       const decoder = new TextDecoder()
       let   buffer  = ''
 
+      // eslint-disable-next-line no-constant-condition
       while (true) {
         const { done, value } = await reader.read()
         if (done) break
@@ -52,7 +53,7 @@ function ScriptCard({ script }: { script: ScriptInfo }) {
               if (payload.data) {
                 setOutput((prev) => [...prev, ...payload.data.split('\n').filter(Boolean)])
               }
-            } catch {}
+            } catch { /* malformed SSE line */ }
           }
           if (line.startsWith('event: exit')) {
             setRunning(false)

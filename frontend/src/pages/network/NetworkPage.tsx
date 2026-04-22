@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { Wifi, Globe, Server, RefreshCw, Activity } from 'lucide-react'
+import { Wifi, Server, RefreshCw } from 'lucide-react'
 import { systemService } from '@/services/systemService'
 import { formatBytes, formatUptime } from '@/utils'
 

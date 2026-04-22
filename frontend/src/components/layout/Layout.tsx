@@ -7,14 +7,6 @@ import {
 import { useAuthStore } from '@/stores/authStore'
 import { cn } from '@/utils'
 
-interface NavItem {
-  to:    string
-  icon:  React.ReactNode
-  label: string
-  color: string
-  badge?: number
-}
-
 const NAV_SECTIONS = [
   {
     label: 'Principal',
@@ -51,7 +43,6 @@ export default function Layout() {
   const logout    = useAuthStore((s) => s.logout)
 
   function handleLogout() {
-    const rt = localStorage.getItem('nexus_refresh_token') || ''
     logout()
     navigate('/login', { replace: true })
   }

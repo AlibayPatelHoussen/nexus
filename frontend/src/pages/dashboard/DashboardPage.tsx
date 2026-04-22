@@ -6,7 +6,7 @@ import {
 import { useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/authStore'
 import { useSystemStats } from '@/hooks/useSocket'
-import { systemService, servicesService } from '@/services/systemService'
+import { servicesService } from '@/services/systemService'
 import StatCard from '@/components/ui/StatCard'
 import ServiceRow from '@/components/services/ServiceRow'
 import { formatBytes, formatUptime } from '@/utils'

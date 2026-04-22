@@ -2,7 +2,6 @@ import { useState, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { filesService } from '@/services/filesService'
 import toast from 'react-hot-toast'
-import type { FileEntry } from '@/types'
 
 export function useFiles(initialPath = '/') {
   const [currentPath, setCurrentPath] = useState(initialPath)

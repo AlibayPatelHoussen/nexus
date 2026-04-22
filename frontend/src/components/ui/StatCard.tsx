@@ -1,5 +1,3 @@
-import { cn } from '@/utils'
-
 interface StatCardProps {
   icon:       React.ReactNode
   label:      string

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeft, Heart, Star, ChevronRight } from 'lucide-react'
+import { ArrowLeft, Star, ChevronRight } from 'lucide-react'
 import { mediaService } from '@/services/mediaService'
 import { filesService } from '@/services/filesService'
 import { formatDuration } from '@/utils'
@@ -15,9 +15,9 @@ export default function PlayerPage() {
   const episodeId           = searchParams.get('ep') || undefined
 
   const videoRef    = useRef<HTMLVideoElement>(null)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const playerRef   = useRef<any>(null)
-  const progressRef = useRef<NodeJS.Timeout | null>(null)
-  const [plyrLoaded, setPlyrLoaded] = useState(false)
+  const progressRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const [resumeAt,   setResumeAt]   = useState<number | null>(null)
   const [showResume, setShowResume] = useState(false)
 
@@ -111,7 +111,6 @@ export default function PlayerPage() {
         }
       })
 
-      setPlyrLoaded(true)
     }
 
     initPlyr()
@@ -120,6 +119,7 @@ export default function PlayerPage() {
       if (progressRef.current) clearInterval(progressRef.current)
       playerRef.current?.destroy()
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [streamUrl, id, episodeId])
 
   function resume() {

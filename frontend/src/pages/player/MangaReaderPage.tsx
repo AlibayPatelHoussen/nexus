@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -76,9 +76,6 @@ export default function MangaReaderPage() {
   // Save read progress
   useEffect(() => {
     if (!id || !chapterId || !pages.length) return
-    const pct = (currentPage / pages.length) * 100
-    // Save every 10% progress change — simplified here
-    return () => {}
   }, [currentPage, id, chapterId, pages.length])
 
   function changeChapter(chap: Chapter) {

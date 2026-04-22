@@ -53,7 +53,6 @@ export default function MediaDetailPage() {
   const episodes: Episode[] = media.episodes || []
   const chapters: Chapter[] = media.chapters  || []
   const seasons = [...new Set(episodes.map((e) => e.season || 1))].sort((a, b) => a - b)
-  const isVideo = ['film', 'serie', 'anime'].includes(media.type)
   const isReading = ['manga', 'webtoon'].includes(media.type)
 
   const resumeEpisode = progress?.episodeId
@@ -282,7 +281,7 @@ export default function MediaDetailPage() {
             <div className="pb-2">
               {episodes
                 .filter((e) => (e.season || 1) === activeSeason)
-                .map((ep, i) => {
+                .map((ep) => {
                   const epProgress = progress?.episodeId === ep.id ? progress : null
                   const epPct = epProgress && epProgress.duration
                     ? Math.round((epProgress.progress / epProgress.duration) * 100)

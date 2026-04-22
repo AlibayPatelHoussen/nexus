@@ -10,9 +10,7 @@ interface ServiceRowProps {
   service: ServiceInfo
 }
 
-type LucideIconName = keyof typeof LucideIcons
-
-function DynamicIcon({ name, ...props }: { name: string } & React.SVGProps<SVGSVGElement> & { size?: number; strokeWidth?: number }) {
+function DynamicIcon({ name }: { name: string }) {
   const pascal = name
     .split('-')
     .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
@@ -37,8 +35,7 @@ export default function ServiceRow({ service }: ServiceRowProps) {
     }
   }
 
-  const isOn = service.status === 'active'
-  const color    = getColorVar(service.color)
+  const isOn    = service.status === 'active'
   const dimColor = getDimVar(service.color)
 
   return (

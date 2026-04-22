@@ -3,14 +3,13 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { RefreshCw, ScrollText, ExternalLink, Play, Square, RotateCcw } from 'lucide-react'
 import * as LucideIcons from 'lucide-react'
 import { servicesService } from '@/services/systemService'
-import { systemService } from '@/services/systemService'
 import { getColorVar, getDimVar } from '@/utils'
 import type { ServiceInfo } from '@/types'
 import toast from 'react-hot-toast'
 
 function DynamicIcon({ name, color }: { name: string; color: string }) {
   const pascal = name.split('-').map((s) => s[0].toUpperCase() + s.slice(1)).join('')
-  const Icon   = (LucideIcons as any)[pascal]
+  const Icon   = (LucideIcons as Record<string, React.ComponentType<{ size?: number; strokeWidth?: number; color?: string }>>)[pascal]
   if (!Icon) return null
   return <Icon size={16} strokeWidth={1.8} color={color} />
 }

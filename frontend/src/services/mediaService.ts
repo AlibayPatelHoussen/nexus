@@ -1,6 +1,16 @@
 import { api } from './api'
 import type { MediaItem, Episode, Chapter } from '@/types'
 
+export interface WatchHistoryItem extends Pick<MediaItem, 'id' | 'type' | 'title' | 'posterPath' | 'year'> {
+  progress:     number
+  duration:     number | null
+  episodeId:    string | null
+  updatedAt:    string
+  season?:      number | null
+  episodeNumber?: number
+  episodeTitle?: string | null
+}
+
 export interface MediaFilters {
   type?:    string
   genre?:   string
@@ -27,7 +37,7 @@ export const mediaService = {
   },
 
   async getById(id: string): Promise<MediaItem & { episodes?: Episode[]; chapters?: Chapter[] }> {
-    const { data } = await api.get<{ success: boolean; data: any }>(`/media/${id}`)
+    const { data } = await api.get<{ success: boolean; data: MediaItem & { episodes?: Episode[]; chapters?: Chapter[] } }>(`/media/${id}`)
     return data.data
   },
 
@@ -38,8 +48,8 @@ export const mediaService = {
     return data.data
   },
 
-  async getContinueWatching(): Promise<any[]> {
-    const { data } = await api.get<{ success: boolean; data: any[] }>('/media/continue')
+  async getContinueWatching(): Promise<WatchHistoryItem[]> {
+    const { data } = await api.get<{ success: boolean; data: WatchHistoryItem[] }>('/media/continue')
     return data.data
   },
 
@@ -63,7 +73,7 @@ export const mediaService = {
   },
 
   async getProgress(id: string, episodeId?: string): Promise<{ progress: number; duration: number; completed: boolean } | null> {
-    const { data } = await api.get<{ success: boolean; data: any }>(`/media/${id}/progress`, {
+    const { data } = await api.get<{ success: boolean; data: { progress: number; duration: number; completed: boolean } | null }>(`/media/${id}/progress`, {
       params: { episodeId },
     })
     return data.data

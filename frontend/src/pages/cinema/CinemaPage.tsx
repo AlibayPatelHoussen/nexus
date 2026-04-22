@@ -158,7 +158,7 @@ export default function CinemaPage() {
               Continuer la lecture
             </h2>
             <div className="flex gap-3 overflow-x-auto pb-2" style={{ scrollbarWidth: 'none' }}>
-              {continueW.map((item: any) => (
+              {continueW.map((item) => (
                 <MediaCard
                   key={item.id}
                   item={{ ...item, posterPath: item.poster_path }}

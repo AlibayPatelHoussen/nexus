@@ -1,10 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
-import { Terminal as TerminalIcon, Maximize2, Minimize2 } from 'lucide-react'
+import { Maximize2, Minimize2 } from 'lucide-react'
 import { useTerminalSocket } from '@/hooks/useSocket'
 
 export default function TerminalPage() {
   const termRef  = useRef<HTMLDivElement>(null)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const xtermRef = useRef<any>(null)
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   const fitRef   = useRef<any>(null)
   const { connect, send, resize, disconnect } = useTerminalSocket()
   const [connected,   setConnected]   = useState(false)
@@ -71,6 +73,7 @@ export default function TerminalPage() {
       xtermRef.current?.dispose()
       disconnect()
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   function toggleFullscreen() {
