@@ -80,8 +80,8 @@ function parseFilename(filename: string): { title: string; year?: number } {
   // Replace dots and underscores with spaces
   name = name.replace(/[._]/g, ' ')
 
-  // Remove leading junk like "Dromoy - " or "[ site ] "
-  name = name.replace(/^[\s\-]+/, '').trim()
+  // Remove leading junk like "Dromoy - " or "SiteName - " or leading dashes/spaces
+  name = name.replace(/^[A-Za-z0-9]+\s*-\s*/, '').replace(/^[\s\-]+/, '').trim()
 
   // Collapse multiple spaces
   name = name.replace(/\s+/g, ' ').trim()

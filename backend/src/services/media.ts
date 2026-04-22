@@ -11,6 +11,60 @@ export interface MediaFilters {
   sortDir?: 'asc' | 'desc'
 }
 
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapMedia(row: Record<string, any>) {
+  return {
+    id:            row['id'],
+    type:          row['type'],
+    title:         row['title'],
+    originalTitle: row['original_title'],
+    filePath:      row['file_path'],
+    tmdbId:        row['tmdb_id'],
+    anilistId:     row['anilist_id'],
+    mangadexId:    row['mangadex_id'],
+    overview:      row['overview'],
+    posterPath:    row['poster_path'],
+    backdropPath:  row['backdrop_path'],
+    genres:        row['genres'],
+    year:          row['year'],
+    rating:        row['rating'] != null ? Number(row['rating']) : null,
+    voteCount:     row['vote_count'],
+    status:        row['status'],
+    language:      row['language'],
+    fileSize:      row['file_size'],
+    duration:      row['duration'],
+    createdAt:     row['created_at'],
+    updatedAt:     row['updated_at'],
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapEpisode(row: Record<string, any>) {
+  return {
+    id:            row['id'],
+    mediaItemId:   row['media_item_id'],
+    season:        row['season'],
+    episodeNumber: row['episode_number'],
+    title:         row['title'],
+    overview:      row['overview'],
+    filePath:      row['file_path'],
+    duration:      row['duration'],
+    airDate:       row['air_date'],
+  }
+}
+
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+function mapChapter(row: Record<string, any>) {
+  return {
+    id:            row['id'],
+    mediaItemId:   row['media_item_id'],
+    chapterNumber: row['chapter_number'],
+    title:         row['title'],
+    filePath:      row['file_path'],
+    pageCount:     row['page_count'],
+  }
+}
+
 export class MediaService {
 
   static async getAll(filters: MediaFilters = {}) {
@@ -55,7 +109,7 @@ export class MediaService {
 
     const total = parseInt(countResult.rows[0].count as string)
     return {
-      items: items.rows,
+      items: items.rows.map(mapMedia),
       total,
       page,
       limit,
@@ -70,15 +124,15 @@ export class MediaService {
     )
     if (!item.rows[0]) return null
 
-    // Get episodes or chapters
     const type = item.rows[0].type
+    const mapped = mapMedia(item.rows[0])
 
     if (type === 'serie' || type === 'anime') {
       const episodes = await query(
         `SELECT * FROM episodes WHERE media_item_id = $1 ORDER BY season, episode_number`,
         [id],
       )
-      return { ...item.rows[0], episodes: episodes.rows }
+      return { ...mapped, episodes: episodes.rows.map(mapEpisode) }
     }
 
     if (type === 'manga' || type === 'webtoon') {
@@ -86,10 +140,10 @@ export class MediaService {
         `SELECT * FROM chapters WHERE media_item_id = $1 ORDER BY chapter_number`,
         [id],
       )
-      return { ...item.rows[0], chapters: chapters.rows }
+      return { ...mapped, chapters: chapters.rows.map(mapChapter) }
     }
 
-    return item.rows[0]
+    return mapped
   }
 
   static async getRecentlyAdded(type?: string, limit = 12) {
@@ -103,7 +157,7 @@ export class MediaService {
        LIMIT $1`,
       params,
     )
-    return result.rows
+    return result.rows.map(mapMedia)
   }
 
   static async getContinueWatching(userId: string, limit = 10) {
@@ -119,7 +173,16 @@ export class MediaService {
        LIMIT $2`,
       [userId, limit],
     )
-    return result.rows
+    return result.rows.map((row) => ({
+      ...mapMedia(row),
+      progress:     row['progress'],
+      duration:     row['duration'],
+      episodeId:    row['episode_id'],
+      updatedAt:    row['updated_at'],
+      season:       row['season'],
+      episodeNumber: row['episode_number'],
+      episodeTitle:  row['episode_title'],
+    }))
   }
 
   static async getFavorites(userId: string) {
@@ -131,7 +194,7 @@ export class MediaService {
        ORDER BY f.created_at DESC`,
       [userId],
     )
-    return result.rows
+    return result.rows.map(mapMedia)
   }
 
   static async toggleFavorite(userId: string, mediaId: string): Promise<boolean> {
@@ -169,11 +232,18 @@ export class MediaService {
 
   static async getProgress(userId: string, mediaId: string, episodeId?: string) {
     const result = await query(
-      `SELECT progress, duration, completed FROM watch_history
+      `SELECT progress, duration, completed, episode_id FROM watch_history
        WHERE user_id = $1 AND media_item_id = $2 AND episode_id IS NOT DISTINCT FROM $3`,
       [userId, mediaId, episodeId || null],
     )
-    return result.rows[0] || null
+    if (!result.rows[0]) return null
+    const r = result.rows[0]
+    return {
+      progress:  r['progress'],
+      duration:  r['duration'],
+      completed: r['completed'],
+      episodeId: r['episode_id'],
+    }
   }
 
   static async getGenres(type?: string) {
