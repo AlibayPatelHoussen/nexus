@@ -39,17 +39,6 @@ app.use(express.json({ limit: '10mb' }))
 app.use(express.urlencoded({ extended: true }))
 app.use(morgan('combined', { stream: { write: (msg) => logger.info(msg.trim()) } }))
 
-app.use('/api', rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000'),
-  max: parseInt(process.env.RATE_LIMIT_MAX || '100'),
-  message: { error: 'Too many requests' }, standardHeaders: true, legacyHeaders: false,
-  validate: { xForwardedForHeader: false },
-}))
-app.use('/api/auth', rateLimit({
-  windowMs: 15 * 60 * 1000, max: parseInt(process.env.AUTH_RATE_LIMIT_MAX || '10'),
-  message: { error: 'Too many auth attempts' },
-  validate: { xForwardedForHeader: false },
-}))
 
 app.use('/api/auth',     authRoutes)
 app.use('/api/system',   systemRoutes)
