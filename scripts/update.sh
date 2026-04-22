@@ -8,6 +8,10 @@ echo "=== Git pull ==="
 git pull origin main
 
 echo ""
+echo "=== Install dependencies ==="
+npm install
+
+echo ""
 echo "=== Build backend ==="
 npm run build --workspace=backend
 
