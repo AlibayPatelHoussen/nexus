@@ -20,6 +20,7 @@ import servicesRoutes from './routes/services'
 import scriptsRoutes  from './routes/scripts'
 import terminalRoutes from './routes/terminal'
 import { registerSocketHandlers } from './socket'
+import { serveStaticFrontend } from './utils/serveStatic'
 
 const app    = express()
 const server = createServer(app)
@@ -57,6 +58,7 @@ app.use('/api/terminal', terminalRoutes)
 app.get('/api/health',   (_req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }))
 
 registerSocketHandlers(io)
+serveStaticFrontend(app)
 app.use(notFound)
 app.use(errorHandler)
 
