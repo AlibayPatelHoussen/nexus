@@ -58,12 +58,16 @@ export function registerSocketHandlers(io: Server): void {
     logger.info(`Terminal socket connected: ${socket.id}`)
 
     const isWindows = process.platform === 'win32'
-    const shell = spawn(isWindows ? 'powershell.exe' : 'bash', [], {
-      name: 'xterm-color',
-      cols: 80,
-      rows: 24,
+    const shell = spawn(isWindows ? 'powershell.exe' : 'bash', ['--norc', '--noprofile'], {
+      name: 'xterm-256color',
+      cols: 220,
+      rows: 50,
       cwd: process.env.HOME || process.env.USERPROFILE || '/',
-      env: process.env as Record<string, string>,
+      env: {
+        ...(process.env as Record<string, string>),
+        TERM: 'xterm-256color',
+        PS1: '\\[\\033[01;32m\\]\\u@\\h\\[\\033[00m\\]:\\[\\033[01;34m\\]\\w\\[\\033[00m\\]\\$ ',
+      },
     })
 
     shell.onData((data) => socket.emit('output', data))
