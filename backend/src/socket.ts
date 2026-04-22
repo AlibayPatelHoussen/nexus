@@ -57,11 +57,12 @@ export function registerSocketHandlers(io: Server): void {
   termNs.on('connection', (socket) => {
     logger.info(`Terminal socket connected: ${socket.id}`)
 
-    const shell = spawn('bash', [], {
+    const isWindows = process.platform === 'win32'
+    const shell = spawn(isWindows ? 'powershell.exe' : 'bash', [], {
       name: 'xterm-color',
       cols: 80,
       rows: 24,
-      cwd: process.env.HOME || '/',
+      cwd: process.env.HOME || process.env.USERPROFILE || '/',
       env: process.env as Record<string, string>,
     })
 

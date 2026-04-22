@@ -5,7 +5,7 @@ import express from 'express'
 // Call this AFTER all API routes, BEFORE error handler
 // Serves the built React app for all non-API routes
 export function serveStaticFrontend(app: express.Application): void {
-  const frontendDist = path.resolve(__dirname, '../../frontend/dist')
+  const frontendDist = path.resolve(__dirname, '../../../frontend/dist')
 
   if (!fs.existsSync(frontendDist)) {
     return // Dev mode — Vite serves the frontend

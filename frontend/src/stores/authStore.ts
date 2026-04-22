@@ -64,9 +64,10 @@ export const useAuthStore = create<AuthStore>()(
     {
       name:    'nexus-auth',
       partialize: (state) => ({
-        user:  state.user,
-        theme: state.theme,
-        // accessToken intentionally NOT persisted — refreshed on load
+        user:   state.user,
+        theme:  state.theme,
+        isAuth: state.isAuth,
+        // accessToken intentionally NOT persisted — refreshed via refresh token on next API call
       }),
     },
   ),
