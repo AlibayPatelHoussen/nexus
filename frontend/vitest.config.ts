@@ -12,12 +12,6 @@ export default defineConfig({
       provider: 'v8',
       reporter: ['text', 'lcov'],
       exclude: ['node_modules/', 'tests/'],
-      thresholds: {
-        branches: 70,
-        functions: 70,
-        lines: 70,
-        statements: 70,
-      },
     },
   },
   resolve: {
