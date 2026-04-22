@@ -170,7 +170,7 @@ export default function MediaDetailPage() {
               {media.rating && (
                 <div className="flex items-center gap-1 text-[12.5px]" style={{ color: 'var(--yellow)' }}>
                   <Star size={12} fill="var(--yellow)" color="var(--yellow)" />
-                  {media.rating.toFixed(1)}
+                  {Number(media.rating).toFixed(1)}
                   {media.voteCount && (
                     <span style={{ color: 'var(--text3)' }}>({media.voteCount.toLocaleString()})</span>
                   )}

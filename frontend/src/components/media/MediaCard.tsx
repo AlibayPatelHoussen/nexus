@@ -100,7 +100,7 @@ export default function MediaCard({ item, showType, progress, duration }: MediaC
             style={{ background: 'rgba(0,0,0,0.7)', color: 'var(--yellow)' }}
           >
             <Star size={8} fill="var(--yellow)" color="var(--yellow)" />
-            {item.rating.toFixed(1)}
+            {Number(item.rating).toFixed(1)}
           </div>
         )}
 

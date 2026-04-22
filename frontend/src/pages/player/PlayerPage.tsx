@@ -198,7 +198,7 @@ export default function PlayerPage() {
                 {media.year && <span className="text-[12px] font-mono" style={{ color: 'var(--text3)' }}>{media.year}</span>}
                 {media.rating && (
                   <span className="flex items-center gap-1 text-[12px] font-mono" style={{ color: 'var(--yellow)' }}>
-                    <Star size={11} fill="var(--yellow)" color="var(--yellow)" /> {media.rating.toFixed(1)}
+                    <Star size={11} fill="var(--yellow)" color="var(--yellow)" /> {Number(media.rating).toFixed(1)}
                   </span>
                 )}
                 {media.genres?.slice(0, 3).map((g) => (
