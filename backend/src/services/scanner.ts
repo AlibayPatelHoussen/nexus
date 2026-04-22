@@ -175,13 +175,6 @@ export class MediaScanner {
       for (const entry of entries) {
         const fullPath = path.join(dir, entry.name)
 
-        // Check if already scanned
-        const existing = await query(
-          'SELECT id FROM media_items WHERE file_path = $1',
-          [fullPath],
-        )
-        if (existing.rows.length > 0) continue
-
         const isVideoFile = entry.isFile() && VIDEO_EXTS.includes(path.extname(entry.name).toLowerCase())
         const isDir       = entry.isDirectory()
 
