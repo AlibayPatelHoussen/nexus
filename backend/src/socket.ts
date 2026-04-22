@@ -30,13 +30,10 @@ export function registerSocketHandlers(io: Server): void {
     logger.info(`Stats socket connected: ${socket.id}`)
 
     // Send stats every 3 seconds
-    const interval = setInterval(async () => {
-      try {
-        const stats = await SystemService.getStats()
-        socket.emit('stats', stats)
-      } catch (err) {
-        logger.error('Stats emit error', { err })
-      }
+    const interval = setInterval(() => {
+      SystemService.getStats()
+        .then(stats => socket.emit('stats', stats))
+        .catch((err: unknown) => logger.error('Stats emit error', { err }))
     }, 3000)
 
     // Send immediately on connect

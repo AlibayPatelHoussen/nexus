@@ -1,4 +1,5 @@
 import { Pool } from 'pg'
+import type { QueryResultRow } from 'pg'
 import { logger } from '../utils/logger'
 
 export const db = new Pool({
@@ -23,7 +24,7 @@ export async function connectDB(): Promise<void> {
 }
 
 // Helper for typed queries
-export async function query<T = Record<string, unknown>>(
+export async function query<T extends QueryResultRow = Record<string, unknown>>(
   text: string,
   params?: unknown[],
 ) {

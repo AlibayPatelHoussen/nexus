@@ -1,9 +1,10 @@
 import path from 'path'
 import fs from 'fs'
+import express from 'express'
 
 // Call this AFTER all API routes, BEFORE error handler
 // Serves the built React app for all non-API routes
-export function serveStaticFrontend(app: import('express').Application): void {
+export function serveStaticFrontend(app: express.Application): void {
   const frontendDist = path.resolve(__dirname, '../../frontend/dist')
 
   if (!fs.existsSync(frontendDist)) {
@@ -11,9 +12,7 @@ export function serveStaticFrontend(app: import('express').Application): void {
   }
 
   // Serve static assets
-  app.use(
-    import('express').then(({ static: expressStatic }) => expressStatic(frontendDist)),
-  )
+  app.use(express.static(frontendDist))
 
   // SPA fallback — send index.html for all non-API routes
   app.get('*', (req, res) => {

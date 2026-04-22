@@ -31,7 +31,7 @@ export class ScriptsService {
           const content = await fs.readFile(filePath, 'utf8')
           const firstLine = content.split('\n').find((l) => l.startsWith('#'))
           description = firstLine?.replace(/^#+\s*/, '') || ''
-        } catch {}
+        } catch { /* no description line */ }
 
         scripts.push({
           name:        path.basename(file, path.extname(file)),

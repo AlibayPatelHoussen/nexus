@@ -18,7 +18,7 @@ router.get('/chapters/:id/pages', asyncHandler(async (req: Request, res: Respons
 
   if (!rows[0]) { res.status(404).json({ success: false, error: 'Chapter not found' }); return }
 
-  const folderPath = rows[0].folder_path
+  const folderPath = rows[0].folder_path as string
   const files = await fs.readdir(folderPath)
 
   const pages = files

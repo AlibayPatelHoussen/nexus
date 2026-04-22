@@ -13,6 +13,53 @@ const MANGADEX_URL  = process.env.MANGADEX_API_URL  || 'https://api.mangadex.org
 const VIDEO_EXTS = ['.mp4', '.mkv', '.avi', '.mov', '.webm', '.m4v', '.flv']
 const IMAGE_EXTS = ['.jpg', '.jpeg', '.png', '.webp', '.avif']
 
+interface TmdbResult {
+  id?: number
+  title?: string
+  name?: string
+  original_title?: string
+  original_name?: string
+  overview?: string
+  poster_path?: string
+  backdrop_path?: string
+  genres?: { name: string }[]
+  release_date?: string
+  first_air_date?: string
+  vote_average?: number
+  vote_count?: number
+  status?: string
+  original_language?: string
+}
+
+interface MangaDexRelationship {
+  type: string
+  attributes?: { fileName?: string }
+}
+
+interface MangaDexResult {
+  id?: string
+  coverUrl?: string
+  attributes?: {
+    title?: Record<string, string>
+    description?: Record<string, string>
+    status?: string
+    tags?: { attributes?: { name?: Record<string, string> } }[]
+  }
+  relationships?: MangaDexRelationship[]
+}
+
+interface AniListResult {
+  id?: number
+  title?: { romaji?: string; english?: string; native?: string; french?: string }
+  description?: string
+  coverImage?: { large?: string; extraLarge?: string }
+  bannerImage?: string
+  genres?: string[]
+  averageScore?: number
+  status?: string
+  startDate?: { year?: number }
+}
+
 // ─── Parse filename ──────────────────────────────────
 function parseFilename(filename: string): { title: string; year?: number } {
   const noExt  = path.basename(filename, path.extname(filename))
@@ -27,31 +74,31 @@ function parseFilename(filename: string): { title: string; year?: number } {
 }
 
 // ─── TMDB search ─────────────────────────────────────
-async function searchTMDB(title: string, year?: number, type: 'movie' | 'tv' = 'movie') {
+async function searchTMDB(title: string, year?: number, type: 'movie' | 'tv' = 'movie'): Promise<TmdbResult | null> {
   if (!TMDB_KEY) return null
   try {
     const params: Record<string, string | number> = { api_key: TMDB_KEY, query: title, language: 'fr-FR' }
     if (year) params.year = year
     const { data } = await axios.get(`${TMDB_BASE}/search/${type}`, { params })
-    return data.results?.[0] || null
+    return (data.results?.[0] as TmdbResult) || null
   } catch (err) {
     logger.warn(`TMDB search failed for "${title}": ${err}`)
     return null
   }
 }
 
-async function getTMDBDetails(id: number, type: 'movie' | 'tv') {
+async function getTMDBDetails(id: number, type: 'movie' | 'tv'): Promise<TmdbResult | null> {
   if (!TMDB_KEY) return null
   try {
     const { data } = await axios.get(`${TMDB_BASE}/${type}/${id}`, {
       params: { api_key: TMDB_KEY, language: 'fr-FR' },
     })
-    return data
+    return data as TmdbResult
   } catch { return null }
 }
 
 // ─── AniList search ──────────────────────────────────
-async function searchAniList(title: string, type: 'ANIME' | 'MANGA' = 'ANIME') {
+async function searchAniList(title: string, type: 'ANIME' | 'MANGA' = 'ANIME'): Promise<AniListResult | null> {
   const query_gql = `
     query ($search: String, $type: MediaType) {
       Media(search: $search, type: $type, sort: SEARCH_MATCH) {
@@ -67,25 +114,25 @@ async function searchAniList(title: string, type: 'ANIME' | 'MANGA' = 'ANIME') {
       query: query_gql,
       variables: { search: title, type },
     })
-    return data.data?.Media || null
+    return (data.data?.Media as AniListResult) || null
   } catch {
     return null
   }
 }
 
 // ─── MangaDex search ─────────────────────────────────
-async function searchMangaDex(title: string) {
+async function searchMangaDex(title: string): Promise<MangaDexResult | null> {
   try {
     const { data } = await axios.get(`${MANGADEX_URL}/manga`, {
       params: { title, limit: 1, 'includes[]': ['cover_art'] },
     })
-    const manga = data.data?.[0]
+    const manga = data.data?.[0] as MangaDexResult | undefined
     if (!manga) return null
 
-    const cover = manga.relationships?.find((r: any) => r.type === 'cover_art')
+    const cover = manga.relationships?.find((r) => r.type === 'cover_art')
     const coverUrl = cover
       ? `https://uploads.mangadex.org/covers/${manga.id}/${cover.attributes?.fileName}`
-      : null
+      : undefined
 
     return { ...manga, coverUrl }
   } catch { return null }
@@ -133,10 +180,10 @@ export class MediaScanner {
           videoPath = path.join(fullPath, video)
         }
 
-        const { title, year } = parseFilename(entry.isDir ? entry.name : path.basename(videoPath, path.extname(videoPath)))
+        const { title, year } = parseFilename(isDir ? entry.name : path.basename(videoPath, path.extname(videoPath)))
         const tmdb = await searchTMDB(title, year, 'movie')
 
-        let details: any = null
+        let details: TmdbResult | null = null
         if (tmdb?.id) details = await getTMDBDetails(tmdb.id, 'movie')
 
         const item = details || tmdb
@@ -157,7 +204,7 @@ export class MediaScanner {
             item?.overview || null,
             item?.poster_path   ? `${TMDB_IMG}/w500${item.poster_path}`   : null,
             item?.backdrop_path ? `${TMDB_IMG}/w1280${item.backdrop_path}` : null,
-            item?.genres?.map((g: any) => g.name) || [],
+            item?.genres?.map((g) => g.name) || [],
             item?.release_date ? parseInt(item.release_date.slice(0, 4)) : year || null,
             item?.vote_average || null,
             item?.vote_count || null,
@@ -205,14 +252,14 @@ export class MediaScanner {
             item?.id || null, item?.overview || null,
             item?.poster_path   ? `${TMDB_IMG}/w500${item.poster_path}`   : null,
             item?.backdrop_path ? `${TMDB_IMG}/w1280${item.backdrop_path}` : null,
-            item?.genres?.map((g: any) => g.name) || [],
+            item?.genres?.map((g) => g.name) || [],
             item?.first_air_date ? parseInt(item.first_air_date.slice(0, 4)) : null,
             item?.vote_average || null, item?.vote_count || null,
             item?.status || null, item?.original_language || null,
           ],
         )
 
-        const mediaId = rows[0]?.id
+        const mediaId = rows[0]?.id as string | undefined
         if (!mediaId) continue
 
         // Scan episodes
@@ -334,7 +381,7 @@ export class MediaScanner {
             mdx?.id || null,
             mdx?.attributes?.description?.en || null,
             mdx?.coverUrl || null,
-            mdx?.attributes?.tags?.map((t: any) => t.attributes?.name?.en).filter(Boolean) || [],
+            mdx?.attributes?.tags?.map((t) => t.attributes?.name?.['en']).filter(Boolean) || [],
             mdx?.attributes?.status || null,
           ],
         )
@@ -350,7 +397,7 @@ export class MediaScanner {
     return count
   }
 
-  static async scanChapters(mangaPath: string, mangaName: string): Promise<void> {
+  static async scanChapters(mangaPath: string, _mangaName: string): Promise<void> {
     try {
       const { rows } = await query(
         'SELECT id FROM media_items WHERE file_path = $1',

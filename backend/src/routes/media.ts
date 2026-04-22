@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express'
 import asyncHandler from 'express-async-handler'
 import { authenticate, requireAdmin } from '../middleware/auth'
+import { logger } from '../utils/logger'
 import { MediaService } from '../services/media'
 import { MediaScanner } from '../services/scanner'
 
@@ -14,7 +15,8 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
     year: year ? parseInt(year as string) : undefined,
     page: page ? parseInt(page as string) : 1,
     limit: limit ? parseInt(limit as string) : 24,
-    sortBy: sortBy as any, sortDir: sortDir as any,
+    sortBy: sortBy as 'title' | 'year' | 'rating' | 'created_at',
+    sortDir: sortDir as 'asc' | 'desc',
   })
   res.json({ success: true, data: result })
 }))
@@ -55,8 +57,8 @@ router.get('/:id/progress', asyncHandler(async (req: Request, res: Response) => 
   res.json({ success: true, data: prog })
 }))
 
-router.post('/scan',       requireAdmin, asyncHandler(async (_req, res) => {
-  MediaScanner.scanAll().catch(console.error)
+router.post('/scan',       requireAdmin, asyncHandler((_req, res) => {
+  MediaScanner.scanAll().catch((err: unknown) => logger.error('Scan error', { err }))
   res.json({ success: true, message: 'Scan started' })
 }))
 

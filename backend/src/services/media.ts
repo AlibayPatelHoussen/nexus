@@ -53,12 +53,13 @@ export class MediaService {
       query(`SELECT COUNT(*) FROM media_items ${where}`, params),
     ])
 
+    const total = parseInt(countResult.rows[0].count as string)
     return {
       items: items.rows,
-      total: parseInt(countResult.rows[0].count),
+      total,
       page,
       limit,
-      totalPages: Math.ceil(parseInt(countResult.rows[0].count) / limit),
+      totalPages: Math.ceil(total / limit),
     }
   }
 
@@ -180,6 +181,6 @@ export class MediaService {
     const result = await query(
       `SELECT DISTINCT unnest(genres) as genre FROM media_items ${where} ORDER BY genre`,
     )
-    return result.rows.map((r: any) => r.genre)
+    return result.rows.map((r) => r['genre'] as string)
   }
 }

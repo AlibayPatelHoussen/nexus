@@ -45,7 +45,7 @@ router.get('/read', asyncHandler(async (req: Request, res: Response) => {
 }))
 
 // DOWNLOAD
-router.get('/download', asyncHandler(async (req: Request, res: Response) => {
+router.get('/download', asyncHandler((req: Request, res: Response) => {
   const filePath = req.query.path as string
   if (!filePath) throw new ValidationError('path is required')
   res.download(filePath, path.basename(filePath))
@@ -131,7 +131,7 @@ router.delete('/', asyncHandler(async (req: Request, res: Response) => {
 }))
 
 // UPLOAD
-router.post('/upload', upload.array('files'), asyncHandler(async (_req: Request, res: Response) => {
+router.post('/upload', upload.array('files'), asyncHandler((_req: Request, res: Response) => {
   res.status(201).json({ success: true, message: 'Files uploaded' })
 }))
 

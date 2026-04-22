@@ -58,7 +58,7 @@ export async function register(req: Request, res: Response): Promise<void> {
   res.status(201).json({ success: true, data: user })
 }
 
-export async function me(req: Request, res: Response): Promise<void> {
+export function me(req: Request, res: Response): void {
   res.json({ success: true, data: req.user })
 }
 
