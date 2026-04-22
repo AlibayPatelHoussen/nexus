@@ -1,6 +1,7 @@
-import 'dotenv/config'
+import dotenv from 'dotenv'
 import path from 'path'
 import fs from 'fs'
+dotenv.config({ path: path.resolve(__dirname, '../.env') })
 import express from 'express'
 import { createServer } from 'http'
 import { Server as SocketServer } from 'socket.io'
