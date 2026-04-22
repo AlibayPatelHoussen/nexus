@@ -42,7 +42,7 @@ sudo apt-get install -y build-essential python3-dev
 # ── Setup PostgreSQL DB ──────────────────────────────
 echo "🗄️  Setting up database..."
 DB_NAME="nexus"
-DB_USER="nexus_user"
+DB_USER="nexus_houssen"
 DB_PASS=$(openssl rand -hex 32)
 
 sudo -u postgres psql -c "CREATE USER $DB_USER WITH PASSWORD '$DB_PASS';" 2>/dev/null || true
@@ -109,7 +109,7 @@ echo "🗄️  Running database schema..."
 cd "$NEXUS_DIR"
 sudo -u postgres psql -d "$DB_NAME" -f backend/src/db/schema.sql 2>/dev/null || true
 
-# Grant table-level privileges to nexus_user
+# Grant table-level privileges to nexus_houssen
 sudo -u postgres psql -d "$DB_NAME" -c "GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO $DB_USER;" 2>/dev/null || true
 sudo -u postgres psql -d "$DB_NAME" -c "GRANT ALL PRIVILEGES ON ALL SEQUENCES IN SCHEMA public TO $DB_USER;" 2>/dev/null || true
 sudo -u postgres psql -d "$DB_NAME" -c "ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO $DB_USER;" 2>/dev/null || true
