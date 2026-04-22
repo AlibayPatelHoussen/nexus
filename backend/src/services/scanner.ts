@@ -67,12 +67,12 @@ function parseFilename(filename: string): { title: string; year?: number } {
   // Remove content in square brackets e.g. [FR-EN], [OxTorrent.com]
   name = name.replace(/\[.*?\]/g, '')
 
-  // Extract year before stripping it
-  const yearMatch = name.match(/[^0-9](\d{4})[^0-9]/)
+  // Extract year (handles year at end of string too)
+  const yearMatch = name.match(/(?:[^0-9]|^)(\d{4})(?:[^0-9]|$)/)
   const year = yearMatch ? parseInt(yearMatch[1]) : undefined
 
-  // Remove year and everything after (quality tags, release group, etc.)
-  name = name.replace(/[(_. ]\d{4}[)_. ].*/, '')
+  // Remove year and everything after (handles year at end of string too)
+  name = name.replace(/[(_. ]\d{4}([)_. ].*|$)/, '')
 
   // Remove common quality/source tags
   name = name.replace(/\b(TRUEFRENCH|FRENCH|VOSTFR|MULTI|BluRay|BDRip|WEBRip|WEB[-.]DL|HDLight|HDLIGHT|720p|1080p|2160p|4K|x264|x265|HEVC|DTS|AC3|AAC|VFF|VFQ|VOA|HDR|SDR|EXTENDED|REPACK|PROPER|REMUX)\b.*/i, '')
