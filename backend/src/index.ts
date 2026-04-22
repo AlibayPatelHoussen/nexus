@@ -1,4 +1,6 @@
 import 'dotenv/config'
+import path from 'path'
+import fs from 'fs'
 import express from 'express'
 import { createServer } from 'http'
 import { Server as SocketServer } from 'socket.io'
@@ -20,7 +22,6 @@ import servicesRoutes from './routes/services'
 import scriptsRoutes  from './routes/scripts'
 import terminalRoutes from './routes/terminal'
 import { registerSocketHandlers } from './socket'
-import { serveStaticFrontend } from './utils/serveStatic'
 
 const app    = express()
 const server = createServer(app)
@@ -58,7 +59,14 @@ app.use('/api/terminal', terminalRoutes)
 app.get('/api/health',   (_req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }))
 
 registerSocketHandlers(io)
-serveStaticFrontend(app)
+
+// Serve frontend — __dirname is dist/ in production
+const frontendDist = path.resolve(__dirname, '../../frontend/dist')
+if (fs.existsSync(frontendDist)) {
+  app.use(express.static(frontendDist))
+  app.use((_req, res) => res.sendFile(path.join(frontendDist, 'index.html')))
+}
+
 app.use(notFound)
 app.use(errorHandler)
 
