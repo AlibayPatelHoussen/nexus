@@ -1,8 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { Maximize2, Minimize2 } from 'lucide-react'
 import { useTerminalSocket } from '@/hooks/useSocket'
-// @ts-expect-error — no type declarations for CSS import
-import '@xterm/xterm/css/xterm.css'
 
 export default function TerminalPage() {
   const termRef  = useRef<HTMLDivElement>(null)
@@ -22,6 +20,8 @@ export default function TerminalPage() {
       const [{ Terminal }, { FitAddon }] = await Promise.all([
         import('@xterm/xterm'),
         import('@xterm/addon-fit'),
+        // @ts-expect-error — CSS module lacks type declarations
+        import('@xterm/xterm/css/xterm.css'),
       ])
       if (!mounted || !termRef.current) return
 
