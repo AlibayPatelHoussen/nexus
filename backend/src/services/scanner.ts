@@ -210,7 +210,14 @@ export class MediaScanner {
             poster_path, backdrop_path, genres, year, rating, vote_count,
             status, language, file_size, last_scanned)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NOW())
-           ON CONFLICT (file_path) DO NOTHING`,
+           ON CONFLICT (file_path) DO UPDATE SET
+             title = EXCLUDED.title, original_title = EXCLUDED.original_title,
+             tmdb_id = EXCLUDED.tmdb_id, overview = EXCLUDED.overview,
+             poster_path = EXCLUDED.poster_path, backdrop_path = EXCLUDED.backdrop_path,
+             genres = EXCLUDED.genres, year = EXCLUDED.year, rating = EXCLUDED.rating,
+             vote_count = EXCLUDED.vote_count, status = EXCLUDED.status,
+             language = EXCLUDED.language, file_size = EXCLUDED.file_size,
+             last_scanned = NOW()`,
           [
             'film',
             item?.title || item?.name || title,
