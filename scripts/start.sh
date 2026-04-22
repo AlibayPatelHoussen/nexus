@@ -1,5 +1,3 @@
 #!/bin/bash
-set -a
-source /opt/nexus/backend/.env
-set +a
+export $(grep -v '^#' /opt/nexus/backend/.env | xargs)
 exec node /opt/nexus/backend/dist/index.js
