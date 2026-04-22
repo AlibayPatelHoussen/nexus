@@ -56,7 +56,7 @@ export default function TerminalPage() {
         },
       )
       setConnected(true)
-      resize(term.cols, term.rows)
+      setTimeout(() => { term.clear(); resize(term.cols, term.rows) }, 300)
 
       term.onData((data) => send(data))
 
