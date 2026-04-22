@@ -35,8 +35,8 @@ CREATE TABLE media_items (
   type            VARCHAR(20) NOT NULL CHECK (type IN ('film', 'serie', 'anime', 'manga', 'webtoon')),
   title           VARCHAR(500) NOT NULL,
   original_title  VARCHAR(500),
-  file_path       VARCHAR(1000) NOT NULL,
-  
+  file_path       VARCHAR(1000) NOT NULL UNIQUE,
+
   -- External API IDs
   tmdb_id         INTEGER,
   anilist_id      INTEGER,
