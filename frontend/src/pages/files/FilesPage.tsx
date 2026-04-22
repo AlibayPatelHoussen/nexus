@@ -313,7 +313,7 @@ export default function FilesPage() {
                 action: () => { setRenaming(ctxMenu.entry); setNewName(ctxMenu.entry.name); setCtxMenu(null) } },
               { icon: <Trash2 size={13} />, label: 'Supprimer', danger: true,
                 action: () => { if (confirm(`Supprimer "${ctxMenu.entry.name}" ?`)) deleteEntry(ctxMenu.entry.path); setCtxMenu(null) } },
-            ].filter(Boolean).map((item) => (
+            ].filter((x): x is { icon: React.ReactElement; label: string; action: () => void; danger?: boolean } => Boolean(x)).map((item) => (
               <button key={item.label}
                 className="flex items-center gap-2.5 w-full px-3 py-2 text-[12.5px] text-left transition-colors"
                 style={{ color: item.danger ? 'var(--red)' : 'var(--text)' }}

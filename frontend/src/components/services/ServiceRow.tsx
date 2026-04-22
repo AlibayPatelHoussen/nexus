@@ -16,7 +16,7 @@ function DynamicIcon({ name }: { name: string }) {
     .map((s) => s.charAt(0).toUpperCase() + s.slice(1))
     .join('')
 
-  const Icon = (LucideIcons as Record<string, React.ComponentType<{ size?: number; strokeWidth?: number; color?: string }>>)[pascal]
+  const Icon = (LucideIcons as unknown as Record<string, React.ComponentType<{ size?: number; strokeWidth?: number; color?: string }>>)[pascal]
   if (!Icon) return null
   return <Icon size={15} strokeWidth={1.8} color={getColorVar(name)} />
 }

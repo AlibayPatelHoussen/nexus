@@ -72,8 +72,8 @@ export const mediaService = {
     await api.post(`/media/${id}/progress`, { progress, duration, episodeId })
   },
 
-  async getProgress(id: string, episodeId?: string): Promise<{ progress: number; duration: number; completed: boolean } | null> {
-    const { data } = await api.get<{ success: boolean; data: { progress: number; duration: number; completed: boolean } | null }>(`/media/${id}/progress`, {
+  async getProgress(id: string, episodeId?: string): Promise<{ progress: number; duration: number; completed: boolean; episodeId?: string | null } | null> {
+    const { data } = await api.get<{ success: boolean; data: { progress: number; duration: number; completed: boolean; episodeId?: string | null } | null }>(`/media/${id}/progress`, {
       params: { episodeId },
     })
     return data.data

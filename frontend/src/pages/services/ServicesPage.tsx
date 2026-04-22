@@ -9,7 +9,7 @@ import toast from 'react-hot-toast'
 
 function DynamicIcon({ name, color }: { name: string; color: string }) {
   const pascal = name.split('-').map((s) => s[0].toUpperCase() + s.slice(1)).join('')
-  const Icon   = (LucideIcons as Record<string, React.ComponentType<{ size?: number; strokeWidth?: number; color?: string }>>)[pascal]
+  const Icon   = (LucideIcons as unknown as Record<string, React.ComponentType<{ size?: number; strokeWidth?: number; color?: string }>>)[pascal]
   if (!Icon) return null
   return <Icon size={16} strokeWidth={1.8} color={color} />
 }

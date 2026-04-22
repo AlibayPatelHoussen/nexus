@@ -47,6 +47,7 @@ export default function PlayerPage() {
 
     async function initPlyr() {
       const Plyr = (await import('plyr')).default
+      // @ts-expect-error — CSS module lacks type declarations
       await import('plyr/dist/plyr.css')
 
       if (playerRef.current) { playerRef.current.destroy(); playerRef.current = null }

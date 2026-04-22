@@ -2,6 +2,7 @@ import { useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { Search, RefreshCw, X, Film, Tv } from 'lucide-react'
 import { mediaService } from '@/services/mediaService'
+import type { MediaItem } from '@/types'
 import { useDebounce } from '@/hooks/useDebounce'
 import MediaCard from '@/components/media/MediaCard'
 import MediaRow from '@/components/media/MediaRow'
@@ -161,9 +162,9 @@ export default function CinemaPage() {
               {continueW.map((item) => (
                 <MediaCard
                   key={item.id}
-                  item={{ ...item, posterPath: item.poster_path }}
+                  item={item as unknown as MediaItem}
                   progress={item.progress}
-                  duration={item.duration}
+                  duration={item.duration ?? undefined}
                 />
               ))}
             </div>
