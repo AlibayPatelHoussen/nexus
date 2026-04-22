@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react'
 import { Maximize2, Minimize2 } from 'lucide-react'
 import { useTerminalSocket } from '@/hooks/useSocket'
+// @ts-expect-error — no type declarations for CSS import
+import '@xterm/xterm/css/xterm.css'
 
 export default function TerminalPage() {
   const termRef  = useRef<HTMLDivElement>(null)
