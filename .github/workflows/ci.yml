@@ -73,6 +73,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Run database migrations
+        env:
+          PGPASSWORD: test_password
+        run: psql -h localhost -U nexus_user -d nexus_test -f backend/src/db/schema.sql
+
       - name: Run backend tests
         working-directory: backend
         env:

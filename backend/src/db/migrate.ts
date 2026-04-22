@@ -1,0 +1,30 @@
+import { Client } from 'pg'
+import fs from 'fs'
+import path from 'path'
+
+async function migrate() {
+  const client = new Client({
+    host:     process.env.DB_HOST     || 'localhost',
+    port:     parseInt(process.env.DB_PORT || '5432'),
+    database: process.env.DB_NAME     || 'nexus',
+    user:     process.env.DB_USER     || 'nexus_user',
+    password: process.env.DB_PASSWORD || '',
+  })
+
+  await client.connect()
+
+  const reset = process.argv.includes('--reset')
+  if (reset) {
+    await client.query('DROP SCHEMA public CASCADE')
+    await client.query('CREATE SCHEMA public')
+    await client.query('GRANT ALL ON SCHEMA public TO PUBLIC')
+  }
+
+  const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf-8')
+  await client.query(schema)
+  await client.end()
+
+  console.log('Migrations complete')
+}
+
+migrate().catch((err) => { console.error(err); process.exit(1) })

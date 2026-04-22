@@ -60,6 +60,8 @@ registerSocketHandlers(io)
 app.use(notFound)
 app.use(errorHandler)
 
-server.listen(PORT, () => logger.info(`Nexus backend running on port ${PORT} [${process.env.NODE_ENV}]`))
+if (require.main === module) {
+  server.listen(PORT, () => logger.info(`Nexus backend running on port ${PORT} [${process.env.NODE_ENV}]`))
+}
 
 export { app, io }
