@@ -1,5 +1,15 @@
 // PM2 Ecosystem Config — Nexus
-// Usage: pm2 start ecosystem.config.cjs
+// Usage: pm2 start ecosystem.config.cjs --env production
+
+const path = require('path')
+
+// Load .env so PM2 passes vars directly to the process
+let envVars = {}
+try {
+  const dotenv = require('dotenv')
+  const result = dotenv.config({ path: path.join(__dirname, 'backend/.env') })
+  if (result.parsed) envVars = result.parsed
+} catch (e) {}
 
 module.exports = {
   apps: [
@@ -13,8 +23,8 @@ module.exports = {
       max_memory_restart: '500M',
 
       env_production: {
-        NODE_ENV:     'production',
-        PORT:         '3001',
+        NODE_ENV: 'production',
+        ...envVars,
       },
 
       // Logging
