@@ -8,7 +8,6 @@ import helmet from 'helmet'
 import cors from 'cors'
 import compression from 'compression'
 import morgan from 'morgan'
-import rateLimit from 'express-rate-limit'
 
 import { logger }       from './utils/logger'
 import { errorHandler } from './middleware/errorHandler'

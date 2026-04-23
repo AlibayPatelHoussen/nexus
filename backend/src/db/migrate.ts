@@ -24,7 +24,7 @@ async function migrate() {
   await client.query(schema)
   await client.end()
 
-  console.log('Migrations complete')
+  process.stdout.write('Migrations complete\n')
 }
 
 migrate().catch((err) => { console.error(err); process.exit(1) })
