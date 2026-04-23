@@ -43,38 +43,26 @@ export interface SystemStats {
   }
 }
 
-// Cache for directory sizes — expensive to compute with du
+// Cache for media storage — refreshed from DB every 5 min
 let _mediaCache = { films: 0, series: 0, animes: 0, manga: 0 }
 let _mediaCacheAt = 0
-let _mediaComputing = false
 
 async function refreshMediaStorage(): Promise<void> {
-  if (_mediaComputing) return
-  _mediaComputing = true
   try {
-    const { exec } = await import('child_process')
-    const { promisify } = await import('util')
-    const execAsync = promisify(exec)
-
-    const getSize = async (p: string): Promise<number> => {
-      if (!p) return 0
-      try {
-        const { stdout } = await execAsync(`du -sb "${p}" 2>/dev/null | awk '{print $1}'`)
-        return parseInt(stdout.trim(), 10) || 0
-      } catch { return 0 }
+    const { query } = await import('../config/database')
+    const result = await query<{ type: string; total: string }>(
+      `SELECT type, COALESCE(SUM(file_size), 0) AS total FROM media_items GROUP BY type`,
+    )
+    const map: Record<string, number> = {}
+    for (const row of result.rows) map[row.type] = parseInt(row.total, 10) || 0
+    _mediaCache = {
+      films:  map['film']   || 0,
+      series: map['serie']  || 0,
+      animes: map['anime']  || 0,
+      manga:  (map['manga'] || 0) + (map['webtoon'] || 0),
     }
-
-    const [films, series, animes, manga] = await Promise.all([
-      getSize(process.env.FILMS_PATH  || ''),
-      getSize(process.env.SERIES_PATH || ''),
-      getSize(process.env.ANIMES_PATH || ''),
-      getSize(process.env.MANGA_PATH  || ''),
-    ])
-    _mediaCache = { films, series, animes, manga }
     _mediaCacheAt = Date.now()
-  } finally {
-    _mediaComputing = false
-  }
+  } catch { /* keep previous cache on error */ }
 }
 
 export class SystemService {
