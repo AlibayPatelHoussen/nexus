@@ -1,14 +1,15 @@
 // PM2 Ecosystem Config — Nexus
-// Usage: pm2 start ecosystem.config.cjs --env production
-
+const fs   = require('fs')
 const path = require('path')
 
-// Load .env so PM2 passes vars directly to the process
-let envVars = {}
+// Parse .env without dotenv dependency
+const envVars = {}
 try {
-  const dotenv = require('dotenv')
-  const result = dotenv.config({ path: path.join(__dirname, 'backend/.env') })
-  if (result.parsed) envVars = result.parsed
+  const raw = fs.readFileSync(path.join(__dirname, 'backend/.env'), 'utf8')
+  raw.split('\n').forEach(line => {
+    const m = line.match(/^([^#=\s][^=]*)=(.*)$/)
+    if (m) envVars[m[1].trim()] = m[2].trim()
+  })
 } catch (e) {}
 
 module.exports = {
@@ -27,17 +28,15 @@ module.exports = {
         ...envVars,
       },
 
-      // Logging
       out_file:    '/opt/nexus/logs/backend-out.log',
       error_file:  '/opt/nexus/logs/backend-error.log',
       log_date_format: 'YYYY-MM-DD HH:mm:ss',
       merge_logs:  true,
 
-      // Auto-restart
-      autorestart: true,
+      autorestart:   true,
       restart_delay: 3000,
-      max_restarts: 10,
-      min_uptime:  '10s',
+      max_restarts:  10,
+      min_uptime:    '10s',
     },
   ],
 }
