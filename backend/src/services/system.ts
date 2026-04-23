@@ -1,4 +1,5 @@
 import si from 'systeminformation'
+import { query } from '../config/database'
 
 export interface SystemStats {
   cpu: {
@@ -49,21 +50,36 @@ let _mediaCacheAt = 0
 
 async function refreshMediaStorage(): Promise<void> {
   try {
-    const { query } = await import('../config/database')
-    const result = await query<{ type: string; total: string }>(
-      `SELECT type, COALESCE(SUM(file_size), 0) AS total FROM media_items GROUP BY type`,
-    )
+    // Films: file_size on media_items directly
+    // Series/Animes: file_size on episodes table (media_items.file_size is NULL)
+    const result = await query<{ type: string; total: string }>(`
+      WITH direct AS (
+        SELECT type, COALESCE(SUM(file_size), 0) AS total
+        FROM media_items
+        GROUP BY type
+      ),
+      from_episodes AS (
+        SELECT mi.type, COALESCE(SUM(e.file_size), 0) AS total
+        FROM episodes e
+        JOIN media_items mi ON mi.id = e.media_item_id
+        GROUP BY mi.type
+      )
+      SELECT d.type, (d.total + COALESCE(ep.total, 0)) AS total
+      FROM direct d
+      LEFT JOIN from_episodes ep ON ep.type = d.type
+    `)
     const map: Record<string, number> = {}
     for (const row of result.rows) map[row.type] = parseInt(row.total, 10) || 0
     _mediaCache = {
-      films:  map['film']   || 0,
-      series: map['serie']  || 0,
-      animes: map['anime']  || 0,
-      manga:  (map['manga'] || 0) + (map['webtoon'] || 0),
+      films:  map['film']    || 0,
+      series: map['serie']   || 0,
+      animes: map['anime']   || 0,
+      manga:  (map['manga']  || 0) + (map['webtoon'] || 0),
     }
     _mediaCacheAt = Date.now()
-  } catch { /* keep previous cache on error */ }
+  } catch { _mediaCacheAt = Date.now() - 4 * 60_000 } // retry in 1 min on error
 }
+
 
 export class SystemService {
   static async getStats(): Promise<SystemStats> {
@@ -72,9 +88,10 @@ export class SystemService {
       refreshMediaStorage().catch(() => {})
     }
 
-    const [cpu, mem, fsSize, temp, networkInterfaces, osInfo, time, netStats] =
+    const [cpu, cpuInfo, mem, fsSize, temp, networkInterfaces, osInfo, time, netStats] =
       await Promise.all([
         si.currentLoad(),
+        si.cpu(),
         si.mem(),
         si.fsSize(),
         si.cpuTemperature(),
@@ -98,8 +115,8 @@ export class SystemService {
       cpu: {
         usage:  Math.round(cpu.currentLoad),
         cores:  cpu.cpus.length,
-        model:  (await si.cpu()).brand,
-        speed:  (await si.cpu()).speed,
+        model:  cpuInfo.brand,
+        speed:  cpuInfo.speed,
       },
       memory: {
         total:       mem.total,
