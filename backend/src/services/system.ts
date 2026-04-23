@@ -19,6 +19,12 @@ export interface SystemStats {
     free: number
     usedPercent: number
   }
+  mediaStorage: {
+    films:  number
+    series: number
+    animes: number
+    manga:  number
+  }
   temperature: number | null
   uptime: number
   network: {
@@ -37,8 +43,47 @@ export interface SystemStats {
   }
 }
 
+// Cache for directory sizes — expensive to compute with du
+let _mediaCache = { films: 0, series: 0, animes: 0, manga: 0 }
+let _mediaCacheAt = 0
+let _mediaComputing = false
+
+async function refreshMediaStorage(): Promise<void> {
+  if (_mediaComputing) return
+  _mediaComputing = true
+  try {
+    const { exec } = await import('child_process')
+    const { promisify } = await import('util')
+    const execAsync = promisify(exec)
+
+    const getSize = async (p: string): Promise<number> => {
+      if (!p) return 0
+      try {
+        const { stdout } = await execAsync(`du -sb "${p}" 2>/dev/null | awk '{print $1}'`)
+        return parseInt(stdout.trim(), 10) || 0
+      } catch { return 0 }
+    }
+
+    const [films, series, animes, manga] = await Promise.all([
+      getSize(process.env.FILMS_PATH  || ''),
+      getSize(process.env.SERIES_PATH || ''),
+      getSize(process.env.ANIMES_PATH || ''),
+      getSize(process.env.MANGA_PATH  || ''),
+    ])
+    _mediaCache = { films, series, animes, manga }
+    _mediaCacheAt = Date.now()
+  } finally {
+    _mediaComputing = false
+  }
+}
+
 export class SystemService {
   static async getStats(): Promise<SystemStats> {
+    // Trigger background refresh of media sizes if cache is older than 5 min
+    if (Date.now() - _mediaCacheAt > 5 * 60_000) {
+      refreshMediaStorage().catch(() => {})
+    }
+
     const [cpu, mem, fsSize, temp, networkInterfaces, osInfo, time, netStats] =
       await Promise.all([
         si.currentLoad(),
@@ -80,6 +125,7 @@ export class SystemService {
         free:        (mainDisk?.size || 0) - (mainDisk?.used || 0),
         usedPercent: Math.round(mainDisk?.use || 0),
       },
+      mediaStorage: { ..._mediaCache },
       temperature: temp.main ?? null,
       uptime:      time.uptime,
       network: {

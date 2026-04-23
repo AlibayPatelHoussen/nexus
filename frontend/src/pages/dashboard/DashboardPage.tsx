@@ -110,17 +110,25 @@ export default function DashboardPage() {
             badgeOk={(stats?.disk.usedPercent ?? 0) < 90}
             delay={120}
           />
-          <StatCard
-            icon={<Thermometer size={15} strokeWidth={2} />}
-            label="Température CPU"
-            value={stats?.temperature != null ? `${stats.temperature} °C` : '—'}
-            percent={stats?.temperature ? (stats.temperature / 100) * 100 : 0}
-            color="var(--green)"
-            dimColor="var(--green-dim)"
-            badgeText="Normal"
-            badgeOk
-            delay={160}
-          />
+          {(() => {
+            const temp = stats?.temperature ?? null
+            const tempColor    = temp == null ? 'var(--green)' : temp >= 80 ? 'var(--red)'    : temp >= 60 ? 'var(--orange)'    : 'var(--green)'
+            const tempDimColor = temp == null ? 'var(--green-dim)' : temp >= 80 ? 'var(--red-dim)' : temp >= 60 ? 'var(--orange-dim)' : 'var(--green-dim)'
+            const tempLabel    = temp == null ? '—'        : temp >= 80 ? 'Critique'  : temp >= 60 ? 'Chaud'     : 'Normal'
+            return (
+              <StatCard
+                icon={<Thermometer size={15} strokeWidth={2} />}
+                label="Température CPU"
+                value={temp != null ? `${temp} °C` : '—'}
+                percent={temp != null ? Math.min(temp, 100) : 0}
+                color={tempColor}
+                dimColor={tempDimColor}
+                badgeText={tempLabel}
+                badgeOk={temp == null || temp < 60}
+                delay={160}
+              />
+            )
+          })()}
         </div>
 
         {/* ── MAIN GRID ── */}
@@ -141,30 +149,42 @@ export default function DashboardPage() {
                   </span>
                 </div>
 
-                {/* Bar */}
-                <div
-                  className="flex gap-0.5 rounded overflow-hidden mb-3"
-                  style={{ height: '8px', background: 'var(--surface3)' }}
-                >
-                  <div style={{ width: '31%', background: 'var(--red)',    borderRadius: '4px 0 0 4px' }} />
-                  <div style={{ width: '15%', background: 'var(--teal)'   }} />
-                  <div style={{ width: '9%',  background: 'var(--purple)' }} />
-                  <div style={{ flex: 1,       background: 'var(--surface3)', borderRadius: '0 4px 4px 0' }} />
-                </div>
+                {/* Bar — widths computed from real directory sizes vs disk total */}
+                {(() => {
+                  const total = stats.disk.total || 1
+                  const ms    = stats.mediaStorage
+                  const pct   = (n: number) => `${Math.max(0.5, (n / total) * 100).toFixed(1)}%`
+                  const segments = [
+                    { color: 'var(--red)',    w: pct(ms.films),  radius: '4px 0 0 4px' },
+                    { color: 'var(--teal)',   w: pct(ms.animes), radius: undefined },
+                    { color: 'var(--purple)', w: pct(ms.series), radius: undefined },
+                  ]
+                  return (
+                    <div
+                      className="flex gap-0.5 rounded overflow-hidden mb-3"
+                      style={{ height: '8px', background: 'var(--surface3)' }}
+                    >
+                      {segments.map((s) => (
+                        <div key={s.color} style={{ width: s.w, background: s.color, borderRadius: s.radius }} />
+                      ))}
+                      <div style={{ flex: 1, background: 'var(--surface3)', borderRadius: '0 4px 4px 0' }} />
+                    </div>
+                  )
+                })()}
 
                 <div className="flex flex-wrap gap-4">
                   {[
-                    { label: 'Films',   color: 'var(--red)',    size: '142 GB' },
-                    { label: 'Animes',  color: 'var(--teal)',   size: '68 GB'  },
-                    { label: 'Séries',  color: 'var(--purple)', size: '39 GB'  },
-                    { label: 'Libre',   color: 'var(--surface3)', size: formatBytes(stats.disk.free), border: true },
+                    { label: 'Films',  color: 'var(--red)',      size: formatBytes(stats.mediaStorage.films)  },
+                    { label: 'Animes', color: 'var(--teal)',     size: formatBytes(stats.mediaStorage.animes) },
+                    { label: 'Séries', color: 'var(--purple)',   size: formatBytes(stats.mediaStorage.series) },
+                    { label: 'Libre',  color: 'var(--surface3)', size: formatBytes(stats.disk.free), border: true },
                   ].map((item) => (
                     <div key={item.label} className="flex items-center gap-1.5 text-[11px]" style={{ color: 'var(--text2)' }}>
                       <div
                         className="w-2 h-2 rounded-sm flex-shrink-0"
                         style={{
-                          background:   item.color,
-                          border:       item.border ? '1px solid var(--border2)' : 'none',
+                          background: item.color,
+                          border:     'border' in item ? '1px solid var(--border2)' : 'none',
                         }}
                       />
                       {item.label} · {item.size}

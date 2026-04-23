@@ -33,6 +33,12 @@ export interface SystemStats {
     free:        number
     usedPercent: number
   }
+  mediaStorage: {
+    films:  number
+    series: number
+    animes: number
+    manga:  number
+  }
   temperature: number | null
   uptime:      number
   network: {
