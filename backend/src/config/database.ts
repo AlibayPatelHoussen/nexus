@@ -1,13 +1,18 @@
+import { config } from 'dotenv'
+import { resolve } from 'path'
 import { Pool } from 'pg'
 import type { QueryResultRow } from 'pg'
 import { logger } from '../utils/logger'
+
+// __dirname = dist/config/ → ../../.env = backend/.env
+config({ path: resolve(__dirname, '../../.env') })
 
 export const db = new Pool({
   host:     process.env.DB_HOST     || 'localhost',
   port:     parseInt(process.env.DB_PORT || '5432'),
   database: process.env.DB_NAME     || 'nexus',
-  user:     process.env.DB_USER     || 'nexus_user',
-  password: process.env.DB_PASSWORD || '',
+  user:     process.env.DB_USER     || 'nexus_houssen',
+  password: process.env.DB_PASSWORD,
   max: 20,
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 2000,
@@ -23,12 +28,11 @@ export async function connectDB(): Promise<void> {
   logger.info('PostgreSQL connected')
 }
 
-// Helper for typed queries
 export async function query<T extends QueryResultRow = Record<string, unknown>>(
   text: string,
   params?: unknown[],
 ) {
-  const start = Date.now()
+  const start  = Date.now()
   const result = await db.query<T>(text, params)
   const duration = Date.now() - start
 
