@@ -37,11 +37,11 @@ app.use(helmet({
     directives: {
       defaultSrc:  ["'self'"],
       scriptSrc:   ["'self'", "'unsafe-inline'"],
-      styleSrc:    ["'self'", "'unsafe-inline'"],
+      styleSrc:    ["'self'", "'unsafe-inline'", 'https://fonts.googleapis.com'],
       imgSrc:      ["'self'", 'data:', 'blob:', 'https://image.tmdb.org', 'https://img.anilist.co', 'https://uploads.mangadex.org'],
       connectSrc:  ["'self'", 'wss:', 'ws:'],
       mediaSrc:    ["'self'", 'blob:'],
-      fontSrc:     ["'self'", 'data:'],
+      fontSrc:     ["'self'", 'data:', 'https://fonts.gstatic.com'],
     },
   },
 }))

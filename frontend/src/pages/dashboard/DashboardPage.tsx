@@ -152,7 +152,7 @@ export default function DashboardPage() {
                 {/* Bar — widths computed from real directory sizes vs disk total */}
                 {(() => {
                   const total = stats.disk.total || 1
-                  const ms    = stats.mediaStorage
+                  const ms    = stats.mediaStorage ?? { films: 0, series: 0, animes: 0, manga: 0 }
                   const pct   = (n: number) => `${Math.max(0.5, (n / total) * 100).toFixed(1)}%`
                   const segments = [
                     { color: 'var(--red)',    w: pct(ms.films),  radius: '4px 0 0 4px' },
@@ -174,9 +174,9 @@ export default function DashboardPage() {
 
                 <div className="flex flex-wrap gap-4">
                   {[
-                    { label: 'Films',  color: 'var(--red)',      size: formatBytes(stats.mediaStorage.films)  },
-                    { label: 'Animes', color: 'var(--teal)',     size: formatBytes(stats.mediaStorage.animes) },
-                    { label: 'Séries', color: 'var(--purple)',   size: formatBytes(stats.mediaStorage.series) },
+                    { label: 'Films',  color: 'var(--red)',      size: formatBytes(stats.mediaStorage?.films  ?? 0) },
+                    { label: 'Animes', color: 'var(--teal)',     size: formatBytes(stats.mediaStorage?.animes ?? 0) },
+                    { label: 'Séries', color: 'var(--purple)',   size: formatBytes(stats.mediaStorage?.series ?? 0) },
                     { label: 'Libre',  color: 'var(--surface3)', size: formatBytes(stats.disk.free), border: true },
                   ].map((item) => (
                     <div key={item.label} className="flex items-center gap-1.5 text-[11px]" style={{ color: 'var(--text2)' }}>
