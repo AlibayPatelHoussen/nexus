@@ -155,29 +155,35 @@ export default function DashboardPage() {
                   const ms    = stats.mediaStorage ?? { films: 0, series: 0, animes: 0, manga: 0 }
                   const pct   = (n: number) => `${Math.max(0.5, (n / total) * 100).toFixed(1)}%`
                   const segments = [
-                    { color: 'var(--red)',    w: pct(ms.films),  radius: '4px 0 0 4px' },
-                    { color: 'var(--teal)',   w: pct(ms.animes), radius: undefined },
-                    { color: 'var(--purple)', w: pct(ms.series), radius: undefined },
-                  ]
+                    { color: 'var(--red)',    bytes: ms.films  },
+                    { color: 'var(--teal)',   bytes: ms.animes },
+                    { color: 'var(--purple)', bytes: ms.series },
+                    { color: 'var(--yellow)', bytes: ms.manga  },
+                  ].filter(s => s.bytes > 0)
                   return (
                     <div
                       className="flex gap-0.5 rounded overflow-hidden mb-3"
                       style={{ height: '8px', background: 'var(--surface3)' }}
                     >
-                      {segments.map((s) => (
-                        <div key={s.color} style={{ width: s.w, background: s.color, borderRadius: s.radius }} />
+                      {segments.map((s, i) => (
+                        <div key={s.color} style={{
+                          width: pct(s.bytes),
+                          background: s.color,
+                          borderRadius: i === 0 ? '4px 0 0 4px' : undefined,
+                        }} />
                       ))}
-                      <div style={{ flex: 1, background: 'var(--surface3)', borderRadius: '0 4px 4px 0' }} />
+                      <div style={{ flex: 1, background: 'var(--surface3)', borderRadius: segments.length ? '0 4px 4px 0' : '4px' }} />
                     </div>
                   )
                 })()}
 
                 <div className="flex flex-wrap gap-4">
                   {[
-                    { label: 'Films',  color: 'var(--red)',      size: formatBytes(stats.mediaStorage?.films  ?? 0) },
-                    { label: 'Animes', color: 'var(--teal)',     size: formatBytes(stats.mediaStorage?.animes ?? 0) },
-                    { label: 'Séries', color: 'var(--purple)',   size: formatBytes(stats.mediaStorage?.series ?? 0) },
-                    { label: 'Libre',  color: 'var(--surface3)', size: formatBytes(stats.disk.free), border: true },
+                    { label: 'Films',  color: 'var(--red)',      bytes: stats.mediaStorage?.films  ?? 0 },
+                    { label: 'Animes', color: 'var(--teal)',     bytes: stats.mediaStorage?.animes ?? 0 },
+                    { label: 'Séries', color: 'var(--purple)',   bytes: stats.mediaStorage?.series ?? 0 },
+                    { label: 'Manga',  color: 'var(--yellow)',   bytes: stats.mediaStorage?.manga  ?? 0 },
+                    { label: 'Libre',  color: 'var(--surface3)', bytes: stats.disk.free, border: true },
                   ].map((item) => (
                     <div key={item.label} className="flex items-center gap-1.5 text-[11px]" style={{ color: 'var(--text2)' }}>
                       <div
@@ -187,7 +193,7 @@ export default function DashboardPage() {
                           border:     'border' in item ? '1px solid var(--border2)' : 'none',
                         }}
                       />
-                      {item.label} · {item.size}
+                      {item.label} · {formatBytes(item.bytes)}
                     </div>
                   ))}
                 </div>
