@@ -140,7 +140,7 @@ export default function MangaReaderPage() {
           {media && (
             <span className="text-white/50 text-[13px] font-mono">
               {media.title}
-              {chapterId && chapters[currentChapterIndex] && ` · Ch.${chapters[currentChapterIndex].chapterNumber}`}
+              {chapterId && filteredChapters[currentChapterIndex] && ` · Ch.${filteredChapters[currentChapterIndex].chapterNumber}`}
             </span>
           )}
         </div>
