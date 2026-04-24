@@ -71,8 +71,11 @@ export default function MediaDetailPage() {
 
   function play(episodeId?: string, chapterId?: string) {
     if (isReading) {
-      const chapId = chapterId || chapters[0]?.id
-      if (chapId) navigate(`/reader/${id}?ch=${chapId}`)
+      const chapId = chapterId || visibleChapters[0]?.id
+      if (chapId) {
+        const langParam = curLang ? `&lang=${encodeURIComponent(curLang)}` : ''
+        navigate(`/reader/${id}?ch=${chapId}${langParam}`)
+      }
     } else {
       const epId = episodeId || resumeEpisode?.id || episodes[0]?.id
       if (episodes.length > 0 && epId) {
@@ -366,7 +369,7 @@ export default function MediaDetailPage() {
             </div>
 
             {/* Language tabs */}
-            {langs.length > 1 && (
+            {langs.length >= 1 && (
               <div className="flex gap-2 px-5 pb-3">
                 {langs.map((lang) => (
                   <button

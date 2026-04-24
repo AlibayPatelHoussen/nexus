@@ -44,6 +44,7 @@ export default function MangaReaderPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const navigate          = useNavigate()
   const chapterId         = searchParams.get('ch') || undefined
+  const langParam         = searchParams.get('lang') || undefined
 
   const [mode,       setMode]       = useState<ReadMode>('vertical')
   const [zoom,       setZoom]       = useState(100)
@@ -68,9 +69,19 @@ export default function MangaReaderPage() {
   const pdfUrl = chapterData?.pdfUrl ?? null
 
   const chapters: Chapter[] = media?.chapters || []
-  const currentChapterIndex = chapters.findIndex((c) => c.id === chapterId)
-  const prevChapter = chapters[currentChapterIndex - 1]
-  const nextChapter = chapters[currentChapterIndex + 1]
+  const langs = [...new Set(chapters.map((c) => c.language).filter(Boolean))] as string[]
+  const activeLang = langParam ?? langs[0] ?? null
+  const filteredChapters = activeLang
+    ? chapters.filter((c) => c.language === activeLang)
+    : chapters
+  const currentChapterIndex = filteredChapters.findIndex((c) => c.id === chapterId)
+  const prevChapter = filteredChapters[currentChapterIndex - 1]
+  const nextChapter = filteredChapters[currentChapterIndex + 1]
+
+  function changeLang(l: string) {
+    const first = chapters.find((c) => c.language === l)
+    if (first) setSearchParams({ ch: first.id, lang: l })
+  }
 
   // Show/hide UI on mouse move
   function handleMouseMove() {
@@ -96,7 +107,9 @@ export default function MangaReaderPage() {
   }, [currentPage, id, chapterId, pages.length])
 
   function changeChapter(chap: Chapter) {
-    setSearchParams({ ch: chap.id })
+    const params: Record<string, string> = { ch: chap.id }
+    if (activeLang) params.lang = activeLang
+    setSearchParams(params)
     setCurrentPage(0)
     containerRef.current?.scrollTo(0, 0)
   }
@@ -320,7 +333,7 @@ export default function MangaReaderPage() {
       )}
 
       {/* Chapter selector sidebar */}
-      {chapters.length > 0 && (
+      {filteredChapters.length > 0 && (
         <div
           className="fixed right-0 top-0 bottom-0 w-56 border-l overflow-y-auto transition-all duration-300 z-20"
           style={{
@@ -333,11 +346,31 @@ export default function MangaReaderPage() {
           <div className="p-3 border-b" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
             <p className="text-[11px] font-semibold uppercase tracking-wide"
               style={{ color: 'rgba(255,255,255,0.4)' }}>
-              Chapitres ({chapters.length})
+              Chapitres ({filteredChapters.length})
             </p>
           </div>
+
+          {/* Language tabs */}
+          {langs.length >= 1 && (
+            <div className="flex gap-1 px-3 py-2 border-b" style={{ borderColor: 'rgba(255,255,255,0.05)' }}>
+              {langs.map((l) => (
+                <button
+                  key={l}
+                  className="px-2.5 py-1 rounded text-[10px] font-bold uppercase transition-all"
+                  style={{
+                    background: activeLang === l ? 'rgba(79,142,247,0.3)' : 'rgba(255,255,255,0.08)',
+                    color:      activeLang === l ? 'var(--blue)'           : 'rgba(255,255,255,0.5)',
+                  }}
+                  onClick={() => changeLang(l)}
+                >
+                  {l}
+                </button>
+              ))}
+            </div>
+          )}
+
           <div className="flex flex-col py-1">
-            {chapters.map((chap) => (
+            {filteredChapters.map((chap) => (
               <button
                 key={chap.id}
                 className="text-left px-3 py-2 text-[12.5px] transition-colors"
