@@ -57,17 +57,17 @@ router.get('/:id/progress', asyncHandler(async (req: Request, res: Response) => 
   res.json({ success: true, data: prog })
 }))
 
-router.post('/scan',       requireAdmin, asyncHandler((_req, res) => {
+router.post('/scan',       asyncHandler((_req, res) => {
   MediaScanner.scanAll().catch((err: unknown) => logger.error('Scan error', { err }))
   res.json({ success: true, message: 'Scan started' })
 }))
 
-router.post('/prune', requireAdmin, asyncHandler(async (_req, res: Response) => {
+router.post('/prune', asyncHandler(async (_req, res: Response) => {
   const removed = await MediaScanner.pruneDeleted()
   res.json({ success: true, data: { removed } })
 }))
 
-router.post('/scan/:type', requireAdmin, asyncHandler(async (req: Request, res: Response) => {
+router.post('/scan/:type', asyncHandler(async (req: Request, res: Response) => {
   const typeMap: Record<string, string> = {
     films: 'film', series: 'serie', animes: 'anime', manga: 'manga',
   }
