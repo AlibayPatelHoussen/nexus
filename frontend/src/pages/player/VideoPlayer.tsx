@@ -124,7 +124,7 @@ export default function VideoPlayer({ src, onTimeUpdate, onEnded, initialTime }:
 
   function seek(delta: number) {
     const v = videoRef.current
-    if (!v) return
+    if (!v || !isFinite(v.duration)) return
     v.currentTime = Math.max(0, Math.min(v.duration, v.currentTime + delta))
     showAndScheduleHide()
   }
