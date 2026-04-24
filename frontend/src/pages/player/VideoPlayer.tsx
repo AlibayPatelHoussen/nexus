@@ -26,6 +26,7 @@ export default function VideoPlayer({ src, onTimeUpdate, onEnded, initialTime }:
   const [showControls, setShowControls] = useState(true)
   const [scrubbing,   setScrubbing]   = useState(false)
   const [buffered,    setBuffered]    = useState(0)
+  const [error,       setError]       = useState(false)
 
   // ── Auto-hide controls ─────────────────────────────
   const scheduleHide = useCallback(() => {
@@ -54,10 +55,11 @@ export default function VideoPlayer({ src, onTimeUpdate, onEnded, initialTime }:
       if (v.buffered.length > 0) setBuffered(v.buffered.end(v.buffered.length - 1))
       onTimeUpdate?.(v.currentTime, v.duration)
     }
-    const onPlay    = () => { setPlaying(true);  scheduleHide() }
+    const onPlay    = () => { setPlaying(true);  setError(false); scheduleHide() }
     const onPause   = () => { setPlaying(false); setShowControls(true); if (hideTimer.current) clearTimeout(hideTimer.current) }
     const onEnded_  = () => { setPlaying(false); setShowControls(true); onEnded?.() }
     const onVolume  = () => { setVolume(v.volume); setMuted(v.muted) }
+    const onError   = () => { setError(true); setPlaying(false) }
 
     v.addEventListener('loadedmetadata', onLoaded)
     v.addEventListener('timeupdate',     onTime)
@@ -65,6 +67,10 @@ export default function VideoPlayer({ src, onTimeUpdate, onEnded, initialTime }:
     v.addEventListener('pause',          onPause)
     v.addEventListener('ended',          onEnded_)
     v.addEventListener('volumechange',   onVolume)
+    v.addEventListener('error',          onError)
+
+    // Force reload when src changes (browser may not do it automatically)
+    if (src) v.load()
 
     return () => {
       v.removeEventListener('loadedmetadata', onLoaded)
@@ -73,6 +79,7 @@ export default function VideoPlayer({ src, onTimeUpdate, onEnded, initialTime }:
       v.removeEventListener('pause',          onPause)
       v.removeEventListener('ended',          onEnded_)
       v.removeEventListener('volumechange',   onVolume)
+      v.removeEventListener('error',          onError)
     }
   }, [src, onTimeUpdate, onEnded, scheduleHide, initialTime])
 
@@ -206,8 +213,18 @@ export default function VideoPlayer({ src, onTimeUpdate, onEnded, initialTime }:
         style={{ display: 'block' }}
       />
 
+      {/* Error state */}
+      {error && (
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+          <div style={{ textAlign: 'center', color: 'rgba(255,255,255,0.7)' }}>
+            <div style={{ fontSize: 13 }}>Impossible de charger la vidéo</div>
+            <div style={{ fontSize: 11, marginTop: 4, opacity: 0.5 }}>Vérifiez le fichier ou rechargez la page</div>
+          </div>
+        </div>
+      )}
+
       {/* Big play/pause icon on click flash */}
-      {!playing && (
+      {!playing && !error && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
           <div
             className="flex items-center justify-center rounded-full"
