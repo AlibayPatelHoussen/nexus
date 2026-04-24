@@ -3,7 +3,7 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft, Play, Heart, Star, BookOpen,
-  Calendar, Globe, Clock, Layers, ChevronRight,
+  Calendar, Globe, Clock, Layers, ChevronRight, RefreshCw,
 } from 'lucide-react'
 import { mediaService } from '@/services/mediaService'
 import { formatDuration, formatBytes } from '@/utils'
@@ -14,9 +14,10 @@ export default function MediaDetailPage() {
   const { id }     = useParams<{ id: string }>()
   const navigate   = useNavigate()
   const qc         = useQueryClient()
-  const [isFav, setIsFav] = useState(false)
+  const [isFav, setIsFav] = useState<boolean | null>(null)
   const [imgErr, setImgErr] = useState(false)
   const [activeSeason, setActiveSeason] = useState(1)
+  const [scanning, setScanning] = useState(false)
 
   const { data: media, isLoading } = useQuery({
     queryKey: ['media', id],
@@ -30,6 +31,17 @@ export default function MediaDetailPage() {
     enabled:  !!id,
   })
 
+  useQuery({
+    queryKey: ['favorite', id],
+    queryFn:  async () => {
+      const favs = await mediaService.getFavorites()
+      const fav = favs.some((f: { id: string }) => f.id === id)
+      setIsFav(fav)
+      return fav
+    },
+    enabled: !!id,
+  })
+
   const favMut = useMutation({
     mutationFn: () => mediaService.toggleFavorite(id!),
     onSuccess:  (result) => {
@@ -38,6 +50,16 @@ export default function MediaDetailPage() {
       qc.invalidateQueries({ queryKey: ['media', 'favorites'] })
     },
   })
+
+  async function scan() {
+    setScanning(true)
+    try {
+      await mediaService.scan('manga')
+      toast.success('Scan lancé — rechargement dans 4s')
+      setTimeout(() => qc.invalidateQueries({ queryKey: ['media', id] }), 4000)
+    } catch { toast.error('Erreur scan') }
+    finally { setScanning(false) }
+  }
 
   if (isLoading) {
     return (
@@ -66,7 +88,8 @@ export default function MediaDetailPage() {
   function play(episodeId?: string, chapterId?: string) {
     if (isReading) {
       const chapId = chapterId || chapters[0]?.id
-      if (chapId) navigate(`/reader/${id}?ch=${chapId}`)
+      if (!chapId) { toast.error('Aucun chapitre — lancez un scan'); return }
+      navigate(`/reader/${id}?ch=${chapId}`)
     } else {
       const epId = episodeId || resumeEpisode?.id || episodes[0]?.id
       if (episodes.length > 0 && epId) {
@@ -116,6 +139,18 @@ export default function MediaDetailPage() {
         >
           <ArrowLeft size={16} strokeWidth={2} /> Retour
         </button>
+
+        {/* Scan button (manga/webtoon only) */}
+        {isReading && (
+          <button
+            className="absolute top-5 right-5 flex items-center gap-1.5 text-[12px] font-medium text-white/60 hover:text-white transition-colors"
+            onClick={scan}
+            disabled={scanning}
+          >
+            <RefreshCw size={13} strokeWidth={2} className={scanning ? 'animate-spin' : ''} />
+            Scanner
+          </button>
+        )}
       </div>
 
       {/* ── CONTENT ── */}
@@ -227,11 +262,11 @@ export default function MediaDetailPage() {
                   size={14}
                   strokeWidth={2}
                   style={{
-                    color: isFav ? 'var(--red)' : 'var(--text2)',
-                    fill:  isFav ? 'var(--red)' : 'transparent',
+                    color: isFav === true ? 'var(--red)' : 'var(--text2)',
+                    fill:  isFav === true ? 'var(--red)' : 'transparent',
                   }}
                 />
-                {isFav ? 'Favori' : 'Ajouter'}
+                {isFav === true ? 'Favori' : 'Ajouter'}
               </button>
             </div>
           </div>
