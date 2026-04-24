@@ -7,7 +7,7 @@ CREATE EXTENSION IF NOT EXISTS "uuid-ossp";
 CREATE EXTENSION IF NOT EXISTS "pg_trgm"; -- fuzzy search
 
 -- ─── USERS ───────────────────────────────────────────
-CREATE TABLE users (
+CREATE TABLE IF NOT EXISTS users (
   id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   username    VARCHAR(50)  UNIQUE NOT NULL,
   email       VARCHAR(255) UNIQUE NOT NULL,
@@ -21,7 +21,7 @@ CREATE TABLE users (
 );
 
 -- ─── REFRESH TOKENS ──────────────────────────────────
-CREATE TABLE refresh_tokens (
+CREATE TABLE IF NOT EXISTS refresh_tokens (
   id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   token       VARCHAR(500) UNIQUE NOT NULL,
@@ -30,7 +30,7 @@ CREATE TABLE refresh_tokens (
 );
 
 -- ─── MEDIA ITEMS ─────────────────────────────────────
-CREATE TABLE media_items (
+CREATE TABLE IF NOT EXISTS media_items (
   id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   type            VARCHAR(20) NOT NULL CHECK (type IN ('film', 'serie', 'anime', 'manga', 'webtoon')),
   title           VARCHAR(500) NOT NULL,
@@ -65,13 +65,13 @@ CREATE TABLE media_items (
   last_scanned    TIMESTAMPTZ
 );
 
-CREATE INDEX idx_media_type     ON media_items(type);
-CREATE INDEX idx_media_tmdb     ON media_items(tmdb_id);
-CREATE INDEX idx_media_anilist  ON media_items(anilist_id);
-CREATE INDEX idx_media_title    ON media_items USING gin(title gin_trgm_ops);
+CREATE INDEX IF NOT EXISTS idx_media_type     ON media_items(type);
+CREATE INDEX IF NOT EXISTS idx_media_tmdb     ON media_items(tmdb_id);
+CREATE INDEX IF NOT EXISTS idx_media_anilist  ON media_items(anilist_id);
+CREATE INDEX IF NOT EXISTS idx_media_title    ON media_items USING gin(title gin_trgm_ops);
 
 -- ─── EPISODES (séries & animes) ──────────────────────
-CREATE TABLE episodes (
+CREATE TABLE IF NOT EXISTS episodes (
   id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   media_item_id   UUID NOT NULL REFERENCES media_items(id) ON DELETE CASCADE,
   season          INTEGER,
@@ -86,10 +86,10 @@ CREATE TABLE episodes (
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_episodes_media ON episodes(media_item_id);
+CREATE INDEX IF NOT EXISTS idx_episodes_media ON episodes(media_item_id);
 
 -- ─── CHAPTERS (manga & webtoon) ──────────────────────
-CREATE TABLE chapters (
+CREATE TABLE IF NOT EXISTS chapters (
   id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   media_item_id   UUID NOT NULL REFERENCES media_items(id) ON DELETE CASCADE,
   chapter_number  DECIMAL(6,1) NOT NULL,
@@ -100,10 +100,10 @@ CREATE TABLE chapters (
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_chapters_media ON chapters(media_item_id);
+CREATE INDEX IF NOT EXISTS idx_chapters_media ON chapters(media_item_id);
 
 -- ─── WATCH HISTORY ───────────────────────────────────
-CREATE TABLE watch_history (
+CREATE TABLE IF NOT EXISTS watch_history (
   id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   media_item_id   UUID NOT NULL REFERENCES media_items(id) ON DELETE CASCADE,
@@ -116,12 +116,12 @@ CREATE TABLE watch_history (
   UNIQUE(user_id, media_item_id, episode_id)
 );
 
-CREATE INDEX idx_watch_user      ON watch_history(user_id);
-CREATE INDEX idx_watch_media     ON watch_history(media_item_id);
-CREATE INDEX idx_watch_updated   ON watch_history(updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_watch_user      ON watch_history(user_id);
+CREATE INDEX IF NOT EXISTS idx_watch_media     ON watch_history(media_item_id);
+CREATE INDEX IF NOT EXISTS idx_watch_updated   ON watch_history(updated_at DESC);
 
 -- ─── READ HISTORY (manga) ────────────────────────────
-CREATE TABLE read_history (
+CREATE TABLE IF NOT EXISTS read_history (
   id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   media_item_id   UUID NOT NULL REFERENCES media_items(id) ON DELETE CASCADE,
@@ -134,7 +134,7 @@ CREATE TABLE read_history (
 );
 
 -- ─── FAVORITES ───────────────────────────────────────
-CREATE TABLE favorites (
+CREATE TABLE IF NOT EXISTS favorites (
   id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   media_item_id   UUID NOT NULL REFERENCES media_items(id) ON DELETE CASCADE,
@@ -142,10 +142,10 @@ CREATE TABLE favorites (
   UNIQUE(user_id, media_item_id)
 );
 
-CREATE INDEX idx_favorites_user ON favorites(user_id);
+CREATE INDEX IF NOT EXISTS idx_favorites_user ON favorites(user_id);
 
 -- ─── USER RATINGS ────────────────────────────────────
-CREATE TABLE user_ratings (
+CREATE TABLE IF NOT EXISTS user_ratings (
   id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id         UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   media_item_id   UUID NOT NULL REFERENCES media_items(id) ON DELETE CASCADE,
@@ -156,7 +156,7 @@ CREATE TABLE user_ratings (
 );
 
 -- ─── SYSTEM LOGS ─────────────────────────────────────
-CREATE TABLE system_logs (
+CREATE TABLE IF NOT EXISTS system_logs (
   id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   level       VARCHAR(10) NOT NULL CHECK (level IN ('info', 'warn', 'error')),
   message     TEXT NOT NULL,
@@ -164,8 +164,8 @@ CREATE TABLE system_logs (
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
-CREATE INDEX idx_logs_level   ON system_logs(level);
-CREATE INDEX idx_logs_created ON system_logs(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_logs_level   ON system_logs(level);
+CREATE INDEX IF NOT EXISTS idx_logs_created ON system_logs(created_at DESC);
 
 -- ─── AUTO UPDATE updated_at ──────────────────────────
 CREATE OR REPLACE FUNCTION update_updated_at()
@@ -176,14 +176,17 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
+DROP TRIGGER IF EXISTS trg_users_updated_at ON users;
 CREATE TRIGGER trg_users_updated_at
   BEFORE UPDATE ON users
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
+DROP TRIGGER IF EXISTS trg_media_updated_at ON media_items;
 CREATE TRIGGER trg_media_updated_at
   BEFORE UPDATE ON media_items
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 
+DROP TRIGGER IF EXISTS trg_watch_updated_at ON watch_history;
 CREATE TRIGGER trg_watch_updated_at
   BEFORE UPDATE ON watch_history
   FOR EACH ROW EXECUTE FUNCTION update_updated_at();
