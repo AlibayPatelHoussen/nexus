@@ -1,10 +1,11 @@
-import { useEffect, useRef, useState } from 'react'
+import { useRef, useState, useEffect } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft, Star, ChevronRight } from 'lucide-react'
 import { mediaService } from '@/services/mediaService'
 import { filesService } from '@/services/filesService'
 import { formatDuration } from '@/utils'
+import VideoPlayer from './VideoPlayer'
 import type { Episode } from '@/types'
 
 export default function PlayerPage() {
@@ -13,7 +14,6 @@ export default function PlayerPage() {
   const navigate       = useNavigate()
   const episodeId      = searchParams.get('ep') || undefined
 
-  const videoRef    = useRef<HTMLVideoElement>(null)
   const progressRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const [resumeAt,   setResumeAt]   = useState<number | null>(null)
   const [showResume, setShowResume] = useState(false)
@@ -37,7 +37,6 @@ export default function PlayerPage() {
   const filePath  = currentEpisode?.filePath || media?.filePath || ''
   const streamUrl = filePath ? filesService.getStreamUrl(filePath) : ''
 
-  // Show resume prompt once media + progress are loaded
   useEffect(() => {
     if (savedProgress && savedProgress.progress > 30) {
       setResumeAt(savedProgress.progress)
@@ -45,56 +44,22 @@ export default function PlayerPage() {
     }
   }, [savedProgress])
 
-  // Wire up progress saving and auto-next via native video events
-  useEffect(() => {
-    const video = videoRef.current
-    if (!video || !streamUrl) return
-
-    function onTimeUpdate() {
-      if (progressRef.current) return
-      progressRef.current = setInterval(async () => {
-        if (!video || video.paused) return
-        const current  = video.currentTime
-        const duration = video.duration
-        if (current > 0 && duration > 0 && id) {
-          await mediaService.saveProgress(id, Math.floor(current), Math.floor(duration), episodeId)
-        }
-      }, 5000)
-    }
-
-    function onPause() {
-      if (progressRef.current) { clearInterval(progressRef.current); progressRef.current = null }
-    }
-
-    function onEnded() {
-      if (progressRef.current) { clearInterval(progressRef.current); progressRef.current = null }
-      if (media?.episodes && episodeId) {
-        const idx  = media.episodes.findIndex((e: Episode) => e.id === episodeId)
-        const next = media.episodes[idx + 1]
-        if (next) navigate(`/player/${id}?ep=${next.id}`)
+  function handleTimeUpdate(current: number, duration: number) {
+    if (progressRef.current) return
+    progressRef.current = setInterval(async () => {
+      if (current > 0 && duration > 0 && id) {
+        await mediaService.saveProgress(id, Math.floor(current), Math.floor(duration), episodeId)
       }
-    }
+    }, 5000)
+  }
 
-    video.addEventListener('timeupdate', onTimeUpdate)
-    video.addEventListener('pause',      onPause)
-    video.addEventListener('ended',      onEnded)
-
-    return () => {
-      if (progressRef.current) { clearInterval(progressRef.current); progressRef.current = null }
-      video.removeEventListener('timeupdate', onTimeUpdate)
-      video.removeEventListener('pause',      onPause)
-      video.removeEventListener('ended',      onEnded)
+  function handleEnded() {
+    if (progressRef.current) { clearInterval(progressRef.current); progressRef.current = null }
+    if (media?.episodes && episodeId) {
+      const idx  = media.episodes.findIndex((e: Episode) => e.id === episodeId)
+      const next = media.episodes[idx + 1]
+      if (next) navigate(`/player/${id}?ep=${next.id}`)
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [streamUrl, id, episodeId, media])
-
-  function resume() {
-    const video = videoRef.current
-    if (video && resumeAt) {
-      video.currentTime = resumeAt
-      video.play()
-    }
-    setShowResume(false)
   }
 
   const episodes: Episode[] = media?.episodes || []
@@ -105,8 +70,8 @@ export default function PlayerPage() {
 
       {/* Top bar */}
       <div
-        className="flex items-center gap-3 px-4 py-3 absolute top-0 left-0 right-0 z-20"
-        style={{ background: 'linear-gradient(to bottom, rgba(0,0,0,0.8), transparent)' }}
+        className="flex items-center gap-3 px-4 py-3"
+        style={{ background: 'rgba(0,0,0,0.6)' }}
       >
         <button
           className="flex items-center gap-1.5 text-[13px] font-medium text-white/70 hover:text-white transition-colors"
@@ -122,21 +87,22 @@ export default function PlayerPage() {
         )}
       </div>
 
-      {/* Video */}
-      <div className="flex-1 flex items-center justify-center relative" style={{ minHeight: '60vh' }}>
-        <video
-          ref={videoRef}
-          controls
-          className="w-full"
-          style={{ maxHeight: '75vh', background: '#000' }}
-          src={streamUrl || undefined}
-        />
+      {/* Player */}
+      <div className="relative">
+        {streamUrl && (
+          <VideoPlayer
+            src={streamUrl}
+            initialTime={showResume && resumeAt ? resumeAt : undefined}
+            onTimeUpdate={handleTimeUpdate}
+            onEnded={handleEnded}
+          />
+        )}
 
         {/* Resume prompt */}
         {showResume && resumeAt && (
           <div
-            className="absolute bottom-20 right-6 card p-4 flex items-center gap-3 animate-fade-up"
-            style={{ boxShadow: 'var(--shadow-lg)', minWidth: '260px' }}
+            className="absolute bottom-20 right-6 card p-4 flex items-center gap-3"
+            style={{ boxShadow: 'var(--shadow-lg)', minWidth: '260px', zIndex: 30 }}
           >
             <div>
               <p className="text-[13px] font-semibold" style={{ color: 'var(--text)' }}>Reprendre ?</p>
@@ -146,7 +112,7 @@ export default function PlayerPage() {
             </div>
             <div className="flex gap-2 ml-auto">
               <button className="btn-ghost text-[12px]" onClick={() => setShowResume(false)}>Non</button>
-              <button className="btn-primary text-[12px]" onClick={resume}>Reprendre</button>
+              <button className="btn-primary text-[12px]" onClick={() => setShowResume(false)}>Reprendre</button>
             </div>
           </div>
         )}
