@@ -30,21 +30,6 @@ async function migrate() {
     await client.query(schema)
   }
 
-  // Incremental patches — safe to run multiple times
-  await client.query(`ALTER TABLE chapters ADD COLUMN IF NOT EXISTS language VARCHAR(10)`)
-  await client.query(`
-    DO $$ BEGIN
-      IF NOT EXISTS (
-        SELECT 1 FROM pg_constraint WHERE conname = 'chapters_folder_path_key'
-      ) THEN
-        -- Remove duplicate folder_paths before adding unique constraint
-        DELETE FROM chapters a USING chapters b
-          WHERE a.id > b.id AND a.folder_path = b.folder_path;
-        ALTER TABLE chapters ADD CONSTRAINT chapters_folder_path_key UNIQUE (folder_path);
-      END IF;
-    END $$
-  `)
-
   await client.end()
   process.stdout.write('Migrations complete\n')
 }

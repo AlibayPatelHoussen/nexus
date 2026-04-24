@@ -30,20 +30,23 @@ npm run build --workspace=backend
 echo "🎨 Building frontend..."
 npm run build --workspace=frontend
 
-# ── Fix table ownership so nexus_user can run DDL migrations ─
-echo "🔑 Fixing table ownership..."
-sudo -u postgres psql -d nexus -c "
-  DO \$\$
-  DECLARE r RECORD;
-  BEGIN
-    FOR r IN SELECT tablename FROM pg_tables WHERE schemaname = 'public' LOOP
-      EXECUTE 'ALTER TABLE public.' || quote_ident(r.tablename) || ' OWNER TO nexus_user';
-    END LOOP;
-  END \$\$;
-" 2>/dev/null || echo "  (ownership fix skipped — already correct or no sudo)"
+# ── Run DDL patches as postgres superuser ────────────
+echo "🗄️  Running DB patches..."
+sudo -u postgres psql -d nexus <<'PSQL'
+ALTER TABLE chapters ADD COLUMN IF NOT EXISTS language VARCHAR(10);
+DO $$
+BEGIN
+  IF NOT EXISTS (
+    SELECT 1 FROM pg_constraint WHERE conname = 'chapters_folder_path_key'
+  ) THEN
+    DELETE FROM chapters a USING chapters b
+      WHERE a.id > b.id AND a.folder_path = b.folder_path;
+    ALTER TABLE chapters ADD CONSTRAINT chapters_folder_path_key UNIQUE (folder_path);
+  END IF;
+END $$;
+PSQL
 
-# ── Run DB migrations ────────────────────────────────
-echo "🗄️  Running DB migrations..."
+# ── Run DB migrations (fresh install only) ───────────
 npm run db:migrate --workspace=backend
 
 # ── Prune devDependencies after build ────────────────
