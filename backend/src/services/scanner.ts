@@ -162,6 +162,18 @@ async function getFileSize(filePath: string): Promise<number> {
   } catch { return 0 }
 }
 
+async function getDirSize(dirPath: string): Promise<number> {
+  try {
+    let total = 0
+    const entries = await fs.readdir(dirPath, { withFileTypes: true })
+    for (const entry of entries) {
+      const fullPath = path.join(dirPath, entry.name)
+      total += entry.isDirectory() ? await getDirSize(fullPath) : await getFileSize(fullPath)
+    }
+    return total
+  } catch { return 0 }
+}
+
 // ─── SCANNER ─────────────────────────────────────────
 export class MediaScanner {
 
@@ -332,17 +344,15 @@ export class MediaScanner {
         const animePath = path.join(dir, entry.name)
         const { title } = parseFilename(entry.name)
 
-        const existing = await query('SELECT id FROM media_items WHERE file_path = $1', [animePath])
-        if (existing.rows.length > 0) continue
-
         const anilist = await searchAniList(title, 'ANIME')
 
-        await query(
+        const { rows } = await query(
           `INSERT INTO media_items
            (type, title, original_title, file_path, anilist_id, overview,
             poster_path, backdrop_path, genres, year, rating, status, last_scanned)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW())
-           ON CONFLICT DO NOTHING`,
+           ON CONFLICT (file_path) DO UPDATE SET last_scanned = NOW()
+           RETURNING id`,
           [
             'anime',
             anilist?.title?.french || anilist?.title?.english || anilist?.title?.romaji || title,
@@ -358,6 +368,9 @@ export class MediaScanner {
             anilist?.status || null,
           ],
         )
+
+        const mediaId = rows[0]?.id as string | undefined
+        if (mediaId) await MediaScanner.scanAnimeEpisodes(animePath, mediaId)
         count++
       }
     } catch (err) {
@@ -365,6 +378,43 @@ export class MediaScanner {
     }
 
     return count
+  }
+
+  static async scanAnimeEpisodes(animePath: string, mediaItemId: string): Promise<void> {
+    try {
+      const entries = await fs.readdir(animePath, { withFileTypes: true })
+      let autoNum = 1
+
+      for (const entry of entries) {
+        const fullPath = path.join(animePath, entry.name)
+
+        if (entry.isFile() && VIDEO_EXTS.includes(path.extname(entry.name).toLowerCase())) {
+          const epMatch = entry.name.match(/[Ee](\d+)/)
+          const epNum   = epMatch ? parseInt(epMatch[1]) : autoNum++
+          await query(
+            `INSERT INTO episodes (media_item_id, season, episode_number, file_path, file_size)
+             VALUES ($1, 1, $2, $3, $4) ON CONFLICT DO NOTHING`,
+            [mediaItemId, epNum, fullPath, await getFileSize(fullPath)],
+          )
+        } else if (entry.isDirectory()) {
+          const seasonNum  = parseInt(entry.name.match(/\d+/)?.[0] || '1')
+          const seasonFiles = await fs.readdir(fullPath)
+          for (const file of seasonFiles) {
+            if (!VIDEO_EXTS.includes(path.extname(file).toLowerCase())) continue
+            const epPath  = path.join(fullPath, file)
+            const epMatch = file.match(/[Ee](\d+)/)
+            const epNum   = epMatch ? parseInt(epMatch[1]) : autoNum++
+            await query(
+              `INSERT INTO episodes (media_item_id, season, episode_number, file_path, file_size)
+               VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING`,
+              [mediaItemId, seasonNum, epNum, epPath, await getFileSize(epPath)],
+            )
+          }
+        }
+      }
+    } catch (err) {
+      logger.error(`Anime episode scan error: ${err}`)
+    }
   }
 
   static async scanManga(): Promise<number> {
@@ -378,9 +428,6 @@ export class MediaScanner {
         const mangaPath = path.join(dir, entry.name)
         const { title } = parseFilename(entry.name)
 
-        const existing = await query('SELECT id FROM media_items WHERE file_path = $1', [mangaPath])
-        if (existing.rows.length > 0) continue
-
         const mdx = await searchMangaDex(title)
 
         await query(
@@ -388,7 +435,7 @@ export class MediaScanner {
            (type, title, original_title, file_path, mangadex_id,
             overview, poster_path, genres, status, last_scanned)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW())
-           ON CONFLICT DO NOTHING`,
+           ON CONFLICT (file_path) DO UPDATE SET last_scanned = NOW()`,
           [
             'manga',
             mdx?.attributes?.title?.en || mdx?.attributes?.title?.['ja-ro'] || title,
@@ -402,8 +449,11 @@ export class MediaScanner {
           ],
         )
 
-        // Scan chapters
+        // Scan chapters then update total file_size from all images
         await MediaScanner.scanChapters(mangaPath, entry.name)
+        const totalSize = await getDirSize(mangaPath)
+        await query('UPDATE media_items SET file_size = $1 WHERE file_path = $2', [totalSize, mangaPath])
+
         count++
       }
     } catch (err) {
