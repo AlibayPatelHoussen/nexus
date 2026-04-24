@@ -5,18 +5,15 @@ import { ArrowLeft, Star, ChevronRight } from 'lucide-react'
 import { mediaService } from '@/services/mediaService'
 import { filesService } from '@/services/filesService'
 import { formatDuration } from '@/utils'
-import '@/assets/plyr-nexus.css'
 import type { Episode } from '@/types'
 
 export default function PlayerPage() {
-  const { id }              = useParams<{ id: string }>()
-  const [searchParams]      = useSearchParams()
-  const navigate            = useNavigate()
-  const episodeId           = searchParams.get('ep') || undefined
+  const { id }         = useParams<{ id: string }>()
+  const [searchParams] = useSearchParams()
+  const navigate       = useNavigate()
+  const episodeId      = searchParams.get('ep') || undefined
 
   const videoRef    = useRef<HTMLVideoElement>(null)
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const playerRef   = useRef<any>(null)
   const progressRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const [resumeAt,   setResumeAt]   = useState<number | null>(null)
   const [showResume, setShowResume] = useState(false)
@@ -33,100 +30,69 @@ export default function PlayerPage() {
     enabled:  !!id,
   })
 
-  // Determine which file to play
   const currentEpisode = episodeId
     ? media?.episodes?.find((e: Episode) => e.id === episodeId)
     : null
 
-  const filePath = currentEpisode?.filePath || media?.filePath || ''
+  const filePath  = currentEpisode?.filePath || media?.filePath || ''
   const streamUrl = filePath ? filesService.getStreamUrl(filePath) : ''
 
-  // Load Plyr
+  // Show resume prompt once media + progress are loaded
   useEffect(() => {
-    if (!videoRef.current || !streamUrl) return
+    if (savedProgress && savedProgress.progress > 30) {
+      setResumeAt(savedProgress.progress)
+      setShowResume(true)
+    }
+  }, [savedProgress])
 
-    async function initPlyr() {
-      const Plyr = (await import('plyr')).default
-      // @ts-expect-error — CSS module lacks type declarations
-      await import('plyr/dist/plyr.css')
+  // Wire up progress saving and auto-next via native video events
+  useEffect(() => {
+    const video = videoRef.current
+    if (!video || !streamUrl) return
 
-      if (playerRef.current) { playerRef.current.destroy(); playerRef.current = null }
-
-      const player = new Plyr(videoRef.current!, {
-        controls: [
-          'play-large', 'play', 'rewind', 'fast-forward',
-          'progress', 'current-time', 'duration',
-          'mute', 'volume', 'captions', 'settings',
-          'pip', 'fullscreen',
-        ],
-        settings:    ['quality', 'speed', 'captions'],
-        speed:       { selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 2] },
-        keyboard:    { focused: true, global: true },
-        tooltips:    { controls: true, seek: true },
-        i18n: {
-          play:             'Lecture',
-          pause:            'Pause',
-          mute:             'Muet',
-          unmute:           'Son',
-          fullscreen:       'Plein écran',
-          exitFullscreen:   'Quitter plein écran',
-          speed:            'Vitesse',
-          settings:         'Paramètres',
-          captions:         'Sous-titres',
-          pip:              'Picture in picture',
-        },
-      })
-
-      playerRef.current = player
-
-      // Show resume prompt if > 30s watched
-      if (savedProgress && savedProgress.progress > 30) {
-        setResumeAt(savedProgress.progress)
-        setShowResume(true)
-      }
-
-      // Save progress every 5 seconds
-      player.on('timeupdate', () => {
-        if (progressRef.current) return
-        progressRef.current = setInterval(async () => {
-          if (!player.playing) return
-          const current  = player.currentTime
-          const duration = player.duration
-          if (current > 0 && duration > 0 && id) {
-            await mediaService.saveProgress(id, Math.floor(current), Math.floor(duration), episodeId)
-          }
-        }, 5000)
-      })
-
-      player.on('pause', () => {
-        if (progressRef.current) { clearInterval(progressRef.current); progressRef.current = null }
-      })
-
-      player.on('ended', () => {
-        if (progressRef.current) { clearInterval(progressRef.current); progressRef.current = null }
-        // Auto next episode
-        if (media?.episodes && episodeId) {
-          const idx  = media.episodes.findIndex((e: Episode) => e.id === episodeId)
-          const next = media.episodes[idx + 1]
-          if (next) navigate(`/player/${id}?ep=${next.id}`)
+    function onTimeUpdate() {
+      if (progressRef.current) return
+      progressRef.current = setInterval(async () => {
+        if (!video || video.paused) return
+        const current  = video.currentTime
+        const duration = video.duration
+        if (current > 0 && duration > 0 && id) {
+          await mediaService.saveProgress(id, Math.floor(current), Math.floor(duration), episodeId)
         }
-      })
-
+      }, 5000)
     }
 
-    initPlyr()
+    function onPause() {
+      if (progressRef.current) { clearInterval(progressRef.current); progressRef.current = null }
+    }
+
+    function onEnded() {
+      if (progressRef.current) { clearInterval(progressRef.current); progressRef.current = null }
+      if (media?.episodes && episodeId) {
+        const idx  = media.episodes.findIndex((e: Episode) => e.id === episodeId)
+        const next = media.episodes[idx + 1]
+        if (next) navigate(`/player/${id}?ep=${next.id}`)
+      }
+    }
+
+    video.addEventListener('timeupdate', onTimeUpdate)
+    video.addEventListener('pause',      onPause)
+    video.addEventListener('ended',      onEnded)
 
     return () => {
-      if (progressRef.current) clearInterval(progressRef.current)
-      playerRef.current?.destroy()
+      if (progressRef.current) { clearInterval(progressRef.current); progressRef.current = null }
+      video.removeEventListener('timeupdate', onTimeUpdate)
+      video.removeEventListener('pause',      onPause)
+      video.removeEventListener('ended',      onEnded)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [streamUrl, id, episodeId])
+  }, [streamUrl, id, episodeId, media])
 
   function resume() {
-    if (playerRef.current && resumeAt) {
-      playerRef.current.currentTime = resumeAt
-      playerRef.current.play()
+    const video = videoRef.current
+    if (video && resumeAt) {
+      video.currentTime = resumeAt
+      video.play()
     }
     setShowResume(false)
   }
@@ -158,9 +124,13 @@ export default function PlayerPage() {
 
       {/* Video */}
       <div className="flex-1 flex items-center justify-center relative" style={{ minHeight: '60vh' }}>
-        <video ref={videoRef} className="w-full" style={{ maxHeight: '75vh' }}>
-          {streamUrl && <source src={streamUrl} />}
-        </video>
+        <video
+          ref={videoRef}
+          controls
+          className="w-full"
+          style={{ maxHeight: '75vh', background: '#000' }}
+          src={streamUrl || undefined}
+        />
 
         {/* Resume prompt */}
         {showResume && resumeAt && (
