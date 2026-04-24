@@ -30,6 +30,10 @@ npm run build --workspace=backend
 echo "🎨 Building frontend..."
 npm run build --workspace=frontend
 
+# ── Run DB migrations ────────────────────────────────
+echo "🗄️  Running DB migrations..."
+npm run db:migrate --workspace=backend
+
 # ── Prune devDependencies after build ────────────────
 echo "🧹 Pruning dev dependencies..."
 npm prune --omit=dev

@@ -155,7 +155,7 @@ function scoreMangaTitle(query: string, titles: Record<string, string>): number 
 async function searchMangaDex(title: string): Promise<MangaDexResult | null> {
   try {
     const { data } = await axios.get(`${MANGADEX_URL}/manga`, {
-      params: { title, limit: 10, 'includes[]': ['cover_art'] },
+      params: { title, limit: 25, 'includes[]': ['cover_art'] },
     })
     const results = (data.data ?? []) as MangaDexResult[]
     if (!results.length) return null
@@ -548,7 +548,11 @@ export class MediaScanner {
         await query(
           `INSERT INTO chapters (media_item_id, chapter_number, title, folder_path, page_count, language)
            VALUES ($1,$2,$3,$4,$5,$6)
-           ON CONFLICT DO NOTHING`,
+           ON CONFLICT (folder_path) DO UPDATE SET
+             chapter_number = EXCLUDED.chapter_number,
+             title          = EXCLUDED.title,
+             page_count     = EXCLUDED.page_count,
+             language       = EXCLUDED.language`,
           [mediaId, chapNum, chapTitle, chapPath, pageCount || null, language],
         )
       }

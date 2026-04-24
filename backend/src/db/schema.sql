@@ -94,8 +94,9 @@ CREATE TABLE chapters (
   media_item_id   UUID NOT NULL REFERENCES media_items(id) ON DELETE CASCADE,
   chapter_number  DECIMAL(6,1) NOT NULL,
   title           VARCHAR(500),
-  folder_path     VARCHAR(1000) NOT NULL,
+  folder_path     VARCHAR(1000) NOT NULL UNIQUE,
   page_count      INTEGER,
+  language        VARCHAR(10),
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
