@@ -507,20 +507,18 @@ export class MediaScanner {
         const hasPdfs   = contents.some((f) => path.extname(f).toLowerCase() === '.pdf')
 
         if (hasImages) {
-          // Pattern A — this dir is directly a chapter (no lang subdir)
+          // Pattern A — this dir is directly a chapter
           chapters.push({ chapPath: entryPath, language: null, isPdf: false })
         } else if (hasPdfs) {
-          // Pattern C — lang subdir containing PDF files, one per chapter
-          const lang = entry.name.toUpperCase()
+          // Pattern C — subdir containing PDF files, one per chapter
           for (const f of contents.filter((f) => path.extname(f).toLowerCase() === '.pdf')) {
-            chapters.push({ chapPath: path.join(entryPath, f), language: lang, isPdf: true })
+            chapters.push({ chapPath: path.join(entryPath, f), language: null, isPdf: true })
           }
         } else {
-          // Pattern B — lang subdir containing chapter subdirs with images
-          const lang  = entry.name.toUpperCase()
+          // Pattern B — subdir containing chapter subdirs with images
           const inner = await fs.readdir(entryPath, { withFileTypes: true })
           for (const sub of inner.filter((e) => e.isDirectory())) {
-            chapters.push({ chapPath: path.join(entryPath, sub.name), language: lang, isPdf: false })
+            chapters.push({ chapPath: path.join(entryPath, sub.name), language: null, isPdf: false })
           }
         }
       }
