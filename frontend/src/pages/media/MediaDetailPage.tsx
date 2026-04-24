@@ -55,10 +55,10 @@ export default function MediaDetailPage() {
   const chapters: Chapter[] = media.chapters  || []
   const seasons  = [...new Set(episodes.map((e) => e.season || 1))].sort((a, b) => a - b)
   const langs    = [...new Set(chapters.map((c) => c.language).filter(Boolean))] as string[]
-  const curLang  = activeLang ?? langs[0] ?? null
+  const curLang  = activeLang
   const visibleChapters = curLang
     ? chapters.filter((c) => c.language === curLang)
-    : chapters
+    : []
   const isReading = ['manga', 'webtoon'].includes(media.type)
 
   const resumeEpisode = progress?.episodeId
@@ -71,9 +71,11 @@ export default function MediaDetailPage() {
 
   function play(episodeId?: string, chapterId?: string) {
     if (isReading) {
-      const chapId = chapterId || visibleChapters[0]?.id
+      const lang   = curLang ?? langs[0] ?? null
+      const chaps  = lang ? chapters.filter((c) => c.language === lang) : chapters
+      const chapId = chapterId || chaps[0]?.id
       if (chapId) {
-        const langParam = curLang ? `&lang=${encodeURIComponent(curLang)}` : ''
+        const langParam = lang ? `&lang=${encodeURIComponent(lang)}` : ''
         navigate(`/reader/${id}?ch=${chapId}${langParam}`)
       }
     } else {
@@ -356,69 +358,74 @@ export default function MediaDetailPage() {
         {/* Chapters */}
         {chapters.length > 0 && (
           <div className="card overflow-hidden animate-fade-up" style={{ animationDelay: '60ms' }}>
-            <div className="flex items-center justify-between px-5 pt-5 pb-3">
-              <h2 className="text-[14px] font-semibold" style={{ color: 'var(--text)' }}>
-                Chapitres ({visibleChapters.length})
+            <div className="px-5 pt-5 pb-4">
+              <h2 className="text-[14px] font-semibold mb-3" style={{ color: 'var(--text)' }}>
+                Scans
               </h2>
-              <button
-                className="btn-primary text-[12px]"
-                onClick={() => play(undefined, visibleChapters[0]?.id)}
-              >
-                <BookOpen size={12} strokeWidth={2} /> Commencer la lecture
-              </button>
-            </div>
 
-            {/* Language tabs */}
-            {langs.length >= 1 && (
-              <div className="flex gap-2 px-5 pb-3">
+              {/* Language buttons */}
+              <div className="flex gap-2 flex-wrap">
                 {langs.map((lang) => (
                   <button
                     key={lang}
-                    className="px-3 py-1 rounded-full text-[11px] font-semibold transition-all"
+                    className="px-5 py-2 rounded-lg text-[13px] font-bold transition-all"
                     style={{
                       background: curLang === lang ? 'var(--purple)' : 'var(--surface2)',
-                      color:      curLang === lang ? 'white'         : 'var(--text3)',
+                      color:      curLang === lang ? 'white'         : 'var(--text2)',
+                      border:     `1.5px solid ${curLang === lang ? 'var(--purple)' : 'var(--border)'}`,
                     }}
-                    onClick={() => setActiveLang(lang)}
+                    onClick={() => setActiveLang(curLang === lang ? null : lang)}
                   >
                     {lang}
                   </button>
                 ))}
               </div>
-            )}
-
-            <div className="pb-2">
-              {visibleChapters.map((chap) => (
-                <div
-                  key={chap.id}
-                  className="flex items-center gap-3 px-5 py-2.5 cursor-pointer transition-colors border-b"
-                  style={{ borderColor: 'var(--border)', background: 'transparent' }}
-                  onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface2)'}
-                  onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                  onClick={() => play(undefined, chap.id)}
-                >
-                  <span className="text-[12px] font-mono w-14 flex-shrink-0"
-                    style={{ color: 'var(--text3)' }}>
-                    Ch.{chap.chapterNumber}
-                  </span>
-                  <span className="flex-1 text-[13px] truncate" style={{ color: 'var(--text)' }}>
-                    {chap.title || `Chapitre ${chap.chapterNumber}`}
-                  </span>
-                  {chap.language && langs.length <= 1 && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold"
-                      style={{ background: 'var(--surface2)', color: 'var(--text3)' }}>
-                      {chap.language}
-                    </span>
-                  )}
-                  {chap.pageCount ? (
-                    <span className="text-[11px] font-mono" style={{ color: 'var(--text3)' }}>
-                      {chap.pageCount}p
-                    </span>
-                  ) : null}
-                  <ChevronRight size={13} strokeWidth={2} style={{ color: 'var(--text3)' }} />
-                </div>
-              ))}
             </div>
+
+            {/* Chapter list — visible only when a language is selected */}
+            {curLang && visibleChapters.length > 0 && (
+              <>
+                <div className="flex items-center justify-between px-5 pb-3 border-t"
+                  style={{ borderColor: 'var(--border)', paddingTop: '12px' }}>
+                  <span className="text-[12px]" style={{ color: 'var(--text3)' }}>
+                    {visibleChapters.length} chapitre{visibleChapters.length > 1 ? 's' : ''}
+                  </span>
+                  <button
+                    className="btn-primary text-[12px]"
+                    onClick={() => play(undefined, visibleChapters[0]?.id)}
+                  >
+                    <BookOpen size={12} strokeWidth={2} /> Commencer la lecture
+                  </button>
+                </div>
+
+                <div className="pb-2">
+                  {visibleChapters.map((chap) => (
+                    <div
+                      key={chap.id}
+                      className="flex items-center gap-3 px-5 py-2.5 cursor-pointer transition-colors border-b"
+                      style={{ borderColor: 'var(--border)', background: 'transparent' }}
+                      onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface2)' }}
+                      onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
+                      onClick={() => play(undefined, chap.id)}
+                    >
+                      <span className="text-[12px] font-mono w-14 flex-shrink-0"
+                        style={{ color: 'var(--text3)' }}>
+                        Ch.{chap.chapterNumber}
+                      </span>
+                      <span className="flex-1 text-[13px] truncate" style={{ color: 'var(--text)' }}>
+                        {chap.title || `Chapitre ${chap.chapterNumber}`}
+                      </span>
+                      {chap.pageCount ? (
+                        <span className="text-[11px] font-mono" style={{ color: 'var(--text3)' }}>
+                          {chap.pageCount}p
+                        </span>
+                      ) : null}
+                      <ChevronRight size={13} strokeWidth={2} style={{ color: 'var(--text3)' }} />
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
           </div>
         )}
       </div>
