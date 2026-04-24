@@ -488,87 +488,64 @@ export class MediaScanner {
   }
 
   static async scanChapters(mangaPath: string, _mangaName: string): Promise<void> {
-    try {
-      const { rows } = await query(
-        'SELECT id FROM media_items WHERE file_path = $1',
-        [mangaPath],
-      )
-      if (!rows[0]) return
-      const mediaId = rows[0].id
-
-      // Each entry: path to chapter (dir or PDF file) + optional language label
-      const chapters: { chapPath: string; language: string | null; isPdf: boolean }[] = []
-
-      const firstLevel = await fs.readdir(mangaPath, { withFileTypes: true })
-      for (const entry of firstLevel.filter((e) => e.isDirectory())) {
-        const entryPath = path.join(mangaPath, entry.name)
-        const contents  = await fs.readdir(entryPath)
-        const hasImages = contents.some((f) => IMAGE_EXTS.includes(path.extname(f).toLowerCase()))
-        const hasPdfs   = contents.some((f) => path.extname(f).toLowerCase() === '.pdf')
-
-        if (hasImages) {
-          // Pattern A — this dir is directly a chapter
-          chapters.push({ chapPath: entryPath, language: null, isPdf: false })
-        } else if (hasPdfs) {
-          // Pattern C — subdir containing PDF files, one per chapter
-          for (const f of contents.filter((f) => path.extname(f).toLowerCase() === '.pdf')) {
-            chapters.push({ chapPath: path.join(entryPath, f), language: null, isPdf: true })
-          }
-        } else {
-          // Pattern B — subdir containing chapter subdirs with images
-          const inner = await fs.readdir(entryPath, { withFileTypes: true })
-          for (const sub of inner.filter((e) => e.isDirectory())) {
-            chapters.push({ chapPath: path.join(entryPath, sub.name), language: null, isPdf: false })
-          }
-        }
-      }
-
-      for (const { chapPath, language, isPdf } of chapters) {
-        const name = isPdf ? path.basename(chapPath, '.pdf') : path.basename(chapPath)
-
-        const explicit = name.match(/(?:ch(?:apter|apit(?:re)?)?)[.\s_-]*(\d+(?:[._]\d+)?)/i)
-        const fallback = name.match(/(?:^|[^a-z])(\d+(?:\.\d+)?)(?:[^a-z]|$)/i)
-        const rawNum   = explicit?.[1] ?? fallback?.[1] ?? '0'
-        const chapNum  = parseFloat(rawNum.replace('_', '.'))
-
-        const chapTitle = name
-          .replace(/(?:ch(?:apter|apit(?:re)?)?)[.\s_-]*\d+(?:[._]\d+)?/gi, '')
-          .replace(/^\s*[-_.\s]+|[-_.\s]+$/g, '')
-          .replace(/[-_]+/g, ' ')
-          .trim() || null
-
-        let pageCount = 0
-        if (!isPdf) {
-          const files = await fs.readdir(chapPath)
-          pageCount   = files.filter((f) => IMAGE_EXTS.includes(path.extname(f).toLowerCase())).length
-        }
-
-        await query(
-          `INSERT INTO chapters (media_item_id, chapter_number, title, folder_path, page_count, language)
-           VALUES ($1,$2,$3,$4,$5,$6)
-           ON CONFLICT (folder_path) DO UPDATE SET
-             chapter_number = EXCLUDED.chapter_number,
-             title          = EXCLUDED.title,
-             page_count     = EXCLUDED.page_count,
-             language       = EXCLUDED.language`,
-          [mediaId, chapNum, chapTitle, chapPath, pageCount || null, language],
-        )
-      }
-
-      // Remove stale chapters whose folder_path is no longer in the scan
-      const newPaths = new Set(chapters.map((c) => c.chapPath))
-      const { rows: existing } = await query(
-        'SELECT id, folder_path FROM chapters WHERE media_item_id = $1',
-        [mediaId],
-      )
-      for (const row of existing) {
-        if (!newPaths.has(row.folder_path as string)) {
-          await query('DELETE FROM chapters WHERE id = $1', [row.id])
-        }
-      }
-    } catch (err) {
-      logger.error(`Chapter scan error: ${err}`)
+    const { rows } = await query(
+      'SELECT id FROM media_items WHERE file_path = $1',
+      [mangaPath],
+    )
+    if (!rows[0]) {
+      logger.warn(`scanChapters: no media_item found for path ${mangaPath}`)
+      return
     }
+    const mediaId = rows[0].id
+
+    const chapters: { chapPath: string; isPdf: boolean }[] = []
+
+    const firstLevel = await fs.readdir(mangaPath, { withFileTypes: true })
+    for (const entry of firstLevel.filter((e) => e.isDirectory())) {
+      const entryPath = path.join(mangaPath, entry.name)
+      const contents  = await fs.readdir(entryPath)
+      const hasImages = contents.some((f) => IMAGE_EXTS.includes(path.extname(f).toLowerCase()))
+      const hasPdfs   = contents.some((f) => path.extname(f).toLowerCase() === '.pdf')
+
+      if (hasImages) {
+        chapters.push({ chapPath: entryPath, isPdf: false })
+      } else if (hasPdfs) {
+        for (const f of contents.filter((f) => path.extname(f).toLowerCase() === '.pdf')) {
+          chapters.push({ chapPath: path.join(entryPath, f), isPdf: true })
+        }
+      } else {
+        const inner = await fs.readdir(entryPath, { withFileTypes: true })
+        for (const sub of inner.filter((e) => e.isDirectory())) {
+          chapters.push({ chapPath: path.join(entryPath, sub.name), isPdf: false })
+        }
+      }
+    }
+
+    // Replace all chapters for this manga with fresh data
+    await query('DELETE FROM chapters WHERE media_item_id = $1', [mediaId])
+
+    for (const { chapPath, isPdf } of chapters) {
+      const name = isPdf ? path.basename(chapPath, '.pdf') : path.basename(chapPath)
+
+      const explicit = name.match(/(?:ch(?:apter|apit(?:re)?)?)[.\s_-]*(\d+(?:[._]\d+)?)/i)
+      const fallback = name.match(/(?:^|[^a-z])(\d+(?:\.\d+)?)(?:[^a-z]|$)/i)
+      const rawNum   = explicit?.[1] ?? fallback?.[1] ?? '0'
+      const chapNum  = parseFloat(rawNum.replace('_', '.'))
+
+      let pageCount: number | null = null
+      if (!isPdf) {
+        const files = await fs.readdir(chapPath)
+        pageCount = files.filter((f) => IMAGE_EXTS.includes(path.extname(f).toLowerCase())).length || null
+      }
+
+      await query(
+        `INSERT INTO chapters (media_item_id, chapter_number, title, folder_path, page_count, language)
+         VALUES ($1, $2, $3, $4, $5, NULL)`,
+        [mediaId, chapNum, null, chapPath, pageCount],
+      )
+    }
+
+    logger.info(`scanChapters: ${chapters.length} chapters for ${mangaPath}`)
   }
 
   static async pruneDeleted(type?: string): Promise<number> {

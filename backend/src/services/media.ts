@@ -248,10 +248,9 @@ export class MediaService {
   }
 
   static async getGenres(type?: string) {
-    const where = type ? `WHERE type = '${type}'` : ''
-    const result = await query(
-      `SELECT DISTINCT unnest(genres) as genre FROM media_items ${where} ORDER BY genre`,
-    )
+    const result = type
+      ? await query(`SELECT DISTINCT unnest(genres) as genre FROM media_items WHERE type = $1 ORDER BY genre`, [type])
+      : await query(`SELECT DISTINCT unnest(genres) as genre FROM media_items ORDER BY genre`)
     return result.rows.map((r) => r['genre'] as string)
   }
 
