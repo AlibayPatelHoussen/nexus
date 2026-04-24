@@ -16,7 +16,8 @@ export default function MediaDetailPage() {
   const qc         = useQueryClient()
   const [isFav, setIsFav] = useState(false)
   const [imgErr, setImgErr] = useState(false)
-  const [activeSeason, setActiveSeason] = useState(1)
+  const [activeSeason,   setActiveSeason]   = useState(1)
+  const [activeLang,     setActiveLang]     = useState<string | null>(null)
 
   const { data: media, isLoading } = useQuery({
     queryKey: ['media', id],
@@ -52,7 +53,12 @@ export default function MediaDetailPage() {
 
   const episodes: Episode[] = media.episodes || []
   const chapters: Chapter[] = media.chapters  || []
-  const seasons = [...new Set(episodes.map((e) => e.season || 1))].sort((a, b) => a - b)
+  const seasons  = [...new Set(episodes.map((e) => e.season || 1))].sort((a, b) => a - b)
+  const langs    = [...new Set(chapters.map((c) => c.language).filter(Boolean))] as string[]
+  const curLang  = activeLang ?? langs[0] ?? null
+  const visibleChapters = curLang
+    ? chapters.filter((c) => c.language === curLang)
+    : chapters
   const isReading = ['manga', 'webtoon'].includes(media.type)
 
   const resumeEpisode = progress?.episodeId
@@ -347,20 +353,39 @@ export default function MediaDetailPage() {
         {/* Chapters */}
         {chapters.length > 0 && (
           <div className="card overflow-hidden animate-fade-up" style={{ animationDelay: '60ms' }}>
-            <div className="flex items-center justify-between px-5 pt-5 pb-4">
+            <div className="flex items-center justify-between px-5 pt-5 pb-3">
               <h2 className="text-[14px] font-semibold" style={{ color: 'var(--text)' }}>
-                Chapitres ({chapters.length})
+                Chapitres ({visibleChapters.length})
               </h2>
               <button
                 className="btn-primary text-[12px]"
-                onClick={() => play(undefined, chapters[0]?.id)}
+                onClick={() => play(undefined, visibleChapters[0]?.id)}
               >
                 <BookOpen size={12} strokeWidth={2} /> Commencer la lecture
               </button>
             </div>
 
+            {/* Language tabs */}
+            {langs.length > 1 && (
+              <div className="flex gap-2 px-5 pb-3">
+                {langs.map((lang) => (
+                  <button
+                    key={lang}
+                    className="px-3 py-1 rounded-full text-[11px] font-semibold transition-all"
+                    style={{
+                      background: curLang === lang ? 'var(--purple)' : 'var(--surface2)',
+                      color:      curLang === lang ? 'white'         : 'var(--text3)',
+                    }}
+                    onClick={() => setActiveLang(lang)}
+                  >
+                    {lang}
+                  </button>
+                ))}
+              </div>
+            )}
+
             <div className="pb-2">
-              {chapters.map((chap) => (
+              {visibleChapters.map((chap) => (
                 <div
                   key={chap.id}
                   className="flex items-center gap-3 px-5 py-2.5 cursor-pointer transition-colors border-b"
@@ -376,11 +401,17 @@ export default function MediaDetailPage() {
                   <span className="flex-1 text-[13px] truncate" style={{ color: 'var(--text)' }}>
                     {chap.title || `Chapitre ${chap.chapterNumber}`}
                   </span>
-                  {chap.pageCount && (
+                  {chap.language && langs.length <= 1 && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded font-semibold"
+                      style={{ background: 'var(--surface2)', color: 'var(--text3)' }}>
+                      {chap.language}
+                    </span>
+                  )}
+                  {chap.pageCount ? (
                     <span className="text-[11px] font-mono" style={{ color: 'var(--text3)' }}>
                       {chap.pageCount}p
                     </span>
-                  )}
+                  ) : null}
                   <ChevronRight size={13} strokeWidth={2} style={{ color: 'var(--text3)' }} />
                 </div>
               ))}

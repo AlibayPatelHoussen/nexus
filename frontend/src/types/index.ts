@@ -131,6 +131,7 @@ export interface Chapter {
   title:         string | null
   folderPath:    string
   pageCount:     number | null
+  language:      string | null
 }
 
 // ── Watch History ────────────────────────────────────

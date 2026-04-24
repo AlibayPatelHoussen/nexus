@@ -18,15 +18,25 @@ interface PageData {
   name: string
 }
 
-async function getChapterPages(chapterId: string): Promise<PageData[]> {
-  const { data } = await api.get<{ success: boolean; data: PageData[] }>(
-    `/media/chapters/${chapterId}/pages`,
-  )
-  const token = useAuthStore.getState().accessToken ?? ''
-  return data.data.map((p) => ({
-    ...p,
-    url: `${p.url}&token=${encodeURIComponent(token)}`,
-  }))
+interface ChapterPagesResponse {
+  success: boolean
+  type:    'pdf' | 'images'
+  pdfUrl?: string
+  data:    PageData[]
+}
+
+async function getChapterPages(chapterId: string): Promise<{ pages: PageData[]; pdfUrl: string | null }> {
+  const { data } = await api.get<ChapterPagesResponse>(`/media/chapters/${chapterId}/pages`)
+  const token    = useAuthStore.getState().accessToken ?? ''
+
+  if (data.type === 'pdf' && data.pdfUrl) {
+    return { pages: [], pdfUrl: `${data.pdfUrl}&token=${encodeURIComponent(token)}` }
+  }
+
+  return {
+    pages: data.data.map((p) => ({ ...p, url: `${p.url}&token=${encodeURIComponent(token)}` })),
+    pdfUrl: null,
+  }
 }
 
 export default function MangaReaderPage() {
@@ -49,11 +59,13 @@ export default function MangaReaderPage() {
     enabled:  !!id,
   })
 
-  const { data: pages = [], isLoading } = useQuery({
+  const { data: chapterData, isLoading } = useQuery({
     queryKey: ['chapter-pages', chapterId],
     queryFn:  () => getChapterPages(chapterId!),
     enabled:  !!chapterId,
   })
+  const pages  = chapterData?.pages  ?? []
+  const pdfUrl = chapterData?.pdfUrl ?? null
 
   const chapters: Chapter[] = media?.chapters || []
   const currentChapterIndex = chapters.findIndex((c) => c.id === chapterId)
@@ -174,6 +186,16 @@ export default function MangaReaderPage() {
           <div className="w-6 h-6 border-2 rounded-full animate-spin"
             style={{ borderColor: 'rgba(255,255,255,0.2)', borderTopColor: 'white' }} />
         </div>
+      ) : pdfUrl ? (
+
+        /* ── PDF MODE ── */
+        <iframe
+          src={pdfUrl}
+          className="flex-1 w-full border-0"
+          style={{ minHeight: '100vh' }}
+          title="Manga PDF"
+        />
+
       ) : mode === 'vertical' ? (
 
         /* ── VERTICAL SCROLL ── */

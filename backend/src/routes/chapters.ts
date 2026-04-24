@@ -19,8 +19,20 @@ router.get('/chapters/:id/pages', asyncHandler(async (req: Request, res: Respons
   if (!rows[0]) { res.status(404).json({ success: false, error: 'Chapter not found' }); return }
 
   const folderPath = rows[0].folder_path as string
-  const files = await fs.readdir(folderPath)
 
+  // PDF chapter — return a single PDF URL for the reader
+  if (path.extname(folderPath).toLowerCase() === '.pdf') {
+    res.json({
+      success: true,
+      type:    'pdf',
+      pdfUrl:  `/api/files/stream?path=${encodeURIComponent(folderPath)}`,
+      data:    [],
+    })
+    return
+  }
+
+  // Image chapter — list sorted image files
+  const files = await fs.readdir(folderPath)
   const pages = files
     .filter((f) => IMAGE_EXTS.includes(path.extname(f).toLowerCase()))
     .sort((a, b) => {
@@ -33,7 +45,7 @@ router.get('/chapters/:id/pages', asyncHandler(async (req: Request, res: Respons
       url:  `/api/files/stream?path=${encodeURIComponent(path.join(folderPath, f))}`,
     }))
 
-  res.json({ success: true, data: pages })
+  res.json({ success: true, type: 'images', data: pages })
 }))
 
 export default router

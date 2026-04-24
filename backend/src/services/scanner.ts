@@ -496,31 +496,37 @@ export class MediaScanner {
       if (!rows[0]) return
       const mediaId = rows[0].id
 
-      // Collect actual chapter dirs, handling optional lang subdir (VF, VOSTFR, EN…)
-      // Pattern A: mangaPath/Chapitre 1/*.jpg
-      // Pattern B: mangaPath/VF/Chapitre 1/*.jpg
-      const chapDirs: string[] = []
+      // Each entry: path to chapter (dir or PDF file) + optional language label
+      const chapters: { chapPath: string; language: string | null; isPdf: boolean }[] = []
 
       const firstLevel = await fs.readdir(mangaPath, { withFileTypes: true })
       for (const entry of firstLevel.filter((e) => e.isDirectory())) {
         const entryPath = path.join(mangaPath, entry.name)
         const contents  = await fs.readdir(entryPath)
         const hasImages = contents.some((f) => IMAGE_EXTS.includes(path.extname(f).toLowerCase()))
+        const hasPdfs   = contents.some((f) => path.extname(f).toLowerCase() === '.pdf')
 
         if (hasImages) {
-          // Pattern A — this dir is a chapter
-          chapDirs.push(entryPath)
+          // Pattern A — this dir is directly a chapter (no lang subdir)
+          chapters.push({ chapPath: entryPath, language: null, isPdf: false })
+        } else if (hasPdfs) {
+          // Pattern C — lang subdir containing PDF files, one per chapter
+          const lang = entry.name.toUpperCase()
+          for (const f of contents.filter((f) => path.extname(f).toLowerCase() === '.pdf')) {
+            chapters.push({ chapPath: path.join(entryPath, f), language: lang, isPdf: true })
+          }
         } else {
-          // Pattern B — this dir is a lang/grouping folder, go one level deeper
+          // Pattern B — lang subdir containing chapter subdirs with images
+          const lang  = entry.name.toUpperCase()
           const inner = await fs.readdir(entryPath, { withFileTypes: true })
           for (const sub of inner.filter((e) => e.isDirectory())) {
-            chapDirs.push(path.join(entryPath, sub.name))
+            chapters.push({ chapPath: path.join(entryPath, sub.name), language: lang, isPdf: false })
           }
         }
       }
 
-      for (const chapPath of chapDirs) {
-        const name = path.basename(chapPath)
+      for (const { chapPath, language, isPdf } of chapters) {
+        const name = isPdf ? path.basename(chapPath, '.pdf') : path.basename(chapPath)
 
         const explicit = name.match(/(?:ch(?:apter|apit(?:re)?)?)[.\s_-]*(\d+(?:[._]\d+)?)/i)
         const fallback = name.match(/(?:^|[^a-z])(\d+(?:\.\d+)?)(?:[^a-z]|$)/i)
@@ -533,14 +539,17 @@ export class MediaScanner {
           .replace(/[-_]+/g, ' ')
           .trim() || null
 
-        const files     = await fs.readdir(chapPath)
-        const pageCount = files.filter((f) => IMAGE_EXTS.includes(path.extname(f).toLowerCase())).length
+        let pageCount = 0
+        if (!isPdf) {
+          const files = await fs.readdir(chapPath)
+          pageCount   = files.filter((f) => IMAGE_EXTS.includes(path.extname(f).toLowerCase())).length
+        }
 
         await query(
-          `INSERT INTO chapters (media_item_id, chapter_number, title, folder_path, page_count)
-           VALUES ($1,$2,$3,$4,$5)
+          `INSERT INTO chapters (media_item_id, chapter_number, title, folder_path, page_count, language)
+           VALUES ($1,$2,$3,$4,$5,$6)
            ON CONFLICT DO NOTHING`,
-          [mediaId, chapNum, chapTitle, chapPath, pageCount],
+          [mediaId, chapNum, chapTitle, chapPath, pageCount || null, language],
         )
       }
     } catch (err) {

@@ -60,8 +60,9 @@ function mapChapter(row: Record<string, any>) {
     mediaItemId:   row['media_item_id'],
     chapterNumber: row['chapter_number'],
     title:         row['title'],
-    filePath:      row['file_path'],
+    folderPath:    row['folder_path'],
     pageCount:     row['page_count'],
+    language:      row['language'] as string | null,
   }
 }
 
