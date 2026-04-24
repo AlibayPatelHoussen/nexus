@@ -30,6 +30,18 @@ npm run build --workspace=backend
 echo "🎨 Building frontend..."
 npm run build --workspace=frontend
 
+# ── Fix table ownership so nexus_user can run DDL migrations ─
+echo "🔑 Fixing table ownership..."
+sudo -u postgres psql -d nexus -c "
+  DO \$\$
+  DECLARE r RECORD;
+  BEGIN
+    FOR r IN SELECT tablename FROM pg_tables WHERE schemaname = 'public' LOOP
+      EXECUTE 'ALTER TABLE public.' || quote_ident(r.tablename) || ' OWNER TO nexus_user';
+    END LOOP;
+  END \$\$;
+" 2>/dev/null || echo "  (ownership fix skipped — already correct or no sudo)"
+
 # ── Run DB migrations ────────────────────────────────
 echo "🗄️  Running DB migrations..."
 npm run db:migrate --workspace=backend
