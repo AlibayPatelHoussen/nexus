@@ -253,4 +253,9 @@ export class MediaService {
     )
     return result.rows.map((r) => r['genre'] as string)
   }
+
+  static async deleteById(id: string): Promise<boolean> {
+    const { rows } = await query('DELETE FROM media_items WHERE id = $1 RETURNING id', [id])
+    return rows.length > 0
+  }
 }

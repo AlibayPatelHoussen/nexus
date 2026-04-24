@@ -1,8 +1,11 @@
 import { useState } from 'react'
-import { Heart, Play, Star } from 'lucide-react'
+import { Heart, Play, Star, Trash2 } from 'lucide-react'
 import { useNavigate } from 'react-router-dom'
+import { useQueryClient } from '@tanstack/react-query'
 import type { MediaItem } from '@/types'
 import { mediaService } from '@/services/mediaService'
+import { useAuthStore } from '@/stores/authStore'
+import { api } from '@/services/api'
 import toast from 'react-hot-toast'
 
 interface MediaCardProps {
@@ -13,11 +16,26 @@ interface MediaCardProps {
 }
 
 export default function MediaCard({ item, showType, progress, duration }: MediaCardProps) {
-  const navigate = useNavigate()
-  const [isFav, setIsFav] = useState(false)
-  const [imgError, setImgError] = useState(false)
+  const navigate  = useNavigate()
+  const qc        = useQueryClient()
+  const isAdmin   = useAuthStore((s) => s.user?.role === 'admin')
+  const [isFav,     setIsFav]     = useState(false)
+  const [imgError,  setImgError]  = useState(false)
+  const [deleting,  setDeleting]  = useState(false)
 
   const pct = progress && duration ? Math.round((progress / duration) * 100) : 0
+
+  async function handleDelete(e: React.MouseEvent) {
+    e.stopPropagation()
+    if (!confirm(`Supprimer "${item.title}" de la bibliothèque ?`)) return
+    setDeleting(true)
+    try {
+      await api.delete(`/media/${item.id}`)
+      toast.success(`"${item.title}" supprimé`)
+      qc.invalidateQueries({ queryKey: ['media'] })
+    } catch { toast.error('Erreur lors de la suppression') }
+    finally { setDeleting(false) }
+  }
 
   async function toggleFav(e: React.MouseEvent) {
     e.stopPropagation()
@@ -92,6 +110,18 @@ export default function MediaCard({ item, showType, progress, duration }: MediaC
             }}
           />
         </button>
+
+        {/* Delete (admin only) */}
+        {isAdmin && (
+          <button
+            className="absolute top-1.5 left-1.5 w-6 h-6 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+            style={{ background: 'rgba(0,0,0,0.6)' }}
+            onClick={handleDelete}
+            disabled={deleting}
+          >
+            <Trash2 size={11} strokeWidth={2} style={{ color: 'var(--red)' }} />
+          </button>
+        )}
 
         {/* Rating */}
         {item.rating && (

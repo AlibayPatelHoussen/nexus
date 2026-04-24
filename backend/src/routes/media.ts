@@ -85,6 +85,12 @@ router.post('/scan/:type', requireAdmin, asyncHandler(async (req: Request, res: 
   res.json({ success: true, data: { scanned: count } })
 }))
 
+router.delete('/:id', requireAdmin, asyncHandler(async (req: Request, res: Response) => {
+  const ok = await MediaService.deleteById(req.params.id)
+  if (!ok) { res.status(404).json({ success: false, error: 'Not found' }); return }
+  res.json({ success: true })
+}))
+
 router.get('/:id', asyncHandler(async (req: Request, res: Response) => {
   const item = await MediaService.getById(req.params.id)
   if (!item) { res.status(404).json({ success: false, error: 'Not found' }); return }
