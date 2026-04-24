@@ -21,8 +21,14 @@ async function migrate() {
     await client.query('GRANT ALL ON SCHEMA public TO PUBLIC')
   }
 
-  const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf-8')
-  await client.query(schema)
+  // Only run full schema on fresh install (tables don't exist yet)
+  const { rows } = await client.query(
+    `SELECT 1 FROM information_schema.tables WHERE table_schema='public' AND table_name='users'`
+  )
+  if (rows.length === 0) {
+    const schema = fs.readFileSync(path.join(__dirname, 'schema.sql'), 'utf-8')
+    await client.query(schema)
+  }
 
   // Incremental patches — safe to run multiple times
   await client.query(`ALTER TABLE chapters ADD COLUMN IF NOT EXISTS language VARCHAR(10)`)
