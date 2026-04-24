@@ -524,8 +524,10 @@ export class MediaScanner {
     }
   }
 
-  static async pruneDeleted(): Promise<number> {
-    const { rows } = await query('SELECT id, file_path, type FROM media_items')
+  static async pruneDeleted(type?: string): Promise<number> {
+    const { rows } = type
+      ? await query('SELECT id, file_path, type FROM media_items WHERE type = $1', [type])
+      : await query('SELECT id, file_path, type FROM media_items')
     let removed = 0
 
     for (const row of rows as { id: string; file_path: string; type: string }[]) {

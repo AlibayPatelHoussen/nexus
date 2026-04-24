@@ -68,6 +68,9 @@ router.post('/prune', requireAdmin, asyncHandler(async (_req, res: Response) => 
 }))
 
 router.post('/scan/:type', requireAdmin, asyncHandler(async (req: Request, res: Response) => {
+  const typeMap: Record<string, string> = {
+    films: 'film', series: 'serie', animes: 'anime', manga: 'manga',
+  }
   const map: Record<string, () => Promise<number>> = {
     films: () => MediaScanner.scanFilms(),
     series: () => MediaScanner.scanSeries(),
@@ -76,6 +79,8 @@ router.post('/scan/:type', requireAdmin, asyncHandler(async (req: Request, res: 
   }
   const fn = map[req.params.type]
   if (!fn) { res.status(400).json({ success: false, error: 'Unknown type' }); return }
+  const dbType = typeMap[req.params.type]
+  await MediaScanner.pruneDeleted(dbType)
   const count = await fn()
   res.json({ success: true, data: { scanned: count } })
 }))
