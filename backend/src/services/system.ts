@@ -1,5 +1,6 @@
 import si from 'systeminformation'
 import { query } from '../config/database'
+import { logger } from '../utils/logger'
 
 export interface SystemStats {
   cpu: {
@@ -77,7 +78,11 @@ async function refreshMediaStorage(): Promise<void> {
       manga:  (map['manga']  || 0) + (map['webtoon'] || 0),
     }
     _mediaCacheAt = Date.now()
-  } catch { _mediaCacheAt = Date.now() - 4 * 60_000 } // retry in 1 min on error
+    logger.info(`Media storage: ${JSON.stringify(_mediaCache)}`)
+  } catch (err) {
+    logger.error(`refreshMediaStorage failed: ${err}`)
+    _mediaCacheAt = Date.now() - 4 * 60_000
+  }
 }
 
 
