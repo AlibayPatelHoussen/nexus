@@ -137,20 +137,44 @@ async function searchAniList(title: string, type: 'ANIME' | 'MANGA' = 'ANIME'): 
 }
 
 // ─── MangaDex search ─────────────────────────────────
+function scoreMangaTitle(query: string, titles: Record<string, string>): number {
+  const q = query.toLowerCase().trim()
+  const candidates = Object.values(titles).map((t) => t.toLowerCase().trim())
+  let best = 0
+  for (const t of candidates) {
+    if (t === q)              { best = Math.max(best, 100); break }
+    if (t.startsWith(q + ' ') || t.startsWith(q + ':')) best = Math.max(best, 80)
+    else if (t.startsWith(q)) best = Math.max(best, 70)
+    else if (t.includes(q))   best = Math.max(best, 40)
+    // penalise titles that have extra words beyond the query
+    else if (q.includes(t))   best = Math.max(best, 30)
+  }
+  return best
+}
+
 async function searchMangaDex(title: string): Promise<MangaDexResult | null> {
   try {
     const { data } = await axios.get(`${MANGADEX_URL}/manga`, {
-      params: { title, limit: 1, 'includes[]': ['cover_art'] },
+      params: { title, limit: 10, 'includes[]': ['cover_art'] },
     })
-    const manga = data.data?.[0] as MangaDexResult | undefined
-    if (!manga) return null
+    const results = (data.data ?? []) as MangaDexResult[]
+    if (!results.length) return null
 
-    const cover = manga.relationships?.find((r) => r.type === 'cover_art')
+    // Pick the result whose titles best match the query
+    let best: MangaDexResult = results[0]
+    let bestScore = -1
+    for (const manga of results) {
+      const titles = manga.attributes?.title ?? {}
+      const score  = scoreMangaTitle(title, titles)
+      if (score > bestScore) { bestScore = score; best = manga }
+    }
+
+    const cover = best.relationships?.find((r) => r.type === 'cover_art')
     const coverUrl = cover
-      ? `https://uploads.mangadex.org/covers/${manga.id}/${cover.attributes?.fileName}`
+      ? `https://uploads.mangadex.org/covers/${best.id}/${cover.attributes?.fileName}`
       : undefined
 
-    return { ...manga, coverUrl }
+    return { ...best, coverUrl }
   } catch { return null }
 }
 
