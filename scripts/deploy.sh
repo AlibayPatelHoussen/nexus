@@ -18,9 +18,9 @@ mkdir -p "$LOG_DIR"
 cd "$NEXUS_DIR"
 git pull origin main
 
-# ── Install dependencies ─────────────────────────────
+# ── Install dependencies (including devDeps for build) ─
 echo "📦 Installing dependencies..."
-npm ci --omit=dev
+npm ci
 
 # ── Build backend ────────────────────────────────────
 echo "🔨 Building backend..."
@@ -29,6 +29,10 @@ npm run build --workspace=backend
 # ── Build frontend ───────────────────────────────────
 echo "🎨 Building frontend..."
 npm run build --workspace=frontend
+
+# ── Prune devDependencies after build ────────────────
+echo "🧹 Pruning dev dependencies..."
+npm prune --omit=dev
 
 # ── Restart PM2 ──────────────────────────────────────
 echo "♻️  Restarting services..."
