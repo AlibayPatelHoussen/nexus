@@ -58,7 +58,7 @@ function mapChapter(row: Record<string, any>) {
   return {
     id:            row['id'],
     mediaItemId:   row['media_item_id'],
-    chapterNumber: row['chapter_number'],
+    chapterNumber: parseFloat(row['chapter_number']),
     title:         row['title'],
     folderPath:    row['folder_path'],
     pageCount:     row['page_count'],

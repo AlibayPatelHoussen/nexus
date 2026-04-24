@@ -400,11 +400,8 @@ export default function MediaDetailPage() {
                   onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
                   onClick={() => play(undefined, chap.id)}
                 >
-                  <span className="text-[12px] font-mono w-14 flex-shrink-0" style={{ color: 'var(--text3)' }}>
-                    Ch.{chap.chapterNumber}
-                  </span>
-                  <span className="flex-1 text-[13px] truncate" style={{ color: 'var(--text)' }}>
-                    {chap.title || `Chapitre ${chap.chapterNumber}`}
+                  <span className="flex-1 text-[13px]" style={{ color: 'var(--text)' }}>
+                    Chapitre {chap.chapterNumber}
                   </span>
                   {chap.pageCount ? (
                     <span className="text-[11px] font-mono" style={{ color: 'var(--text3)' }}>

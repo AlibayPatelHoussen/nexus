@@ -397,7 +397,7 @@ export default function MangaReaderPage() {
                 onMouseLeave={(e) => { if (chap.id !== chapterId) e.currentTarget.style.background = 'transparent' }}
                 onClick={() => changeChapter(chap)}
               >
-                Ch.{chap.chapterNumber} {chap.title && `— ${chap.title}`}
+                Chapitre {chap.chapterNumber}
                 {chap.pageCount && (
                   <span className="ml-2 text-[10px]" style={{ color: 'rgba(255,255,255,0.3)' }}>
                     {chap.pageCount}p
