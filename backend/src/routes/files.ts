@@ -51,16 +51,27 @@ router.get('/download', asyncHandler((req: Request, res: Response) => {
   res.download(filePath, path.basename(filePath))
 }))
 
-// STREAM (for video)
+// STREAM (video, PDF, images)
 router.get('/stream', authenticate, (req: Request, res: Response) => {
   const filePath = req.query.path as string
   if (!filePath) { res.status(400).json({ error: 'path required' }); return }
 
   const stat = fs.statSync(filePath)
   const fileSize = stat.size
-  const range = req.headers.range
+  const ext = path.extname(filePath).toLowerCase()
 
-  if (range) {
+  const MIME: Record<string, string> = {
+    '.mp4': 'video/mp4', '.mkv': 'video/x-matroska', '.webm': 'video/webm',
+    '.avi': 'video/x-msvideo', '.mov': 'video/quicktime', '.m4v': 'video/mp4',
+    '.pdf': 'application/pdf',
+    '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
+    '.webp': 'image/webp', '.avif': 'image/avif', '.gif': 'image/gif',
+  }
+  const contentType = MIME[ext] || 'application/octet-stream'
+  const isPdf = ext === '.pdf'
+
+  const range = req.headers.range
+  if (range && !isPdf) {
     const [startStr, endStr] = range.replace(/bytes=/, '').split('-')
     const start = parseInt(startStr, 10)
     const end   = endStr ? parseInt(endStr, 10) : fileSize - 1
@@ -70,14 +81,16 @@ router.get('/stream', authenticate, (req: Request, res: Response) => {
       'Content-Range':  `bytes ${start}-${end}/${fileSize}`,
       'Accept-Ranges':  'bytes',
       'Content-Length': chunkSize,
-      'Content-Type':   'video/mp4',
+      'Content-Type':   contentType,
     })
     fs.createReadStream(filePath, { start, end }).pipe(res)
   } else {
-    res.writeHead(200, {
+    const headers: Record<string, string | number> = {
       'Content-Length': fileSize,
-      'Content-Type':   'video/mp4',
-    })
+      'Content-Type':   contentType,
+    }
+    if (isPdf) headers['Content-Disposition'] = 'inline'
+    res.writeHead(200, headers)
     fs.createReadStream(filePath).pipe(res)
   }
 })
