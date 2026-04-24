@@ -1,4 +1,5 @@
 import { api } from './api'
+import { useAuthStore } from '@/stores/authStore'
 import type { FileEntry } from '@/types'
 
 export const filesService = {
@@ -45,7 +46,8 @@ export const filesService = {
   },
 
   getStreamUrl(path: string): string {
-    return `/api/files/stream?path=${encodeURIComponent(path)}`
+    const token = useAuthStore.getState().accessToken ?? ''
+    return `/api/files/stream?path=${encodeURIComponent(path)}&token=${encodeURIComponent(token)}`
   },
 
   async upload(destPath: string, files: File[], onProgress?: (pct: number) => void): Promise<void> {

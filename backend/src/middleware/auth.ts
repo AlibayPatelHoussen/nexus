@@ -16,12 +16,12 @@ declare module 'express-serve-static-core' {
 
 export function authenticate(req: Request, _res: Response, next: NextFunction): void {
   const authHeader = req.headers.authorization
+  // Allow token via query param for media streaming (video elements can't set headers)
+  const token = authHeader?.startsWith('Bearer ')
+    ? authHeader.split(' ')[1]
+    : (req.query.token as string | undefined)
 
-  if (!authHeader?.startsWith('Bearer ')) {
-    throw new UnauthorizedError('No token provided')
-  }
-
-  const token = authHeader.split(' ')[1]
+  if (!token) throw new UnauthorizedError('No token provided')
 
   try {
     const payload = jwt.verify(token, process.env.JWT_SECRET!) as JwtPayload
