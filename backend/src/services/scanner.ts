@@ -472,38 +472,45 @@ export class MediaScanner {
       if (!rows[0]) return
       const mediaId = rows[0].id
 
-      const chapters = await fs.readdir(mangaPath, { withFileTypes: true })
+      // Collect actual chapter dirs, handling optional lang subdir (VF, VOSTFR, EN…)
+      // Pattern A: mangaPath/Chapitre 1/*.jpg
+      // Pattern B: mangaPath/VF/Chapitre 1/*.jpg
+      const chapDirs: string[] = []
 
-      for (const chap of chapters.filter((e) => e.isDirectory())) {
-        const chapPath = path.join(mangaPath, chap.name)
+      const firstLevel = await fs.readdir(mangaPath, { withFileTypes: true })
+      for (const entry of firstLevel.filter((e) => e.isDirectory())) {
+        const entryPath = path.join(mangaPath, entry.name)
+        const contents  = await fs.readdir(entryPath)
+        const hasImages = contents.some((f) => IMAGE_EXTS.includes(path.extname(f).toLowerCase()))
 
-        // Extract chapter number — try explicit ch/chapitre/chapter pattern first,
-        // then fall back to first standalone number in the name
-        const explicit = chap.name.match(/(?:ch(?:apter|apit(?:re)?)?)[.\s_-]*(\d+(?:[._]\d+)?)/i)
-        const fallback = chap.name.match(/(?:^|[^a-z])(\d+(?:\.\d+)?)(?:[^a-z]|$)/i)
+        if (hasImages) {
+          // Pattern A — this dir is a chapter
+          chapDirs.push(entryPath)
+        } else {
+          // Pattern B — this dir is a lang/grouping folder, go one level deeper
+          const inner = await fs.readdir(entryPath, { withFileTypes: true })
+          for (const sub of inner.filter((e) => e.isDirectory())) {
+            chapDirs.push(path.join(entryPath, sub.name))
+          }
+        }
+      }
+
+      for (const chapPath of chapDirs) {
+        const name = path.basename(chapPath)
+
+        const explicit = name.match(/(?:ch(?:apter|apit(?:re)?)?)[.\s_-]*(\d+(?:[._]\d+)?)/i)
+        const fallback = name.match(/(?:^|[^a-z])(\d+(?:\.\d+)?)(?:[^a-z]|$)/i)
         const rawNum   = explicit?.[1] ?? fallback?.[1] ?? '0'
         const chapNum  = parseFloat(rawNum.replace('_', '.'))
 
-        // Build a readable title by stripping the number and cleaning up
-        const chapTitle = chap.name
+        const chapTitle = name
           .replace(/(?:ch(?:apter|apit(?:re)?)?)[.\s_-]*\d+(?:[._]\d+)?/gi, '')
           .replace(/^\s*[-_.\s]+|[-_.\s]+$/g, '')
           .replace(/[-_]+/g, ' ')
           .trim() || null
 
-        // Count images (also checks one level deep for nested folders)
-        const files = await fs.readdir(chapPath)
-        let pageCount = files.filter((f) => IMAGE_EXTS.includes(path.extname(f).toLowerCase())).length
-        if (pageCount === 0) {
-          // Images might be one level deeper
-          for (const sub of files) {
-            const subPath = path.join(chapPath, sub)
-            try {
-              const subFiles = await fs.readdir(subPath)
-              pageCount += subFiles.filter((f) => IMAGE_EXTS.includes(path.extname(f).toLowerCase())).length
-            } catch { /* not a directory */ }
-          }
-        }
+        const files     = await fs.readdir(chapPath)
+        const pageCount = files.filter((f) => IMAGE_EXTS.includes(path.extname(f).toLowerCase())).length
 
         await query(
           `INSERT INTO chapters (media_item_id, chapter_number, title, folder_path, page_count)
