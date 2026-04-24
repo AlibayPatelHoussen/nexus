@@ -476,15 +476,40 @@ export class MediaScanner {
 
       for (const chap of chapters.filter((e) => e.isDirectory())) {
         const chapPath = path.join(mangaPath, chap.name)
-        const chapNum  = parseFloat(chap.name.match(/[\d.]+/)?.[0] || '0')
 
-        const files    = await fs.readdir(chapPath)
-        const pageCount = files.filter((f) => IMAGE_EXTS.includes(path.extname(f).toLowerCase())).length
+        // Extract chapter number — try explicit ch/chapitre/chapter pattern first,
+        // then fall back to first standalone number in the name
+        const explicit = chap.name.match(/(?:ch(?:apter|apit(?:re)?)?)[.\s_-]*(\d+(?:[._]\d+)?)/i)
+        const fallback = chap.name.match(/(?:^|[^a-z])(\d+(?:\.\d+)?)(?:[^a-z]|$)/i)
+        const rawNum   = explicit?.[1] ?? fallback?.[1] ?? '0'
+        const chapNum  = parseFloat(rawNum.replace('_', '.'))
+
+        // Build a readable title by stripping the number and cleaning up
+        const chapTitle = chap.name
+          .replace(/(?:ch(?:apter|apit(?:re)?)?)[.\s_-]*\d+(?:[._]\d+)?/gi, '')
+          .replace(/^\s*[-_.\s]+|[-_.\s]+$/g, '')
+          .replace(/[-_]+/g, ' ')
+          .trim() || null
+
+        // Count images (also checks one level deep for nested folders)
+        const files = await fs.readdir(chapPath)
+        let pageCount = files.filter((f) => IMAGE_EXTS.includes(path.extname(f).toLowerCase())).length
+        if (pageCount === 0) {
+          // Images might be one level deeper
+          for (const sub of files) {
+            const subPath = path.join(chapPath, sub)
+            try {
+              const subFiles = await fs.readdir(subPath)
+              pageCount += subFiles.filter((f) => IMAGE_EXTS.includes(path.extname(f).toLowerCase())).length
+            } catch { /* not a directory */ }
+          }
+        }
 
         await query(
-          `INSERT INTO chapters (media_item_id, chapter_number, folder_path, page_count)
-           VALUES ($1,$2,$3,$4) ON CONFLICT DO NOTHING`,
-          [mediaId, chapNum, chapPath, pageCount],
+          `INSERT INTO chapters (media_item_id, chapter_number, title, folder_path, page_count)
+           VALUES ($1,$2,$3,$4,$5)
+           ON CONFLICT DO NOTHING`,
+          [mediaId, chapNum, chapTitle, chapPath, pageCount],
         )
       }
     } catch (err) {

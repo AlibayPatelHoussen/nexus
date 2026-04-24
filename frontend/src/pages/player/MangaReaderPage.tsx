@@ -8,6 +8,7 @@ import {
 } from 'lucide-react'
 import { mediaService } from '@/services/mediaService'
 import { api } from '@/services/api'
+import { useAuthStore } from '@/stores/authStore'
 import type { Chapter } from '@/types'
 
 type ReadMode = 'vertical' | 'page' | 'page-rtl'
@@ -21,7 +22,11 @@ async function getChapterPages(chapterId: string): Promise<PageData[]> {
   const { data } = await api.get<{ success: boolean; data: PageData[] }>(
     `/media/chapters/${chapterId}/pages`,
   )
-  return data.data
+  const token = useAuthStore.getState().accessToken ?? ''
+  return data.data.map((p) => ({
+    ...p,
+    url: `${p.url}&token=${encodeURIComponent(token)}`,
+  }))
 }
 
 export default function MangaReaderPage() {
