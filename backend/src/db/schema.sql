@@ -176,17 +176,23 @@ BEGIN
 END;
 $$ LANGUAGE plpgsql;
 
-DROP TRIGGER IF EXISTS trg_users_updated_at ON users;
-CREATE TRIGGER trg_users_updated_at
-  BEFORE UPDATE ON users
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+DO $$ BEGIN
+  CREATE TRIGGER trg_users_updated_at
+    BEFORE UPDATE ON users
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+EXCEPTION WHEN duplicate_object OR insufficient_privilege THEN NULL;
+END $$;
 
-DROP TRIGGER IF EXISTS trg_media_updated_at ON media_items;
-CREATE TRIGGER trg_media_updated_at
-  BEFORE UPDATE ON media_items
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+DO $$ BEGIN
+  CREATE TRIGGER trg_media_updated_at
+    BEFORE UPDATE ON media_items
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+EXCEPTION WHEN duplicate_object OR insufficient_privilege THEN NULL;
+END $$;
 
-DROP TRIGGER IF EXISTS trg_watch_updated_at ON watch_history;
-CREATE TRIGGER trg_watch_updated_at
-  BEFORE UPDATE ON watch_history
-  FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+DO $$ BEGIN
+  CREATE TRIGGER trg_watch_updated_at
+    BEFORE UPDATE ON watch_history
+    FOR EACH ROW EXECUTE FUNCTION update_updated_at();
+EXCEPTION WHEN duplicate_object OR insufficient_privilege THEN NULL;
+END $$;
