@@ -524,15 +524,34 @@ export class MediaScanner {
     }
   }
 
+  static async pruneDeleted(): Promise<number> {
+    const { rows } = await query('SELECT id, file_path, type FROM media_items')
+    let removed = 0
+
+    for (const row of rows as { id: string; file_path: string; type: string }[]) {
+      try {
+        await fs.access(row.file_path)
+      } catch {
+        await query('DELETE FROM media_items WHERE id = $1', [row.id])
+        logger.info(`Pruned missing ${row.type}: ${row.file_path}`)
+        removed++
+      }
+    }
+
+    if (removed > 0) logger.info(`Pruned ${removed} missing media item(s) from DB`)
+    return removed
+  }
+
   static async scanAll(): Promise<Record<string, number>> {
     logger.info('Starting full media scan…')
+    const pruned = await this.pruneDeleted()
     const [films, series, animes, manga] = await Promise.all([
       this.scanFilms(),
       this.scanSeries(),
       this.scanAnimes(),
       this.scanManga(),
     ])
-    logger.info(`Scan complete: ${films} films, ${series} series, ${animes} animes, ${manga} manga`)
-    return { films, series, animes, manga }
+    logger.info(`Scan complete: ${films} films, ${series} series, ${animes} animes, ${manga} manga, ${pruned} pruned`)
+    return { films, series, animes, manga, pruned }
   }
 }

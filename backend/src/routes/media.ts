@@ -62,6 +62,11 @@ router.post('/scan',       requireAdmin, asyncHandler((_req, res) => {
   res.json({ success: true, message: 'Scan started' })
 }))
 
+router.post('/prune', requireAdmin, asyncHandler(async (_req, res: Response) => {
+  const removed = await MediaScanner.pruneDeleted()
+  res.json({ success: true, data: { removed } })
+}))
+
 router.post('/scan/:type', requireAdmin, asyncHandler(async (req: Request, res: Response) => {
   const map: Record<string, () => Promise<number>> = {
     films: () => MediaScanner.scanFilms(),

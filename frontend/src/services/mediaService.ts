@@ -82,4 +82,9 @@ export const mediaService = {
   async scan(type?: string): Promise<void> {
     await api.post(type ? `/media/scan/${type}` : '/media/scan')
   },
+
+  async prune(): Promise<number> {
+    const { data } = await api.post<{ success: boolean; data: { removed: number } }>('/media/prune')
+    return data.data.removed
+  },
 }

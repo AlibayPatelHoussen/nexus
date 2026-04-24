@@ -1,7 +1,8 @@
 import { useState } from 'react'
-import { Sun, Moon, Lock, User, Save } from 'lucide-react'
+import { Sun, Moon, Lock, User, Save, ScanLine, Trash2 } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 import { authService } from '@/services/authService'
+import { mediaService } from '@/services/mediaService'
 import toast from 'react-hot-toast'
 
 export default function SettingsPage() {
@@ -13,6 +14,27 @@ export default function SettingsPage() {
   const [newPwd,     setNewPwd]     = useState('')
   const [confirmPwd, setConfirmPwd] = useState('')
   const [saving,     setSaving]     = useState(false)
+  const [scanning,   setScanning]   = useState(false)
+  const [pruning,    setPruning]    = useState(false)
+
+  async function handleScan() {
+    setScanning(true)
+    try {
+      await mediaService.scan()
+      toast.success('Scan lancé en arrière-plan')
+    } catch { toast.error('Erreur lors du scan') }
+    finally { setScanning(false) }
+  }
+
+  async function handlePrune() {
+    setPruning(true)
+    try {
+      const removed = await mediaService.prune()
+      if (removed === 0) toast.success('Aucun fichier manquant détecté')
+      else toast.success(`${removed} entrée(s) supprimée(s) de la base`)
+    } catch { toast.error('Erreur lors du nettoyage') }
+    finally { setPruning(false) }
+  }
 
   async function handlePasswordChange(e: React.FormEvent) {
     e.preventDefault()
@@ -100,8 +122,51 @@ export default function SettingsPage() {
           </div>
         </div>
 
+        {/* Bibliothèque */}
+        {user?.role === 'admin' && (
+          <div className="card p-5 animate-fade-up" style={{ animationDelay: '120ms' }}>
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'var(--blue-dim)' }}>
+                <ScanLine size={15} strokeWidth={2} style={{ color: 'var(--blue)' }} />
+              </div>
+              <h2 className="text-[14px] font-semibold" style={{ color: 'var(--text)' }}>Bibliothèque</h2>
+            </div>
+            <div className="flex flex-col gap-2">
+              <div className="flex items-start gap-3 p-3 rounded-xl" style={{ background: 'var(--surface2)' }}>
+                <ScanLine size={15} strokeWidth={2} style={{ color: 'var(--text3)', marginTop: 2 }} />
+                <div className="flex-1">
+                  <div className="text-[13px] font-semibold" style={{ color: 'var(--text)' }}>Scanner les médias</div>
+                  <div className="text-[11px]" style={{ color: 'var(--text3)' }}>
+                    Ajoute les nouveaux fichiers détectés dans les dossiers configurés
+                  </div>
+                </div>
+                <button className="btn-primary text-[12px]" onClick={handleScan} disabled={scanning}>
+                  {scanning ? 'Scan…' : 'Scanner'}
+                </button>
+              </div>
+              <div className="flex items-start gap-3 p-3 rounded-xl" style={{ background: 'var(--surface2)' }}>
+                <Trash2 size={15} strokeWidth={2} style={{ color: 'var(--red)', marginTop: 2 }} />
+                <div className="flex-1">
+                  <div className="text-[13px] font-semibold" style={{ color: 'var(--text)' }}>Nettoyer la bibliothèque</div>
+                  <div className="text-[11px]" style={{ color: 'var(--text3)' }}>
+                    Supprime de la base les films, séries, animes et mangas dont le fichier n'existe plus
+                  </div>
+                </div>
+                <button
+                  className="btn-ghost text-[12px]"
+                  style={{ color: 'var(--red)', borderColor: 'var(--red)' }}
+                  onClick={handlePrune}
+                  disabled={pruning}
+                >
+                  {pruning ? 'Nettoyage…' : 'Nettoyer'}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* Password */}
-        <div className="card p-5 animate-fade-up" style={{ animationDelay: '120ms' }}>
+        <div className="card p-5 animate-fade-up" style={{ animationDelay: '180ms' }}>
           <div className="flex items-center gap-2 mb-4">
             <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'var(--red-dim)' }}>
               <Lock size={15} strokeWidth={2} style={{ color: 'var(--red)' }} />
