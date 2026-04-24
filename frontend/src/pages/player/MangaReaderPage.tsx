@@ -199,6 +199,21 @@ export default function MangaReaderPage() {
           <div className="w-6 h-6 border-2 rounded-full animate-spin"
             style={{ borderColor: 'rgba(255,255,255,0.2)', borderTopColor: 'white' }} />
         </div>
+      ) : !pdfUrl && pages.length === 0 ? (
+        <div className="flex-1 flex flex-col items-center justify-center gap-3" style={{ minHeight: '100vh' }}>
+          <p className="text-[14px] font-semibold" style={{ color: 'rgba(255,255,255,0.6)' }}>
+            Aucun contenu trouvé
+          </p>
+          <p className="text-[12px]" style={{ color: 'rgba(255,255,255,0.3)' }}>
+            Lancez un scan depuis la page du manga
+          </p>
+          <button
+            className="btn-ghost text-[12px] mt-2"
+            onClick={() => navigate(`/media/${id}`)}
+          >
+            ← Retour
+          </button>
+        </div>
       ) : pdfUrl ? (
 
         /* ── PDF MODE ── */
