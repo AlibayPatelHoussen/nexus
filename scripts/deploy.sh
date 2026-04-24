@@ -20,7 +20,7 @@ git pull origin main
 
 # ── Install dependencies (including devDeps for build) ─
 echo "📦 Installing dependencies..."
-npm ci
+npm ci --include=dev
 
 # ── Build backend ────────────────────────────────────
 echo "🔨 Building backend..."
