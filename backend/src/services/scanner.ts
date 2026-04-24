@@ -556,6 +556,18 @@ export class MediaScanner {
           [mediaId, chapNum, chapTitle, chapPath, pageCount || null, language],
         )
       }
+
+      // Remove stale chapters whose folder_path is no longer in the scan
+      const newPaths = new Set(chapters.map((c) => c.chapPath))
+      const { rows: existing } = await query(
+        'SELECT id, folder_path FROM chapters WHERE media_item_id = $1',
+        [mediaId],
+      )
+      for (const row of existing) {
+        if (!newPaths.has(row.folder_path as string)) {
+          await query('DELETE FROM chapters WHERE id = $1', [row.id])
+        }
+      }
     } catch (err) {
       logger.error(`Chapter scan error: ${err}`)
     }
