@@ -32,7 +32,11 @@ npm run build --workspace=frontend
 
 # ── Restart PM2 ──────────────────────────────────────
 echo "♻️  Restarting services..."
-pm2 reload ecosystem.config.cjs --env production || pm2 start ecosystem.config.cjs --env production
+# Kill any orphan process on port 3001 before starting
+fuser -k 3001/tcp 2>/dev/null || true
+sleep 1
+pm2 delete nexus-backend 2>/dev/null || true
+pm2 start ecosystem.config.cjs --env production
 pm2 save
 
 echo "✅ Deployment complete!"
