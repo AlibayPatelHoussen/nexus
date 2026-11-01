@@ -18,7 +18,16 @@ mkdir -p "$LOG_DIR"
 
 # ── Pull latest code ─────────────────────────────────
 cd "$NEXUS_DIR"
-git pull origin main
+# npm may rewrite package-lock.json on the server (older deploys ran
+# "npm prune"): it is generated, never edited by hand → restore it first
+git checkout -- package-lock.json 2>/dev/null || true
+if ! git diff --quiet || ! git diff --cached --quiet; then
+  echo "❌ Local changes in $NEXUS_DIR would block the update:"
+  git status --short
+  echo "   Keep them with 'git stash', or discard them with 'git checkout -- <file>', then re-run."
+  exit 1
+fi
+git pull --ff-only origin main
 
 # ── Install dependencies (including devDeps for build) ─
 echo "📦 Installing dependencies..."
@@ -39,6 +48,7 @@ bash scripts/migrate-db.sh nexus
 # ── Prune devDependencies after build ────────────────
 echo "🧹 Pruning dev dependencies..."
 npm prune --omit=dev
+git checkout -- package-lock.json 2>/dev/null || true   # keep the tree clean for the next pull
 
 # ── Restart PM2 ──────────────────────────────────────
 echo "♻️  Restarting services..."
