@@ -6,6 +6,7 @@ import type { MediaItem } from '@/types'
 import { useDebounce } from '@/hooks/useDebounce'
 import MediaCard from '@/components/media/MediaCard'
 import MediaRow from '@/components/media/MediaRow'
+import { MEDIA_GRID, MEDIA_SHELF } from '@/components/media/layout'
 import toast from 'react-hot-toast'
 
 type Tab = 'films' | 'series'
@@ -158,13 +159,14 @@ export default function CinemaPage() {
             <h2 className="text-[15px] font-semibold mb-3" style={{ color: 'var(--text)' }}>
               Continuer la lecture
             </h2>
-            <div className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0" style={{ scrollbarWidth: 'none' }}>
+            <div className={MEDIA_SHELF}>
               {continueW.map((item) => (
                 <MediaCard
                   key={item.id}
                   item={item as unknown as MediaItem}
                   progress={item.progress}
                   duration={item.duration ?? undefined}
+                  adaptive
                 />
               ))}
             </div>
@@ -183,8 +185,7 @@ export default function CinemaPage() {
             </p>
 
             {loadFiltered ? (
-              <div className="grid gap-4"
-                style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(min(120px, 40vw), 1fr))' }}>
+              <div className={MEDIA_GRID}>
                 {Array.from({ length: 12 }).map((_, i) => (
                   <div key={i} className="rounded-xl animate-pulse aspect-[12/17]"
                     style={{ background: 'var(--surface2)' }} />
@@ -192,8 +193,7 @@ export default function CinemaPage() {
               </div>
             ) : filtered && filtered.items.length > 0 ? (
               <>
-                <div className="grid gap-4"
-                  style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(min(120px, 40vw), 1fr))' }}>
+                <div className={MEDIA_GRID}>
                   {filtered.items.map((item) => (
                     <MediaCard key={item.id} item={item} fluid />
                   ))}

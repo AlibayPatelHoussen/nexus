@@ -5,6 +5,7 @@ import { mediaService } from '@/services/mediaService'
 import { useDebounce } from '@/hooks/useDebounce'
 import MediaCard from '@/components/media/MediaCard'
 import MediaRow from '@/components/media/MediaRow'
+import { MEDIA_GRID } from '@/components/media/layout'
 import toast from 'react-hot-toast'
 
 export default function AnimesPage() {
@@ -114,8 +115,7 @@ export default function AnimesPage() {
             </p>
 
             {loadFiltered ? (
-              <div className="grid gap-4"
-                style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(min(120px, 40vw), 1fr))' }}>
+              <div className={MEDIA_GRID}>
                 {Array.from({ length: 12 }).map((_, i) => (
                   <div key={i} className="rounded-xl animate-pulse aspect-[12/17]"
                     style={{ background: 'var(--surface2)' }} />
@@ -123,8 +123,7 @@ export default function AnimesPage() {
               </div>
             ) : filtered && filtered.items.length > 0 ? (
               <>
-                <div className="grid gap-4"
-                  style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(min(120px, 40vw), 1fr))' }}>
+                <div className={MEDIA_GRID}>
                   {filtered.items.map((item) => (
                     <MediaCard key={item.id} item={item} fluid />
                   ))}

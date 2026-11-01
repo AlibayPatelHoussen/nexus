@@ -1,5 +1,6 @@
 import { ChevronRight } from 'lucide-react'
 import MediaCard from './MediaCard'
+import { MEDIA_SHELF } from './layout'
 import type { MediaItem } from '@/types'
 
 interface MediaRowProps {
@@ -29,16 +30,16 @@ export default function MediaRow({ title, items, onSeeAll, isLoading }: MediaRow
       </div>
 
       {/* Scroll row */}
-      <div className="flex gap-3 overflow-x-auto pb-2 -mx-4 px-4 sm:mx-0 sm:px-0 snap-x" style={{ scrollbarWidth: 'none' }}>
+      <div className={MEDIA_SHELF}>
         {isLoading
           ? Array.from({ length: 8 }).map((_, i) => (
               <div
                 key={i}
-                className="flex-shrink-0 w-[108px] sm:w-[120px] aspect-[12/17] rounded-xl animate-pulse"
+                className="w-full lg:w-[120px] lg:flex-shrink-0 aspect-[12/17] rounded-xl animate-pulse"
                 style={{ background: 'var(--surface2)' }}
               />
             ))
-          : items.map((item) => <MediaCard key={item.id} item={item} />)
+          : items.map((item) => <MediaCard key={item.id} item={item} adaptive />)
         }
       </div>
     </div>
