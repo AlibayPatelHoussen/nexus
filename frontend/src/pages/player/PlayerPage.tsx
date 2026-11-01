@@ -79,17 +79,17 @@ export default function PlayerPage() {
 
       {/* Top bar */}
       <div
-        className="flex items-center gap-3 px-4 py-3"
-        style={{ background: 'rgba(0,0,0,0.6)' }}
+        className="flex items-center gap-3 px-4 py-3 min-w-0"
+        style={{ background: 'rgba(0,0,0,0.6)', paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}
       >
         <button
-          className="flex items-center gap-1.5 text-[13px] font-medium text-white/70 hover:text-white transition-colors"
+          className="flex items-center gap-1.5 text-[13px] font-medium text-white/70 hover:text-white transition-colors flex-shrink-0"
           onClick={() => navigate(-1)}
         >
           <ArrowLeft size={16} strokeWidth={2} /> Retour
         </button>
         {media && (
-          <span className="text-white/50 text-[13px]">
+          <span className="text-white/50 text-[13px] truncate min-w-0">
             {media.title}
             {currentEpisode && ` · S${currentEpisode.season}E${currentEpisode.episodeNumber}`}
           </span>
@@ -110,10 +110,10 @@ export default function PlayerPage() {
         {/* Resume prompt */}
         {showResume && resumeAt && (
           <div
-            className="absolute bottom-20 right-6 card p-4 flex items-center gap-3"
-            style={{ boxShadow: 'var(--shadow-lg)', minWidth: '260px', zIndex: 30 }}
+            className="absolute bottom-16 sm:bottom-20 left-3 right-3 sm:left-auto sm:right-6 card p-3 sm:p-4 flex flex-wrap items-center gap-3 sm:min-w-[260px]"
+            style={{ boxShadow: 'var(--shadow-lg)', zIndex: 30 }}
           >
-            <div>
+            <div className="min-w-0">
               <p className="text-[13px] font-semibold" style={{ color: 'var(--text)' }}>Reprendre ?</p>
               <p className="text-[11px]" style={{ color: 'var(--text3)' }}>
                 Vous vous étiez arrêté à {formatDuration(resumeAt)}
@@ -129,17 +129,17 @@ export default function PlayerPage() {
 
       {/* Media info + episodes */}
       {media && (
-        <div className="px-6 py-4" style={{ background: 'var(--bg)' }}>
+        <div className="px-4 sm:px-6 py-4" style={{ background: 'var(--bg)', paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
           <div className="flex items-start gap-4 mb-4">
             {media.posterPath && (
               <img src={media.posterPath} alt={media.title}
                 className="w-16 h-24 rounded-lg object-cover flex-shrink-0" />
             )}
             <div className="flex-1 min-w-0">
-              <h1 className="text-[20px] font-bold tracking-tight mb-1" style={{ color: 'var(--text)' }}>
+              <h1 className="text-[18px] sm:text-[20px] font-bold tracking-tight mb-1 break-words" style={{ color: 'var(--text)' }}>
                 {media.title}
               </h1>
-              <div className="flex items-center gap-3 mb-2">
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mb-2">
                 {media.year && <span className="text-[12px] font-mono" style={{ color: 'var(--text3)' }}>{media.year}</span>}
                 {media.rating && (
                   <span className="flex items-center gap-1 text-[12px] font-mono" style={{ color: 'var(--yellow)' }}>
@@ -184,7 +184,7 @@ export default function PlayerPage() {
                           onMouseLeave={(e) => { if (ep.id !== episodeId) e.currentTarget.style.background = 'transparent' }}
                           onClick={() => navigate(`/player/${id}?ep=${ep.id}`)}
                         >
-                          <span className="text-[11px] font-mono w-6" style={{ color: 'var(--text3)' }}>
+                          <span className="text-[11px] font-mono w-6 flex-shrink-0" style={{ color: 'var(--text3)' }}>
                             {ep.episodeNumber}
                           </span>
                           <span className="text-[13px] flex-1 truncate"
@@ -192,7 +192,7 @@ export default function PlayerPage() {
                             {ep.title || `Épisode ${ep.episodeNumber}`}
                           </span>
                           {ep.duration && (
-                            <span className="text-[11px] font-mono" style={{ color: 'var(--text3)' }}>
+                            <span className="text-[11px] font-mono flex-shrink-0" style={{ color: 'var(--text3)' }}>
                               {formatDuration(ep.duration)}
                             </span>
                           )}

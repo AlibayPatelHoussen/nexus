@@ -55,10 +55,10 @@ export default function ServiceRow({ service }: ServiceRowProps) {
 
       {/* Info */}
       <div className="flex-1 min-w-0">
-        <div className="text-[13px] font-semibold" style={{ color: 'var(--text)' }}>
+        <div className="text-[13px] font-semibold truncate" style={{ color: 'var(--text)' }}>
           {service.displayName}
         </div>
-        <div className="text-[10.5px] font-mono" style={{ color: 'var(--text3)' }}>
+        <div className="text-[10.5px] font-mono truncate" style={{ color: 'var(--text3)' }}>
           {service.description}
         </div>
       </div>

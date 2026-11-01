@@ -12,7 +12,7 @@ export default function NotFoundPage() {
       <div className="text-center animate-fade-up">
         {/* Big 404 */}
         <div
-          className="text-[120px] font-bold leading-none mb-4 select-none"
+          className="text-[88px] sm:text-[120px] font-bold leading-none mb-4 select-none"
           style={{
             background:         'linear-gradient(135deg, var(--blue), var(--purple))',
             WebkitBackgroundClip: 'text',

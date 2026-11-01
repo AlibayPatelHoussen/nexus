@@ -37,7 +37,7 @@ export default function LoginPage() {
 
   return (
     <div
-      className="min-h-screen flex items-center justify-center p-4"
+      className="min-h-[100dvh] flex items-center justify-center p-4"
       style={{ background: 'var(--bg)' }}
     >
       {/* Background grid */}
@@ -69,7 +69,7 @@ export default function LoginPage() {
 
         {/* Form */}
         <div
-          className="card p-6"
+          className="card p-5 sm:p-6"
           style={{ boxShadow: 'var(--shadow-lg)' }}
         >
           <form onSubmit={handleSubmit} className="flex flex-col gap-4">
@@ -132,7 +132,7 @@ export default function LoginPage() {
         </div>
 
         <p className="text-center text-xs mt-4" style={{ color: 'var(--text3)' }}>
-          houssen-serveur.com
+          {window.location.hostname}
         </p>
       </div>
     </div>

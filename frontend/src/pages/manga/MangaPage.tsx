@@ -45,9 +45,9 @@ export default function MangaPage() {
 
   return (
     <div className="min-h-full" style={{ background: 'var(--bg)' }}>
-      <div className="sticky top-0 z-40 px-7 pt-6 pb-3" style={{ background: 'var(--bg)' }}>
+      <div className="md:sticky top-0 z-30 px-4 sm:px-6 lg:px-7 pt-5 sm:pt-6 pb-3" style={{ background: 'var(--bg)' }}>
         <div className="flex items-center justify-between mb-4">
-          <h1 className="text-[26px] font-bold tracking-tight" style={{ color: 'var(--text)' }}>
+          <h1 className="text-[22px] sm:text-[26px] font-bold tracking-tight" style={{ color: 'var(--text)' }}>
             Manga
           </h1>
           <button className="btn-ghost text-[12.5px]" onClick={scan} disabled={scanning}>
@@ -57,11 +57,11 @@ export default function MangaPage() {
         </div>
 
         <div className="flex items-center gap-2">
-          <div className="relative">
+          <div className="relative w-full sm:w-auto">
             <Search size={13} className="absolute left-3 top-1/2 -translate-y-1/2"
               style={{ color: 'var(--text3)' }} strokeWidth={2} />
             <input
-              className="input pl-8 py-2 text-[13px] w-56"
+              className="input pl-8 py-2 text-[13px] w-full sm:w-56"
               placeholder="Rechercher un manga…"
               value={search}
               onChange={(e) => { setSearch(e.target.value); setPage(1) }}
@@ -76,7 +76,7 @@ export default function MangaPage() {
         </div>
       </div>
 
-      <div className="px-7 pb-10">
+      <div className="px-4 sm:px-6 lg:px-7 pb-10">
         {!hasFilters && (
           <MediaRow title="Bibliothèque manga" items={recent || []} isLoading={loadRecent} />
         )}
@@ -89,18 +89,18 @@ export default function MangaPage() {
 
             {loadFiltered ? (
               <div className="grid gap-4"
-                style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))' }}>
+                style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(min(120px, 40vw), 1fr))' }}>
                 {Array.from({ length: 12 }).map((_, i) => (
-                  <div key={i} className="rounded-xl animate-pulse"
-                    style={{ height: '170px', background: 'var(--surface2)' }} />
+                  <div key={i} className="rounded-xl animate-pulse aspect-[12/17]"
+                    style={{ background: 'var(--surface2)' }} />
                 ))}
               </div>
             ) : filtered && filtered.items.length > 0 ? (
               <>
                 <div className="grid gap-4"
-                  style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(120px, 1fr))' }}>
+                  style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(min(120px, 40vw), 1fr))' }}>
                   {filtered.items.map((item) => (
-                    <MediaCard key={item.id} item={item} />
+                    <MediaCard key={item.id} item={item} fluid />
                   ))}
                 </div>
                 {filtered.totalPages > 1 && (
