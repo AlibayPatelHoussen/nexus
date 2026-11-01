@@ -16,7 +16,8 @@
 - **Real-time stats** — CPU, RAM, disk, temperature via WebSocket
 - **Dark/Light theme**
 - **JWT authentication** with bcrypt hashing
-- **Role-based access control**
+- **Role-based access control** — file manager, terminal, scripts and service control are admin-only
+- **Rate limiting** on login and API
 
 ## Stack
 
@@ -52,9 +53,9 @@ npm install
 cp backend/.env.example backend/.env
 # Edit backend/.env with your values
 
-# Setup database
+# Setup database (creates the schema, then applies pending migrations)
 createdb nexus
-psql nexus < backend/src/db/schema.sql
+npm run db:migrate --workspace=backend
 
 # Start development
 npm run dev
@@ -68,7 +69,8 @@ Backend API: http://localhost:3001
 See [`backend/.env.example`](backend/.env.example) for all required variables.
 
 Key variables:
-- `JWT_SECRET` — minimum 64 characters, random string
+- `JWT_SECRET` — minimum 64 characters, random string (`JWT_REFRESH_SECRET` recommended too)
+- `MEDIA_ROOT` — non-admin users can only stream files inside this directory
 - `TMDB_API_KEY` — get one free at [themoviedb.org](https://www.themoviedb.org/settings/api)
 - `DB_*` — PostgreSQL connection details
 
@@ -90,9 +92,8 @@ nexus/
 │       ├── routes/         # Express routers
 │       ├── controllers/    # Route handlers
 │       ├── middleware/     # Auth, error handling
-│       ├── services/       # Business logic
-│       ├── models/         # DB queries
-│       ├── db/             # Schema & migrations
+│       ├── services/       # Business logic + DB queries
+│       ├── db/             # schema.sql, migrations/, migrate.ts
 │       └── utils/          # Logger, helpers
 │
 └── .github/

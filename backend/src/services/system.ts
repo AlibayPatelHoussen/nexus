@@ -1,3 +1,4 @@
+import { clampLines } from './services'
 import si from 'systeminformation'
 import { query } from '../config/database'
 import { logger } from '../utils/logger'
@@ -156,24 +157,21 @@ export class SystemService {
   }
 
   static async getLogs(lines = 100): Promise<string[]> {
-    const { exec } = await import('child_process')
+    const { execFile } = await import('child_process')
     const { promisify } = await import('util')
-    const execAsync = promisify(exec)
+    const execFileAsync = promisify(execFile)
+    const n = String(clampLines(lines, 100))
 
     try {
-      const { stdout } = await execAsync(
-        `journalctl -n ${lines} --no-pager -o short-iso 2>/dev/null || tail -n ${lines} /var/log/syslog 2>/dev/null || echo "No logs available"`,
-      )
+      const { stdout } = await execFileAsync('journalctl', ['-n', n, '--no-pager', '-o', 'short-iso'])
       return stdout.split('\n').filter(Boolean)
     } catch {
-      return ['Unable to fetch logs']
+      try {
+        const { stdout } = await execFileAsync('tail', ['-n', n, '/var/log/syslog'])
+        return stdout.split('\n').filter(Boolean)
+      } catch {
+        return ['No logs available']
+      }
     }
-  }
-
-  static async runCommand(cmd: string): Promise<{ stdout: string; stderr: string }> {
-    const { exec } = await import('child_process')
-    const { promisify } = await import('util')
-    const execAsync = promisify(exec)
-    return execAsync(cmd)
   }
 }

@@ -49,13 +49,25 @@ export class ScriptsService {
     }
   }
 
+  /**
+   * Resolve a script name ("backup", "backup.py" or "backup.sh") to a file
+   * that actually exists directly in SCRIPTS_DIR. Anything containing a path
+   * separator or not listed is rejected, which prevents path traversal.
+   */
+  static async resolve(scriptName: string): Promise<string | null> {
+    if (!/^[\w.-]+$/.test(scriptName) || scriptName.startsWith('.')) return null
+    const scripts = await this.list()
+    const match = scripts.find((s) => s.filename === scriptName)
+      ?? scripts.find((s) => s.name === scriptName)
+    return match ? match.path : null
+  }
+
   static run(
-    scriptName: string,
+    filePath: string,
     onOutput: (data: string) => void,
     onExit:   (code: number) => void,
   ): () => void {
-    const filePath = path.join(SCRIPTS_DIR, scriptName.endsWith('.py') ? scriptName : `${scriptName}.py`)
-
+    const scriptName = path.basename(filePath)
     const isShell = filePath.endsWith('.sh')
     const cmd     = isShell ? 'bash' : 'python3'
     const args    = [filePath]
@@ -69,6 +81,7 @@ export class ScriptsService {
 
     proc.stdout.on('data', (d) => onOutput(d.toString()))
     proc.stderr.on('data', (d) => onOutput(d.toString()))
+    proc.on('error', (err) => onOutput(`Failed to start: ${err.message}\n`))
     proc.on('close', (code) => {
       logger.info(`Script ${scriptName} exited with code ${code}`)
       onExit(code ?? 0)

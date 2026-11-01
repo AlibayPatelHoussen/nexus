@@ -121,6 +121,23 @@ const EDITABLE_EXTS = ['.txt', '.md', '.json', '.yaml', '.yml', '.conf',
   '.service', '.env', '.sh', '.py', '.ts', '.tsx', '.js', '.jsx',
   '.toml', '.ini', '.cfg', '.log', '.sql', '.css', '.html']
 
+/**
+ * Open a URL that needs an async stream token. The tab is opened
+ * synchronously (inside the click) so popup blockers allow it.
+ */
+function openInNewTab(urlPromise: Promise<string>) {
+  const tab = window.open('about:blank', '_blank')
+  urlPromise
+    .then((url) => {
+      if (tab) tab.location.href = url
+      else window.location.href = url
+    })
+    .catch(() => {
+      tab?.close()
+      toast.error("Impossible d'ouvrir le fichier")
+    })
+}
+
 export default function FilesPage() {
   const {
     currentPath, entries, isLoading, breadcrumbs,
@@ -146,11 +163,11 @@ export default function FilesPage() {
     if (entry.type === 'directory') return navigate(entry.path)
     const videoExts = ['.mp4', '.mkv', '.avi', '.mov', '.webm']
     if (videoExts.includes(entry.extension || '')) {
-      window.open(filesService.getStreamUrl(entry.path), '_blank')
+      openInNewTab(filesService.getStreamUrl(entry.path))
     } else if (EDITABLE_EXTS.includes(entry.extension || '')) {
       setEditing(entry)
     } else {
-      window.open(filesService.getDownloadUrl(entry.path), '_blank')
+      openInNewTab(filesService.getDownloadUrl(entry.path))
     }
   }
 
@@ -308,7 +325,7 @@ export default function FilesPage() {
                 action: () => { setEditing(ctxMenu.entry); setCtxMenu(null) },
               },
               { icon: <Download size={13} />, label: 'Télécharger',
-                action: () => { window.open(filesService.getDownloadUrl(ctxMenu.entry.path), '_blank'); setCtxMenu(null) } },
+                action: () => { openInNewTab(filesService.getDownloadUrl(ctxMenu.entry.path)); setCtxMenu(null) } },
               { icon: <Edit2 size={13} />, label: 'Renommer',
                 action: () => { setRenaming(ctxMenu.entry); setNewName(ctxMenu.entry.name); setCtxMenu(null) } },
               { icon: <Trash2 size={13} />, label: 'Supprimer', danger: true,

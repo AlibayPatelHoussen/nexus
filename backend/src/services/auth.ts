@@ -2,7 +2,8 @@ import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
 import { query } from '../config/database'
 import { UnauthorizedError, ConflictError, NotFoundError } from '../utils/errors'
-import type { JwtPayload } from '../middleware/auth'
+import { secretFor, verifyToken } from '../middleware/auth'
+import type { JwtPayload, TokenType } from '../middleware/auth'
 
 const SALT_ROUNDS = 12
 
@@ -17,16 +18,22 @@ interface User {
 
 export class AuthService {
   // ─── Generate Tokens ──────────────────────────────
+  private static sign(payload: JwtPayload, typ: TokenType, expiresIn: string): string {
+    const { userId, username, role } = payload
+    return jwt.sign({ userId, username, role, typ }, secretFor(typ), { expiresIn } as jwt.SignOptions)
+  }
+
   static generateAccessToken(payload: JwtPayload): string {
-    return jwt.sign(payload, process.env.JWT_SECRET!, {
-      expiresIn: process.env.JWT_EXPIRES_IN || '7d',
-    } as jwt.SignOptions)
+    return this.sign(payload, 'access', process.env.JWT_EXPIRES_IN || '15m')
   }
 
   static generateRefreshToken(payload: JwtPayload): string {
-    return jwt.sign(payload, process.env.JWT_SECRET!, {
-      expiresIn: process.env.JWT_REFRESH_EXPIRES_IN || '30d',
-    } as jwt.SignOptions)
+    return this.sign(payload, 'refresh', process.env.JWT_REFRESH_EXPIRES_IN || '30d')
+  }
+
+  /** Read-only token for media URLs (<video>, <img>, <iframe>), passed as ?token=. */
+  static generateStreamToken(payload: JwtPayload): string {
+    return this.sign(payload, 'stream', process.env.JWT_STREAM_EXPIRES_IN || '6h')
   }
 
   // ─── Login ────────────────────────────────────────
@@ -81,16 +88,11 @@ export class AuthService {
 
   // ─── Refresh ──────────────────────────────────────
   static async refresh(refreshToken: string) {
-    let payload: JwtPayload
-
-    try {
-      payload = jwt.verify(refreshToken, process.env.JWT_SECRET!) as JwtPayload
-    } catch {
-      throw new UnauthorizedError('Invalid refresh token')
-    }
+    const payload = verifyToken(refreshToken, 'refresh')
+    if (!payload) throw new UnauthorizedError('Invalid refresh token')
 
     const result = await query(
-      `SELECT * FROM refresh_tokens
+      `SELECT 1 FROM refresh_tokens
        WHERE token = $1 AND expires_at > NOW()`,
       [refreshToken],
     )
@@ -99,10 +101,21 @@ export class AuthService {
       throw new UnauthorizedError('Refresh token revoked or expired')
     }
 
+    // Re-read the user so a deleted or demoted account does not keep its old role
+    const users = await query<Pick<User, 'id' | 'username' | 'role'>>(
+      'SELECT id, username, role FROM users WHERE id = $1',
+      [payload.userId],
+    )
+    const user = users.rows[0]
+    if (!user) {
+      await query('DELETE FROM refresh_tokens WHERE token = $1', [refreshToken])
+      throw new UnauthorizedError('User no longer exists')
+    }
+
     const newPayload: JwtPayload = {
-      userId: payload.userId,
-      username: payload.username,
-      role: payload.role,
+      userId: user.id,
+      username: user.username,
+      role: user.role,
     }
 
     return {

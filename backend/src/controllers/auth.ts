@@ -31,6 +31,15 @@ export const registerValidators = [
     .withMessage('Password must contain uppercase, lowercase, and a number'),
 ]
 
+export const changePasswordValidators = [
+  body('currentPassword').notEmpty().withMessage('Current password is required'),
+  body('newPassword')
+    .isLength({ min: 8 })
+    .withMessage('Password must be at least 8 characters')
+    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
+    .withMessage('Password must contain uppercase, lowercase, and a number'),
+]
+
 // ─── Handlers ─────────────────────────────────────────
 export async function login(req: Request, res: Response): Promise<void> {
   validate(req)
@@ -58,11 +67,16 @@ export async function register(req: Request, res: Response): Promise<void> {
   res.status(201).json({ success: true, data: user })
 }
 
+export function streamToken(req: Request, res: Response): void {
+  res.json({ success: true, data: { token: AuthService.generateStreamToken(req.user!) } })
+}
+
 export function me(req: Request, res: Response): void {
   res.json({ success: true, data: req.user })
 }
 
 export async function changePassword(req: Request, res: Response): Promise<void> {
+  validate(req)
   const { currentPassword, newPassword } = req.body
   await AuthService.changePassword(req.user!.userId, currentPassword, newPassword)
   res.json({ success: true, message: 'Password updated' })

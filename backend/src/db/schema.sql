@@ -196,3 +196,9 @@ DO $$ BEGIN
     FOR EACH ROW EXECUTE FUNCTION update_updated_at();
 EXCEPTION WHEN duplicate_object OR insufficient_privilege THEN NULL;
 END $$;
+
+-- ─── SCHEMA MIGRATIONS (see db/migrations/README.md) ─
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  version     VARCHAR(255) PRIMARY KEY,
+  applied_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);

@@ -8,7 +8,7 @@ import {
 } from 'lucide-react'
 import { mediaService } from '@/services/mediaService'
 import { api } from '@/services/api'
-import { useAuthStore } from '@/stores/authStore'
+import { getStreamToken, withStreamToken } from '@/services/streamToken'
 import type { Chapter } from '@/types'
 
 type ReadMode = 'vertical' | 'page' | 'page-rtl'
@@ -27,14 +27,14 @@ interface ChapterPagesResponse {
 
 async function getChapterPages(chapterId: string): Promise<{ pages: PageData[]; pdfUrl: string | null }> {
   const { data } = await api.get<ChapterPagesResponse>(`/media/chapters/${chapterId}/pages`)
-  const token    = useAuthStore.getState().accessToken ?? ''
+  const token    = await getStreamToken()
 
   if (data.type === 'pdf' && data.pdfUrl) {
-    return { pages: [], pdfUrl: `${data.pdfUrl}&token=${encodeURIComponent(token)}` }
+    return { pages: [], pdfUrl: withStreamToken(data.pdfUrl, token) }
   }
 
   return {
-    pages: data.data.map((p) => ({ ...p, url: `${p.url}&token=${encodeURIComponent(token)}` })),
+    pages: data.data.map((p) => ({ ...p, url: withStreamToken(p.url, token) })),
     pdfUrl: null,
   }
 }

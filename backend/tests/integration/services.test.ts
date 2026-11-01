@@ -1,14 +1,8 @@
 import request from 'supertest'
-import jwt from 'jsonwebtoken'
 import { app } from '../../src/index'
+import { makeToken } from '../helpers'
 
-function token(role: 'admin' | 'user' = 'admin'): string {
-  return jwt.sign(
-    { userId: 'test-uuid', username: 'test', role },
-    process.env.JWT_SECRET || 'test_secret',
-    { expiresIn: '1h' },
-  )
-}
+const token = (role: 'admin' | 'user' = 'admin') => makeToken(role)
 
 describe('GET /api/services', () => {
   it('returns 401 without token', async () => {

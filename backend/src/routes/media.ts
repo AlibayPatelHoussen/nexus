@@ -4,6 +4,7 @@ import { authenticate, requireAdmin } from '../middleware/auth'
 import { logger } from '../utils/logger'
 import { MediaService } from '../services/media'
 import { MediaScanner } from '../services/scanner'
+import { ConflictError } from '../utils/errors'
 
 const router = Router()
 router.use(authenticate)
@@ -57,13 +58,17 @@ router.get('/:id/progress', asyncHandler(async (req: Request, res: Response) => 
   res.json({ success: true, data: prog })
 }))
 
+// Scans stay available to every logged-in user, but only one can run at a time
 router.post('/scan',       asyncHandler((_req, res) => {
-  MediaScanner.scanAll().catch((err: unknown) => logger.error('Scan error', { err }))
-  res.json({ success: true, message: 'Scan started' })
+  const running = MediaScanner.isRunning()
+  if (running) throw new ConflictError(`A scan is already running (${running})`)
+  MediaScanner.exclusive('all', () => MediaScanner.scanAll())
+    .catch((err: unknown) => logger.error('Scan error', { err }))
+  res.status(202).json({ success: true, message: 'Scan started' })
 }))
 
 router.post('/prune', asyncHandler(async (_req, res: Response) => {
-  const removed = await MediaScanner.pruneDeleted()
+  const removed = await MediaScanner.exclusive('prune', () => MediaScanner.pruneDeleted())
   res.json({ success: true, data: { removed } })
 }))
 
@@ -80,8 +85,10 @@ router.post('/scan/:type', asyncHandler(async (req: Request, res: Response) => {
   const fn = map[req.params.type]
   if (!fn) { res.status(400).json({ success: false, error: 'Unknown type' }); return }
   const dbType = typeMap[req.params.type]
-  await MediaScanner.pruneDeleted(dbType)
-  const count = await fn()
+  const count = await MediaScanner.exclusive(req.params.type, async () => {
+    await MediaScanner.pruneDeleted(dbType)
+    return fn()
+  })
   res.json({ success: true, data: { scanned: count } })
 }))
 

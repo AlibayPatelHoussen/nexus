@@ -30,24 +30,9 @@ npm run build --workspace=backend
 echo "🎨 Building frontend..."
 npm run build --workspace=frontend
 
-# ── Run DDL patches as postgres superuser ────────────
-echo "🗄️  Running DB patches..."
-sudo -u postgres psql -d nexus <<'PSQL'
-ALTER TABLE chapters ADD COLUMN IF NOT EXISTS language VARCHAR(10);
-DO $$
-BEGIN
-  IF NOT EXISTS (
-    SELECT 1 FROM pg_constraint WHERE conname = 'chapters_folder_path_key'
-  ) THEN
-    DELETE FROM chapters a USING chapters b
-      WHERE a.id > b.id AND a.folder_path = b.folder_path;
-    ALTER TABLE chapters ADD CONSTRAINT chapters_folder_path_key UNIQUE (folder_path);
-  END IF;
-END $$;
-PSQL
-
-# ── Run DB migrations (fresh install only) ───────────
-npm run db:migrate --workspace=backend
+# ── Apply schema / pending migrations (as postgres superuser) ──
+echo "🗄️  Running DB migrations..."
+bash scripts/migrate-db.sh nexus
 
 # ── Prune devDependencies after build ────────────────
 echo "🧹 Pruning dev dependencies..."

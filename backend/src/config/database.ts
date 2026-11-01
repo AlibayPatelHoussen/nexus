@@ -1,7 +1,7 @@
 import { config } from 'dotenv'
 import { resolve } from 'path'
 import { Pool } from 'pg'
-import type { QueryResultRow } from 'pg'
+import type { PoolClient, QueryResultRow } from 'pg'
 import { logger } from '../utils/logger'
 
 // __dirname = dist/config/ → ../../.env = backend/.env
@@ -41,4 +41,20 @@ export async function query<T extends QueryResultRow = Record<string, unknown>>(
   }
 
   return result
+}
+
+/** Run `fn` inside a transaction on a dedicated client (ROLLBACK on error). */
+export async function withTransaction<T>(fn: (client: PoolClient) => Promise<T>): Promise<T> {
+  const client = await db.connect()
+  try {
+    await client.query('BEGIN')
+    const result = await fn(client)
+    await client.query('COMMIT')
+    return result
+  } catch (err) {
+    await client.query('ROLLBACK').catch(() => {})
+    throw err
+  } finally {
+    client.release()
+  }
 }
