@@ -8,6 +8,7 @@ import {
 import { useAuthStore } from '@/stores/authStore'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
 import { cn } from '@/utils'
+import VersionBanner from './VersionBanner'
 
 const COLLAPSE_KEY = 'nexus-sidebar-collapsed'
 
@@ -285,6 +286,7 @@ export default function Layout() {
         </header>
 
         <main className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden">
+          <VersionBanner />
           <Outlet />
         </main>
       </div>

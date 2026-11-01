@@ -1,5 +1,7 @@
 import { useState } from 'react'
-import { Sun, Moon, Lock, User, Save, ScanLine, Trash2 } from 'lucide-react'
+import { Sun, Moon, Lock, User, Save, ScanLine, Trash2, Info } from 'lucide-react'
+import { useQuery } from '@tanstack/react-query'
+import { FRONTEND_COMMIT, getServerHealth, isBackendOutdated } from '@/services/versionService'
 import { useAuthStore } from '@/stores/authStore'
 import { authService } from '@/services/authService'
 import { mediaService } from '@/services/mediaService'
@@ -165,6 +167,9 @@ export default function SettingsPage() {
           </div>
         )}
 
+        {/* Version */}
+        <VersionCard />
+
         {/* Password */}
         <div className="card p-4 sm:p-5 animate-fade-up" style={{ animationDelay: '180ms' }}>
           <div className="flex items-center gap-2 mb-4">
@@ -201,6 +206,43 @@ export default function SettingsPage() {
         </div>
 
       </div>
+    </div>
+  )
+}
+
+function VersionCard() {
+  const { data, isError } = useQuery({ queryKey: ['server-health'], queryFn: getServerHealth, staleTime: 60_000, retry: 1 })
+  const outdated = isBackendOutdated(data)
+  return (
+    <div className="card p-4 sm:p-5 animate-fade-up" style={{ animationDelay: '150ms' }}>
+      <div className="flex items-center gap-2 mb-4">
+        <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'var(--surface3)' }}>
+          <Info size={15} strokeWidth={2} style={{ color: 'var(--text2)' }} />
+        </div>
+        <h2 className="text-[14px] font-semibold" style={{ color: 'var(--text)' }}>Version</h2>
+      </div>
+      <dl className="grid grid-cols-1 min-[420px]:grid-cols-2 gap-3 text-[13px]">
+        <div>
+          <dt className="text-[10.5px] mb-1" style={{ color: 'var(--text3)' }}>Interface</dt>
+          <dd className="font-mono font-semibold" style={{ color: 'var(--text)' }}>{FRONTEND_COMMIT}</dd>
+        </div>
+        <div>
+          <dt className="text-[10.5px] mb-1" style={{ color: 'var(--text3)' }}>Serveur</dt>
+          <dd className="font-mono font-semibold" style={{ color: outdated ? 'var(--orange)' : 'var(--text)' }}>
+            {isError ? 'injoignable' : data?.build?.commit ?? (data ? 'ancienne version' : '…')}
+          </dd>
+        </div>
+      </dl>
+      {data?.startedAt && (
+        <p className="text-[11px] mt-3" style={{ color: 'var(--text3)' }}>
+          Serveur démarré le {new Date(data.startedAt).toLocaleString('fr-FR')}
+        </p>
+      )}
+      {outdated && (
+        <p className="text-[12px] mt-3 px-3 py-2 rounded-lg" style={{ background: 'var(--orange-dim)', color: 'var(--orange)' }}>
+          Le serveur n'exécute pas la même version que l'interface : relance <span className="font-mono">bash scripts/deploy.sh</span>.
+        </p>
+      )}
     </div>
   )
 }

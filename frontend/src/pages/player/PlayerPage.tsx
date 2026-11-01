@@ -10,6 +10,17 @@ import { formatDuration } from '@/utils'
 import VideoPlayer from './VideoPlayer'
 import type { Episode } from '@/types'
 
+/** Human-readable reason why the playback authorisation failed. */
+function describeTokenError(err: unknown): string {
+  const status = (err as { response?: { status?: number } })?.response?.status
+  if (status === 404) return 'Le serveur ne connaît pas l\'autorisation de lecture (erreur 404) : le backend n\'est pas à jour, relance le déploiement.'
+  if (status === 401) return 'Session expirée (erreur 401) : reconnecte-toi.'
+  if (status === 429) return 'Trop de requêtes (erreur 429) : attends quelques minutes ou augmente RATE_LIMIT_MAX dans backend/.env.'
+  if (status) return `Le serveur a refusé la lecture (erreur ${status}).`
+  if (err instanceof Error && err.message) return err.message
+  return 'Le serveur n\'a pas autorisé la lecture.'
+}
+
 export default function PlayerPage() {
   const { id }         = useParams<{ id: string }>()
   const [searchParams] = useSearchParams()
@@ -17,8 +28,11 @@ export default function PlayerPage() {
   const episodeId      = searchParams.get('ep') || undefined
 
   const progressRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  // Latest playback position, read by the periodic save (a closure would freeze it)
+  const latestRef   = useRef<{ t: number; d: number }>({ t: 0, d: 0 })
   const [resumeAt,   setResumeAt]   = useState<number | null>(null)
   const [showResume, setShowResume] = useState(false)
+  const [seekTo,     setSeekTo]     = useState<{ time: number; key: number } | undefined>()
 
   const { data: media } = useQuery({
     queryKey: ['media', id],
@@ -64,24 +78,39 @@ export default function PlayerPage() {
   const filePath  = currentEpisode?.filePath || (isShow ? '' : media?.filePath) || ''
   const streamUrl = filePath && streamToken ? filesService.buildStreamUrl(filePath, streamToken) : ''
 
+  // Netflix-like: resume automatically where the user stopped (unless almost finished)
   useEffect(() => {
-    if (savedProgress && savedProgress.progress > 30) {
+    setResumeAt(null); setShowResume(false)
+    if (savedProgress && savedProgress.progress > 30 && !savedProgress.completed) {
       setResumeAt(savedProgress.progress)
       setShowResume(true)
     }
   }, [savedProgress])
 
-  function handleTimeUpdate(current: number, duration: number) {
-    if (progressRef.current) return
-    progressRef.current = setInterval(async () => {
-      if (current > 0 && duration > 0 && id) {
-        await mediaService.saveProgress(id, Math.floor(current), Math.floor(duration), episodeId)
-      }
-    }, 5000)
+  function saveNow(completed = false) {
+    const { t, d } = latestRef.current
+    if (!id || !(d > 0) || !(t > 0)) return
+    mediaService.saveProgress(id, Math.floor(completed ? d : t), Math.floor(d), episodeId).catch(() => {})
   }
+
+  function handleTimeUpdate(current: number, duration: number) {
+    latestRef.current = { t: current, d: duration }
+    if (!progressRef.current) progressRef.current = setInterval(() => saveNow(), 5000)
+  }
+
+  // Save when leaving the page or switching episode
+  useEffect(() => {
+    latestRef.current = { t: 0, d: 0 }
+    return () => {
+      if (progressRef.current) { clearInterval(progressRef.current); progressRef.current = null }
+      saveNow()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [id, episodeId])
 
   function handleEnded() {
     if (progressRef.current) { clearInterval(progressRef.current); progressRef.current = null }
+    saveNow(true)
     if (media?.episodes && episodeId) {
       const idx  = media.episodes.findIndex((e: Episode) => e.id === episodeId)
       const next = media.episodes[idx + 1]
@@ -126,14 +155,7 @@ export default function PlayerPage() {
         {streamTokenError && (
           <div className="flex flex-col items-center justify-center gap-2 text-center px-6" style={{ aspectRatio: '16/9', maxHeight: '75vh' }}>
             <p className="text-[14px] font-semibold text-white/85">Lecture impossible</p>
-            <p className="text-[12px] text-white/55 max-w-sm">
-              Le serveur n'a pas autorisé la lecture
-              {(streamTokenError as { response?: { status?: number } }).response?.status
-                ? ` (erreur ${(streamTokenError as { response?: { status?: number } }).response?.status})`
-                : ''}.
-              {(streamTokenError as { response?: { status?: number } }).response?.status === 404
-                && ' Le backend n\'est probablement pas à jour : relance le déploiement.'}
-            </p>
+            <p className="text-[12px] text-white/55 max-w-sm">{describeTokenError(streamTokenError)}</p>
             <button className="btn-ghost text-[12px] mt-1" onClick={() => retryToken()}>Réessayer</button>
           </div>
         )}
@@ -145,7 +167,8 @@ export default function PlayerPage() {
         {streamUrl && (
           <VideoPlayer
             src={streamUrl}
-            initialTime={showResume && resumeAt ? resumeAt : undefined}
+            initialTime={resumeAt ?? undefined}
+            seekTo={seekTo}
             onTimeUpdate={handleTimeUpdate}
             onEnded={handleEnded}
           />
@@ -153,19 +176,21 @@ export default function PlayerPage() {
 
         {/* Resume prompt */}
         {showResume && resumeAt && (
+          // Below the video on phones (never over the controls), floating on larger screens
           <div
-            className="absolute bottom-16 sm:bottom-20 left-3 right-3 sm:left-auto sm:right-6 card p-3 sm:p-4 flex flex-wrap items-center gap-3 sm:min-w-[260px]"
+            className="relative mx-3 mt-3 sm:m-0 sm:absolute sm:bottom-20 sm:right-6 card p-3 sm:p-4 flex flex-wrap items-center gap-3 sm:min-w-[280px]"
             style={{ boxShadow: 'var(--shadow-lg)', zIndex: 30 }}
           >
             <div className="min-w-0">
-              <p className="text-[13px] font-semibold" style={{ color: 'var(--text)' }}>Reprendre ?</p>
-              <p className="text-[11px]" style={{ color: 'var(--text3)' }}>
-                Vous vous étiez arrêté à {formatDuration(resumeAt)}
-              </p>
+              <p className="text-[13px] font-semibold" style={{ color: 'var(--text)' }}>Reprise à {formatDuration(resumeAt)}</p>
+              <p className="text-[11px]" style={{ color: 'var(--text3)' }}>La lecture reprend là où tu t'étais arrêté.</p>
             </div>
             <div className="flex gap-2 ml-auto">
-              <button className="btn-ghost text-[12px]" onClick={() => setShowResume(false)}>Non</button>
-              <button className="btn-primary text-[12px]" onClick={() => setShowResume(false)}>Reprendre</button>
+              <button className="btn-ghost text-[12px]"
+                onClick={() => { setSeekTo({ time: 0, key: Date.now() }); setShowResume(false) }}>
+                Recommencer
+              </button>
+              <button className="btn-primary text-[12px]" onClick={() => setShowResume(false)}>OK</button>
             </div>
           </div>
         )}
@@ -176,8 +201,9 @@ export default function PlayerPage() {
         <div className="px-4 sm:px-6 py-4" style={{ background: 'var(--bg)', paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
           <div className="flex items-start gap-4 mb-4">
             {media.posterPath && (
-              <img src={media.posterPath} alt={media.title}
-                className="w-16 h-24 rounded-lg object-cover flex-shrink-0" />
+              <img src={media.posterPath} alt=""
+                className="w-16 h-24 rounded-lg object-cover flex-shrink-0"
+                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
             )}
             <div className="flex-1 min-w-0">
               <h1 className="text-[18px] sm:text-[20px] font-bold tracking-tight mb-1 break-words" style={{ color: 'var(--text)' }}>
