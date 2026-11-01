@@ -53,6 +53,11 @@ router.post('/:id/progress', asyncHandler(async (req: Request, res: Response) =>
   res.json({ success: true })
 }))
 
+router.get('/:id/episodes/progress', asyncHandler(async (req: Request, res: Response) => {
+  const items = await MediaService.getEpisodesProgress(req.user!.userId, req.params.id)
+  res.json({ success: true, data: items })
+}))
+
 router.get('/:id/progress', asyncHandler(async (req: Request, res: Response) => {
   const prog = await MediaService.getProgress(req.user!.userId, req.params.id, req.query.episodeId as string)
   res.json({ success: true, data: prog })

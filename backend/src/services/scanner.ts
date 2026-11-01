@@ -124,6 +124,158 @@ async function getTMDBDetails(id: number, type: 'movie' | 'tv'): Promise<TmdbRes
   } catch { return null }
 }
 
+// ─── Episodes ────────────────────────────────────────
+export interface EpisodeInfo { season: number | null; episode: number | null }
+
+/**
+ * Extract season / episode numbers from a video file name and the folders
+ * between the show root and the file (closest folder last).
+ * Handles S01E02, s1.e2, 1x02, "Episode 5", "Épisode 05", "Ep 3", "E07",
+ * and season folders like "Season 2", "Saison 02", "S03" or "Specials".
+ */
+export function parseEpisodeInfo(fileName: string, folders: string[] = []): EpisodeInfo {
+  const name = path.basename(fileName, path.extname(fileName))
+
+  const se = name.match(/(?:^|[^a-z0-9])s(\d{1,2})[\s._-]*e(\d{1,3})(?!\d)/i)
+  if (se) return { season: parseInt(se[1]), episode: parseInt(se[2]) }
+
+  const x = name.match(/(?:^|[^\d])(\d{1,2})x(\d{2,3})(?!\d)/i)
+  if (x) return { season: parseInt(x[1]), episode: parseInt(x[2]) }
+
+  let season: number | null = null
+  for (const folder of [...folders].reverse()) {
+    if (/^(specials?|sp[ée]ciaux|extras?)$/i.test(folder.trim())) { season = 0; break }
+    const m = folder.match(/(?:^|[^a-z])(?:season|saison|s)[\s._-]*(\d{1,2})(?!\d)/i)
+      ?? folder.match(/^\s*(\d{1,2})\s*$/)
+    if (m) { season = parseInt(m[1]); break }
+  }
+
+  const ep = name.match(/(?:^|[^a-z])(?:[ée]pisode|ep|e)[\s._-]*(\d{1,3})(?!\d)/i)
+  if (ep) return { season, episode: parseInt(ep[1]) }
+
+  // Bare number, e.g. "05.mkv" or "Show - 12 [1080p].mkv": drop tags, codecs,
+  // resolutions and audio specs first, then take the last remaining number
+  const cleaned = name
+    .replace(/\[[^\]]*\]|\([^)]*\)/g, ' ')
+    .replace(/\b(?:[hx][ .]?26[45]|hevc|avc|\d{3,4}p|\d+bits?|(?:aac|ac3|eac3|ddp?|dts|truehd)[\d.]*|\d\.\d)\b/gi, ' ')
+  const bare = [...cleaned.matchAll(/(?:^|[^\da-z])(\d{1,3})(?![\dp])/gi)]
+    .map((m) => parseInt(m[1]))
+    .filter((n) => n > 0 && n < 1000)
+  return { season, episode: bare.length ? bare[bare.length - 1] : null }
+}
+
+/** Recursively list video files under `root` (max depth 4, hidden folders / samples skipped). */
+async function listVideoFiles(root: string, depth = 0): Promise<string[]> {
+  if (depth > 4) return []
+  const out: string[] = []
+  let entries: import('fs').Dirent[]
+  try { entries = await fs.readdir(root, { withFileTypes: true }) } catch { return out }
+  for (const e of entries) {
+    if (e.name.startsWith('.')) continue
+    const full = path.join(root, e.name)
+    if (e.isDirectory()) out.push(...await listVideoFiles(full, depth + 1))
+    else if (e.isFile() && VIDEO_EXTS.includes(path.extname(e.name).toLowerCase())
+      && !/(^|[^a-z])sample([^a-z]|$)/i.test(e.name)) out.push(full)
+  }
+  return out
+}
+
+interface TmdbEpisode {
+  episode_number: number
+  name?: string
+  overview?: string
+  still_path?: string | null
+  air_date?: string | null
+  runtime?: number | null
+}
+
+async function getTMDBSeason(tvId: number, season: number): Promise<TmdbEpisode[]> {
+  if (!TMDB_KEY) return []
+  try {
+    const { data } = await axios.get(`${TMDB_BASE}/tv/${tvId}/season/${season}`, {
+      params: { api_key: TMDB_KEY, language: 'fr-FR' },
+    })
+    return (data.episodes as TmdbEpisode[]) || []
+  } catch { return [] }
+}
+
+/**
+ * Index every episode file of a show (series or anime). Existing episodes keep
+ * their id (upsert on file_path) so watch progress survives rescans; episodes
+ * whose file disappeared are removed. With a TMDB id, titles, synopsis,
+ * thumbnails, air dates and runtimes are filled in per season.
+ */
+export async function scanShowEpisodes(showPath: string, mediaItemId: string, tmdbId?: number | null): Promise<number> {
+  const files = (await listVideoFiles(showPath)).sort((a, b) => a.localeCompare(b, undefined, { numeric: true }))
+
+  const parsed = files.map((file) => {
+    const folders = path.relative(showPath, path.dirname(file)).split(path.sep).filter((f) => f && f !== '.')
+    const info = parseEpisodeInfo(path.basename(file), folders)
+    return { file, season: info.season ?? 1, episode: info.episode }
+  })
+
+  // Files without a number get the next free number in their season (natural sort order)
+  const used = new Map<number, Set<number>>()
+  for (const p of parsed) if (p.episode != null) {
+    if (!used.has(p.season)) used.set(p.season, new Set())
+    used.get(p.season)!.add(p.episode)
+  }
+  for (const p of parsed) if (p.episode == null) {
+    const set = used.get(p.season) ?? new Set<number>()
+    let n = 1
+    while (set.has(n)) n++
+    set.add(n); used.set(p.season, set)
+    p.episode = n
+  }
+
+  const sizes = await Promise.all(parsed.map((p) => getFileSize(p.file)))
+
+  await withTransaction(async (client) => {
+    for (const [i, p] of parsed.entries()) {
+      await client.query(
+        `INSERT INTO episodes (media_item_id, season, episode_number, file_path, file_size)
+         VALUES ($1, $2, $3, $4, $5)
+         ON CONFLICT (file_path) DO UPDATE SET
+           media_item_id  = EXCLUDED.media_item_id,
+           season         = EXCLUDED.season,
+           episode_number = EXCLUDED.episode_number,
+           file_size      = EXCLUDED.file_size`,
+        [mediaItemId, p.season, p.episode, p.file, sizes[i]],
+      )
+    }
+    await client.query(
+      'DELETE FROM episodes WHERE media_item_id = $1 AND NOT (file_path = ANY($2::text[]))',
+      [mediaItemId, parsed.map((p) => p.file)],
+    )
+  })
+
+  if (tmdbId) {
+    for (const season of [...new Set(parsed.map((p) => p.season))]) {
+      for (const ep of await getTMDBSeason(tmdbId, season)) {
+        await query(
+          `UPDATE episodes SET
+             title          = COALESCE(NULLIF($4, ''), title),
+             overview       = COALESCE(NULLIF($5, ''), overview),
+             thumbnail_path = COALESCE($6, thumbnail_path),
+             air_date       = COALESCE($7::date, air_date),
+             duration       = COALESCE(duration, $8)
+           WHERE media_item_id = $1 AND season = $2 AND episode_number = $3`,
+          [
+            mediaItemId, season, ep.episode_number,
+            ep.name ?? null, ep.overview ?? null,
+            ep.still_path ? `${TMDB_IMG}/w300${ep.still_path}` : null,
+            ep.air_date || null,
+            ep.runtime ? ep.runtime * 60 : null,
+          ],
+        )
+      }
+    }
+  }
+
+  logger.info(`Episodes: ${parsed.length} file(s) for ${showPath}`)
+  return parsed.length
+}
+
 // ─── AniList search ──────────────────────────────────
 async function searchAniList(title: string, type: 'ANIME' | 'MANGA' = 'ANIME'): Promise<AniListResult | null> {
   const query_gql = `
@@ -314,8 +466,15 @@ export class MediaScanner {
         const seriePath = path.join(dir, serieDir.name)
         const { title } = parseFilename(serieDir.name)
 
-        const existing = await query('SELECT id FROM media_items WHERE file_path = $1', [seriePath])
-        if (existing.rows.length > 0) continue
+        // Already indexed: keep metadata, but always refresh its episodes
+        const existing = await query<{ id: string; tmdb_id: number | null }>(
+          'SELECT id, tmdb_id FROM media_items WHERE file_path = $1', [seriePath],
+        )
+        if (existing.rows[0]) {
+          await query('UPDATE media_items SET last_scanned = NOW() WHERE id = $1', [existing.rows[0].id])
+          await scanShowEpisodes(seriePath, existing.rows[0].id, existing.rows[0].tmdb_id)
+          continue
+        }
 
         const tmdb    = await searchTMDB(title, undefined, 'tv')
         const details = tmdb?.id ? await getTMDBDetails(tmdb.id, 'tv') : null
@@ -342,8 +501,7 @@ export class MediaScanner {
         const mediaId = rows[0]?.id as string | undefined
         if (!mediaId) continue
 
-        // Scan episodes
-        await MediaScanner.scanEpisodes(seriePath, mediaId)
+        await scanShowEpisodes(seriePath, mediaId, item?.id ?? null)
         count++
       }
     } catch (err) {
@@ -351,38 +509,6 @@ export class MediaScanner {
     }
 
     return count
-  }
-
-  static async scanEpisodes(seriesPath: string, mediaItemId: string): Promise<void> {
-    try {
-      const seasons = await fs.readdir(seriesPath, { withFileTypes: true })
-
-      for (const season of seasons) {
-        const seasonPath = path.join(seriesPath, season.name)
-        const seasonNum  = parseInt(season.name.match(/\d+/)?.[0] || '1')
-
-        const files = season.isDirectory()
-          ? await fs.readdir(seasonPath)
-          : [season.name]
-
-        const basePath = season.isDirectory() ? seasonPath : seriesPath
-
-        for (const file of files) {
-          if (!VIDEO_EXTS.includes(path.extname(file).toLowerCase())) continue
-          const epMatch = file.match(/[Ee](\d+)/)
-          const epNum   = epMatch ? parseInt(epMatch[1]) : 1
-          const filePath = path.join(basePath, file)
-
-          await query(
-            `INSERT INTO episodes (media_item_id, season, episode_number, file_path, file_size)
-             VALUES ($1,$2,$3,$4,$5) ON CONFLICT DO NOTHING`,
-            [mediaItemId, seasonNum, epNum, filePath, await getFileSize(filePath)],
-          )
-        }
-      }
-    } catch (err) {
-      logger.error(`Episode scan error: ${err}`)
-    }
   }
 
   static async scanAnimes(): Promise<number> {
@@ -422,7 +548,7 @@ export class MediaScanner {
         )
 
         const mediaId = rows[0]?.id as string | undefined
-        if (mediaId) await MediaScanner.scanAnimeEpisodes(animePath, mediaId)
+        if (mediaId) await scanShowEpisodes(animePath, mediaId)
         count++
       }
     } catch (err) {
@@ -430,43 +556,6 @@ export class MediaScanner {
     }
 
     return count
-  }
-
-  static async scanAnimeEpisodes(animePath: string, mediaItemId: string): Promise<void> {
-    try {
-      const entries = await fs.readdir(animePath, { withFileTypes: true })
-      let autoNum = 1
-
-      for (const entry of entries) {
-        const fullPath = path.join(animePath, entry.name)
-
-        if (entry.isFile() && VIDEO_EXTS.includes(path.extname(entry.name).toLowerCase())) {
-          const epMatch = entry.name.match(/[Ee](\d+)/)
-          const epNum   = epMatch ? parseInt(epMatch[1]) : autoNum++
-          await query(
-            `INSERT INTO episodes (media_item_id, season, episode_number, file_path, file_size)
-             VALUES ($1, 1, $2, $3, $4) ON CONFLICT DO NOTHING`,
-            [mediaItemId, epNum, fullPath, await getFileSize(fullPath)],
-          )
-        } else if (entry.isDirectory()) {
-          const seasonNum  = parseInt(entry.name.match(/\d+/)?.[0] || '1')
-          const seasonFiles = await fs.readdir(fullPath)
-          for (const file of seasonFiles) {
-            if (!VIDEO_EXTS.includes(path.extname(file).toLowerCase())) continue
-            const epPath  = path.join(fullPath, file)
-            const epMatch = file.match(/[Ee](\d+)/)
-            const epNum   = epMatch ? parseInt(epMatch[1]) : autoNum++
-            await query(
-              `INSERT INTO episodes (media_item_id, season, episode_number, file_path, file_size)
-               VALUES ($1, $2, $3, $4, $5) ON CONFLICT DO NOTHING`,
-              [mediaItemId, seasonNum, epNum, epPath, await getFileSize(epPath)],
-            )
-          }
-        }
-      }
-    } catch (err) {
-      logger.error(`Anime episode scan error: ${err}`)
-    }
   }
 
   static async scanManga(): Promise<number> {

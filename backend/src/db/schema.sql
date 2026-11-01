@@ -87,6 +87,9 @@ CREATE TABLE IF NOT EXISTS episodes (
 );
 
 CREATE INDEX IF NOT EXISTS idx_episodes_media ON episodes(media_item_id);
+DO $$ BEGIN
+  ALTER TABLE episodes ADD CONSTRAINT episodes_file_path_key UNIQUE (file_path);
+EXCEPTION WHEN duplicate_object OR duplicate_table THEN NULL; END $$;
 
 -- ─── CHAPTERS (manga & webtoon) ──────────────────────
 CREATE TABLE IF NOT EXISTS chapters (
@@ -113,7 +116,7 @@ CREATE TABLE IF NOT EXISTS watch_history (
   completed       BOOLEAN NOT NULL DEFAULT FALSE,
   watched_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  UNIQUE(user_id, media_item_id, episode_id)
+  CONSTRAINT watch_history_user_media_episode_key UNIQUE NULLS NOT DISTINCT (user_id, media_item_id, episode_id)
 );
 
 CREATE INDEX IF NOT EXISTS idx_watch_user      ON watch_history(user_id);

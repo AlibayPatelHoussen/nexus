@@ -32,6 +32,22 @@ export default function PlayerPage() {
     enabled:  !!id,
   })
 
+  // A series/anime opened without ?ep= : jump to the episode to watch next
+  // (never try to stream the show's folder)
+  const { data: episodesProgress } = useQuery({
+    queryKey: ['episodes-progress', id],
+    queryFn:  () => mediaService.getEpisodesProgress(id!),
+    enabled:  !!id && !episodeId,
+  })
+  useEffect(() => {
+    if (episodeId || !media?.episodes?.length || !episodesProgress) return
+    const eps  = media.episodes
+    const last = episodesProgress[0]
+    const idx  = last ? eps.findIndex((e: Episode) => e.id === last.episodeId) : -1
+    const next = idx === -1 ? eps[0] : last.completed ? (eps[idx + 1] ?? eps[idx]) : eps[idx]
+    navigate(`/player/${id}?ep=${next.id}`, { replace: true })
+  }, [episodeId, media, episodesProgress, id, navigate])
+
   const currentEpisode = episodeId
     ? media?.episodes?.find((e: Episode) => e.id === episodeId)
     : null
@@ -43,7 +59,8 @@ export default function PlayerPage() {
     staleTime: 60 * 60 * 1000,
   })
 
-  const filePath  = currentEpisode?.filePath || media?.filePath || ''
+  const isShow    = media?.type === 'serie' || media?.type === 'anime'
+  const filePath  = currentEpisode?.filePath || (isShow ? '' : media?.filePath) || ''
   const streamUrl = filePath && streamToken ? filesService.buildStreamUrl(filePath, streamToken) : ''
 
   useEffect(() => {
@@ -98,6 +115,12 @@ export default function PlayerPage() {
 
       {/* Player */}
       <div className="relative">
+        {media && isShow && !media.episodes?.length && (
+          <div className="flex flex-col items-center justify-center gap-2 text-center px-6" style={{ aspectRatio: '16/9', maxHeight: '75vh' }}>
+            <p className="text-[14px] font-semibold text-white/80">Aucun épisode trouvé pour cette série</p>
+            <p className="text-[12px] text-white/50">Lance un scan depuis la page de la série.</p>
+          </div>
+        )}
         {streamUrl && (
           <VideoPlayer
             src={streamUrl}
