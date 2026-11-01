@@ -3,7 +3,7 @@ import asyncHandler from 'express-async-handler'
 import { authenticate, requireAdmin } from '../middleware/auth'
 import { logger } from '../utils/logger'
 import { MediaService } from '../services/media'
-import { MediaScanner } from '../services/scanner'
+import { MediaScanner, hasTmdbKey } from '../services/scanner'
 import { ConflictError } from '../utils/errors'
 
 const router = Router()
@@ -26,6 +26,11 @@ router.get('/recent',   asyncHandler(async (req: Request, res: Response) => {
   const items = await MediaService.getRecentlyAdded(req.query.type as string, parseInt(req.query.limit as string || '12'))
   res.json({ success: true, data: items })
 }))
+
+// Whether metadata (posters, synopsis) can be fetched — shown in the UI when missing
+router.get('/metadata/status', (_req: Request, res: Response) => {
+  res.json({ success: true, data: { tmdb: hasTmdbKey() } })
+})
 
 router.get('/continue', asyncHandler(async (req: Request, res: Response) => {
   const items = await MediaService.getContinueWatching(req.user!.userId)
