@@ -16,6 +16,7 @@ export default function VideoPlayer({ src, onTimeUpdate, onEnded, initialTime }:
   const containerRef = useRef<HTMLDivElement>(null)
   const scrubberRef  = useRef<HTMLDivElement>(null)
   const hideTimer    = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const lastPointer  = useRef<string>('mouse')
 
   const [playing,      setPlaying]      = useState(false)
   const [current,      setCurrent]      = useState(0)
@@ -143,8 +144,26 @@ export default function VideoPlayer({ src, onTimeUpdate, onEnded, initialTime }:
   }
 
   function toggleFullscreen() {
-    if (!document.fullscreenElement) containerRef.current?.requestFullscreen()
-    else document.exitFullscreen()
+    const el = containerRef.current
+    if (document.fullscreenElement) { document.exitFullscreen(); return }
+    if (el?.requestFullscreen) {
+      el.requestFullscreen()
+        // Lock to landscape on phones when supported
+        .then(() => (screen.orientation as ScreenOrientation & { lock?: (o: string) => Promise<void> })
+          .lock?.('landscape').catch(() => {}))
+        .catch(() => {})
+      return
+    }
+    // iOS Safari: only the <video> element itself can go fullscreen
+    const v = videoRef.current as (HTMLVideoElement & { webkitEnterFullscreen?: () => void }) | null
+    v?.webkitEnterFullscreen?.()
+  }
+
+  // Tap on touch screens: first tap shows the controls, next tap toggles play
+  function onVideoTap() {
+    if (lastPointer.current !== 'mouse' && !showControls) { revealControls(); return }
+    togglePlay()
+    revealControls()
   }
 
   // ── Scrubber ───────────────────────────────────────
@@ -158,21 +177,24 @@ export default function VideoPlayer({ src, onTimeUpdate, onEnded, initialTime }:
     setCurrent(pct * duration)
   }
 
-  function onScrubStart(e: React.MouseEvent) {
+  // Pointer events cover mouse, touch and pen
+  function onScrubStart(e: React.PointerEvent) {
     e.stopPropagation()
     setScrubbing(true)
     scrubAt(e.clientX)
     if (hideTimer.current) clearTimeout(hideTimer.current)
 
-    function onMove(ev: MouseEvent) { scrubAt(ev.clientX) }
+    function onMove(ev: PointerEvent) { scrubAt(ev.clientX) }
     function onUp() {
       setScrubbing(false)
       scheduleHide()
-      window.removeEventListener('mousemove', onMove)
-      window.removeEventListener('mouseup',   onUp)
+      window.removeEventListener('pointermove',   onMove)
+      window.removeEventListener('pointerup',     onUp)
+      window.removeEventListener('pointercancel', onUp)
     }
-    window.addEventListener('mousemove', onMove)
-    window.addEventListener('mouseup',   onUp)
+    window.addEventListener('pointermove',   onMove)
+    window.addEventListener('pointerup',     onUp)
+    window.addEventListener('pointercancel', onUp)
   }
 
   // ── Helpers ────────────────────────────────────────
@@ -196,6 +218,7 @@ export default function VideoPlayer({ src, onTimeUpdate, onEnded, initialTime }:
       style={{ background: '#000', aspectRatio: '16/9', maxHeight: '75vh' }}
       onMouseMove={revealControls}
       onMouseLeave={() => { if (playing) setShowControls(false) }}
+      onPointerDown={(e) => { lastPointer.current = e.pointerType }}
     >
       {/* Video element */}
       <video
@@ -203,13 +226,14 @@ export default function VideoPlayer({ src, onTimeUpdate, onEnded, initialTime }:
         src={src}
         className="w-full h-full"
         style={{ display: 'block' }}
+        playsInline
       />
 
       {/* Click-to-play zone (covers video area, stops above controls bar) */}
       <div
         className="absolute left-0 right-0 top-0"
         style={{ bottom: 72, cursor: playing ? 'none' : 'pointer' }}
-        onClick={togglePlay}
+        onClick={onVideoTap}
       />
 
       {/* Error */}
@@ -231,7 +255,7 @@ export default function VideoPlayer({ src, onTimeUpdate, onEnded, initialTime }:
           <div
             className="flex items-center justify-center rounded-full"
             style={{
-              width: 72, height: 72,
+              width: 'clamp(52px, 12vw, 72px)', height: 'clamp(52px, 12vw, 72px)',
               background: 'rgba(0,0,0,0.5)',
               backdropFilter: 'blur(8px)',
             }}
@@ -253,11 +277,11 @@ export default function VideoPlayer({ src, onTimeUpdate, onEnded, initialTime }:
         }}
       >
         {/* Scrubber */}
-        <div className="px-4 pb-1">
+        <div className="px-3 sm:px-4 pb-1">
           <div
             ref={scrubberRef}
-            style={{ height: 24, display: 'flex', alignItems: 'center', cursor: 'pointer', position: 'relative' }}
-            onMouseDown={onScrubStart}
+            style={{ height: 28, display: 'flex', alignItems: 'center', cursor: 'pointer', position: 'relative', touchAction: 'none' }}
+            onPointerDown={onScrubStart}
             onMouseEnter={() => setScrubHover(true)}
             onMouseLeave={() => setScrubHover(false)}
           >
@@ -304,13 +328,14 @@ export default function VideoPlayer({ src, onTimeUpdate, onEnded, initialTime }:
         </div>
 
         {/* Bottom bar */}
-        <div className="flex items-center gap-2 px-4 pb-4" style={{ color: 'white' }}>
+        <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-4 pb-2 sm:pb-4" style={{ color: 'white' }}>
           {/* Play/Pause */}
           <button
             style={{ width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0.9 }}
             onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
             onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.9')}
             onClick={(e) => { e.stopPropagation(); togglePlay() }}
+            aria-label={playing ? 'Pause' : 'Lecture'}
           >
             {playing
               ? <Pause size={22} fill="white" color="white" />
@@ -322,6 +347,7 @@ export default function VideoPlayer({ src, onTimeUpdate, onEnded, initialTime }:
           <button
             style={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0.9 }}
             onClick={(e) => { e.stopPropagation(); seek(-10) }}
+            aria-label="Reculer de 10 secondes"
           >
             <RotateCcw size={18} color="white" />
           </button>
@@ -330,12 +356,13 @@ export default function VideoPlayer({ src, onTimeUpdate, onEnded, initialTime }:
           <button
             style={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0.9 }}
             onClick={(e) => { e.stopPropagation(); seek(10) }}
+            aria-label="Avancer de 10 secondes"
           >
             <RotateCw size={18} color="white" />
           </button>
 
           {/* Time */}
-          <span style={{ fontSize: 13, fontVariantNumeric: 'tabular-nums', opacity: 0.85, marginLeft: 2 }}>
+          <span className="text-[11.5px] sm:text-[13px] whitespace-nowrap" style={{ fontVariantNumeric: 'tabular-nums', opacity: 0.85, marginLeft: 2 }}>
             {fmt(current)} / {fmt(duration)}
           </span>
 
@@ -345,6 +372,7 @@ export default function VideoPlayer({ src, onTimeUpdate, onEnded, initialTime }:
           <button
             style={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0.9 }}
             onClick={(e) => { e.stopPropagation(); toggleMute() }}
+            aria-label={muted ? 'Activer le son' : 'Couper le son'}
           >
             {muted || volume === 0 ? <VolumeX size={18} color="white" /> : <Volume2 size={18} color="white" />}
           </button>
@@ -353,6 +381,8 @@ export default function VideoPlayer({ src, onTimeUpdate, onEnded, initialTime }:
             value={muted ? 0 : volume}
             onChange={(e) => changeVolume(Number(e.target.value))}
             onClick={(e) => e.stopPropagation()}
+            className="hidden sm:block"
+            aria-label="Volume"
             style={{ width: 80, accentColor: 'white', cursor: 'pointer' }}
           />
 
@@ -360,6 +390,7 @@ export default function VideoPlayer({ src, onTimeUpdate, onEnded, initialTime }:
           <button
             style={{ width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0.9 }}
             onClick={(e) => { e.stopPropagation(); toggleFullscreen() }}
+            aria-label={fullscreen ? 'Quitter le plein écran' : 'Plein écran'}
           >
             {fullscreen ? <Minimize size={18} color="white" /> : <Maximize size={18} color="white" />}
           </button>

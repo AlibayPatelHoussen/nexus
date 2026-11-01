@@ -91,15 +91,15 @@ function ScriptCard({ script }: { script: ScriptInfo }) {
           <FileCode2 size={18} strokeWidth={1.8} style={{ color }} />
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-[14px] font-semibold font-mono" style={{ color: 'var(--text)' }}>
+          <div className="text-[14px] font-semibold font-mono truncate" style={{ color: 'var(--text)' }}>
             {script.filename}
           </div>
-          <div className="text-[11.5px]" style={{ color: 'var(--text3)' }}>
+          <div className="text-[11.5px] line-clamp-2 break-words" style={{ color: 'var(--text3)' }}>
             {script.description || script.path}
           </div>
         </div>
         {running && (
-          <div className="flex items-center gap-1.5 text-[11px]" style={{ color: 'var(--green)' }}>
+          <div className="flex items-center gap-1.5 text-[11px] flex-shrink-0" style={{ color: 'var(--green)' }}>
             <div
               className="w-1.5 h-1.5 rounded-full animate-pulse-glow"
               style={{ background: 'var(--green)' }}
@@ -123,7 +123,7 @@ function ScriptCard({ script }: { script: ScriptInfo }) {
         </button>
         {output.length > 0 && (
           <button
-            className="btn-ghost text-[12px] px-3"
+            className="btn-ghost text-[12px] px-3 flex-shrink-0"
             onClick={() => setShowOut(!showOut)}
           >
             {showOut ? 'Cacher logs' : 'Voir logs'}
@@ -155,7 +155,7 @@ function ScriptCard({ script }: { script: ScriptInfo }) {
               background:  '#09090e',
               color:       '#9191a8',
               lineHeight:  '1.7',
-              maxHeight:   '280px',
+              maxHeight:   'min(280px, 50vh)',
             }}
           >
             {output.length === 0 ? (
@@ -201,20 +201,20 @@ export default function ScriptsPage() {
 
   return (
     <div className="min-h-full" style={{ background: 'var(--bg)' }}>
-      <div className="sticky top-0 z-40 flex items-center justify-between px-7 pt-6 pb-1"
+      <div className="md:sticky top-0 z-30 flex items-start sm:items-center justify-between gap-3 px-4 sm:px-6 lg:px-7 pt-5 sm:pt-6 pb-1"
         style={{ background: 'var(--bg)' }}>
-        <div>
-          <h1 className="text-[26px] font-bold tracking-tight" style={{ color: 'var(--text)' }}>Scripts</h1>
+        <div className="min-w-0">
+          <h1 className="text-[22px] sm:text-[26px] font-bold tracking-tight" style={{ color: 'var(--text)' }}>Scripts</h1>
           <p className="text-[12.5px] mt-0.5" style={{ color: 'var(--text3)' }}>
             Exécutez vos scripts Python depuis l'interface — output en temps réel
           </p>
         </div>
-        <button className="btn-ghost text-[12.5px]" onClick={() => refetch()}>
-          <RefreshCw size={13} strokeWidth={2} /> Actualiser
+        <button className="btn-ghost text-[12.5px] flex-shrink-0" onClick={() => refetch()} aria-label="Actualiser">
+          <RefreshCw size={13} strokeWidth={2} /> <span className="hidden sm:inline">Actualiser</span>
         </button>
       </div>
 
-      <div className="px-7 py-5">
+      <div className="px-4 sm:px-6 lg:px-7 py-5">
         {isLoading ? (
           <div className="flex justify-center items-center h-40">
             <div className="w-5 h-5 border-2 rounded-full animate-spin"
@@ -232,7 +232,7 @@ export default function ScriptsPage() {
         ) : (
           <div
             className="grid gap-4"
-            style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))' }}
+            style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(min(320px, 100%), 1fr))' }}
           >
             {scripts.map((script, i) => (
               <div key={script.name} style={{ animationDelay: `${i * 50}ms` }}>

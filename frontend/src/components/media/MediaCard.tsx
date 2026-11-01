@@ -13,9 +13,11 @@ interface MediaCardProps {
   showType?:  boolean
   progress?:  number
   duration?:  number
+  /** Fill the grid cell instead of the fixed 120px used in horizontal rows */
+  fluid?:     boolean
 }
 
-export default function MediaCard({ item, showType, progress, duration }: MediaCardProps) {
+export default function MediaCard({ item, showType, progress, duration, fluid }: MediaCardProps) {
   const navigate  = useNavigate()
   const qc        = useQueryClient()
   const isAdmin   = useAuthStore((s) => s.user?.role === 'admin')
@@ -60,14 +62,13 @@ export default function MediaCard({ item, showType, progress, duration }: MediaC
 
   return (
     <div
-      className="flex-shrink-0 cursor-pointer group"
-      style={{ width: '120px' }}
+      className={`${fluid ? 'w-full min-w-0' : 'flex-shrink-0 w-[108px] sm:w-[120px]'} cursor-pointer group`}
       onClick={handleClick}
     >
       {/* Poster */}
       <div
-        className="relative rounded-xl overflow-hidden mb-2"
-        style={{ width: '120px', height: '170px', background: 'var(--surface2)' }}
+        className="relative w-full aspect-[12/17] rounded-xl overflow-hidden mb-2"
+        style={{ background: 'var(--surface2)' }}
       >
         {item.posterPath && !imgError ? (
           <img
@@ -97,9 +98,10 @@ export default function MediaCard({ item, showType, progress, duration }: MediaC
 
         {/* Favorite */}
         <button
-          className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+          className="hover-reveal absolute top-1.5 right-1.5 w-7 h-7 sm:w-6 sm:h-6 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
           style={{ background: 'rgba(0,0,0,0.6)' }}
           onClick={toggleFav}
+          aria-label={isFav ? 'Retirer des favoris' : 'Ajouter aux favoris'}
         >
           <Heart
             size={11}
@@ -114,10 +116,11 @@ export default function MediaCard({ item, showType, progress, duration }: MediaC
         {/* Delete (admin only) */}
         {isAdmin && (
           <button
-            className="absolute top-1.5 left-1.5 w-6 h-6 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+            className="hover-reveal absolute top-1.5 left-1.5 w-7 h-7 sm:w-6 sm:h-6 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
             style={{ background: 'rgba(0,0,0,0.6)' }}
             onClick={handleDelete}
             disabled={deleting}
+            aria-label="Supprimer de la bibliothèque"
           >
             <Trash2 size={11} strokeWidth={2} style={{ color: 'var(--red)' }} />
           </button>

@@ -4,8 +4,9 @@ import {
   Upload, Download, Trash2, Edit2, Search,
   Grid, List, X, Folder,
   FileVideo, FileImage, FileCode2, FileCog, FileText, FileArchive,
-  Eye,
+  Eye, MoreVertical,
 } from 'lucide-react'
+import { useMediaQuery } from '@/hooks/useMediaQuery'
 import { useFiles } from '@/hooks/useFiles'
 import { filesService } from '@/services/filesService'
 import { formatBytes, formatDate } from '@/utils'
@@ -74,19 +75,19 @@ function EditorModal({ entry, onClose }: { entry: FileEntry; onClose: () => void
   }
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4"
+    <div className="fixed inset-0 z-50 flex items-center justify-center sm:p-4"
       style={{ background: 'rgba(0,0,0,0.7)' }}>
-      <div className="card flex flex-col w-full max-w-4xl animate-fade-up"
-        style={{ height: '82vh', boxShadow: 'var(--shadow-lg)' }}>
-        <div className="flex items-center justify-between px-4 py-3 border-b"
+      <div className="card flex flex-col w-full max-w-4xl animate-fade-up h-[100dvh] sm:h-[82vh] !rounded-none sm:!rounded-[14px]"
+        style={{ boxShadow: 'var(--shadow-lg)' }}>
+        <div className="flex items-center justify-between gap-2 px-3 sm:px-4 py-3 border-b"
           style={{ borderColor: 'var(--border)' }}>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 min-w-0">
             <FileIcon entry={entry} size={13} />
-            <span className="text-[12.5px] font-mono font-semibold" style={{ color: 'var(--text)' }}>
+            <span className="text-[12.5px] font-mono font-semibold truncate" title={entry.path} style={{ color: 'var(--text)' }}>
               {entry.path}
             </span>
           </div>
-          <div className="flex gap-2">
+          <div className="flex gap-2 flex-shrink-0">
             <button className="btn-primary text-[12px]" onClick={save} disabled={saving || loading}>
               {saving ? 'Sauvegarde…' : 'Sauvegarder'}
             </button>
@@ -102,7 +103,7 @@ function EditorModal({ entry, onClose }: { entry: FileEntry; onClose: () => void
             </div>
           ) : (
             <textarea
-              className="w-full h-full p-4 resize-none outline-none terminal-font text-[12.5px]"
+              className="w-full h-full p-3 sm:p-4 resize-none outline-none terminal-font text-[13px] sm:text-[12.5px]"
               style={{ background: 'var(--bg)', color: 'var(--text)', border: 'none', lineHeight: '1.7' }}
               value={content}
               onChange={(e) => setContent(e.target.value)}
@@ -116,6 +117,9 @@ function EditorModal({ entry, onClose }: { entry: FileEntry; onClose: () => void
 }
 
 interface CtxMenu { x: number; y: number; entry: FileEntry }
+
+// Checkbox · name · size · [modified · permissions on md+] · actions
+const LIST_COLS = 'grid grid-cols-[18px_minmax(0,1fr)_72px_28px] md:grid-cols-[18px_minmax(0,1fr)_110px_150px_90px_28px]'
 
 const EDITABLE_EXTS = ['.txt', '.md', '.json', '.yaml', '.yml', '.conf',
   '.service', '.env', '.sh', '.py', '.ts', '.tsx', '.js', '.jsx',
@@ -159,6 +163,14 @@ export default function FilesPage() {
   const filtered = entries.filter((e) =>
     e.name.toLowerCase().includes(search.toLowerCase()))
 
+  // On touch screens a single tap opens (no double-click / right-click)
+  const isTouch = useMediaQuery('(pointer: coarse)')
+
+  function openMenuAt(el: HTMLElement, entry: FileEntry) {
+    const r = el.getBoundingClientRect()
+    setCtxMenu({ x: r.right - 180, y: r.bottom + 4, entry })
+  }
+
   function handleOpen(entry: FileEntry) {
     if (entry.type === 'directory') return navigate(entry.path)
     const videoExts = ['.mp4', '.mkv', '.avi', '.mov', '.webm']
@@ -184,11 +196,11 @@ export default function FilesPage() {
     <div className="flex flex-col h-full" style={{ background: 'var(--bg)' }}>
 
       {/* TOPBAR */}
-      <div className="flex items-center gap-2 px-5 py-3 border-b"
+      <div className="flex flex-wrap items-center gap-2 px-3 sm:px-5 py-2.5 sm:py-3 border-b"
         style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
 
-        {/* Breadcrumbs */}
-        <div className="flex items-center gap-0.5 flex-1 min-w-0 overflow-x-auto">
+        {/* Breadcrumbs — full row on mobile */}
+        <div className="flex items-center gap-0.5 basis-full md:basis-auto flex-1 min-w-0 overflow-x-auto">
           {breadcrumbs.map((c, i) => (
             <div key={c.path} className="flex items-center gap-0.5 flex-shrink-0">
               {i > 0 && <ChevronRight size={12} style={{ color: 'var(--text3)' }} />}
@@ -202,34 +214,35 @@ export default function FilesPage() {
         </div>
 
         {/* Search */}
-        <div className="relative">
+        <div className="relative flex-1 md:flex-none min-w-[120px]">
           <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--text3)' }} />
-          <input className="input pl-7 pr-3 py-1.5 text-[12px] w-44" placeholder="Rechercher…"
+          <input className="input pl-7 pr-3 py-1.5 text-[16px] sm:text-[12px] w-full md:w-44" placeholder="Rechercher…"
             value={search} onChange={(e) => setSearch(e.target.value)} />
           {search && <button className="absolute right-2 top-1/2 -translate-y-1/2" onClick={() => setSearch('')}>
             <X size={11} style={{ color: 'var(--text3)' }} /></button>}
         </div>
 
         {/* Buttons */}
-        <button className="btn-ghost text-[12px] px-2.5 py-1.5" onClick={goUp}><ChevronUp size={13} strokeWidth={2} /></button>
-        <button className="btn-ghost text-[12px]" onClick={() => { setCreating('dir'); setNewItem('') }}><FolderPlus size={13} strokeWidth={2} /> Dossier</button>
-        <button className="btn-ghost text-[12px]" onClick={() => { setCreating('file'); setNewItem('') }}><FilePlus size={13} strokeWidth={2} /> Fichier</button>
-        <button className="btn-ghost text-[12px]" onClick={() => uploadRef.current?.click()}><Upload size={13} strokeWidth={2} /> Upload</button>
+        <button className="btn-ghost text-[12px] px-2.5 py-1.5" onClick={goUp} aria-label="Dossier parent" title="Dossier parent"><ChevronUp size={13} strokeWidth={2} /></button>
+        <button className="btn-ghost text-[12px] px-2.5 sm:px-4" onClick={() => { setCreating('dir'); setNewItem('') }} aria-label="Nouveau dossier" title="Nouveau dossier"><FolderPlus size={13} strokeWidth={2} /> <span className="hidden sm:inline">Dossier</span></button>
+        <button className="btn-ghost text-[12px] px-2.5 sm:px-4" onClick={() => { setCreating('file'); setNewItem('') }} aria-label="Nouveau fichier" title="Nouveau fichier"><FilePlus size={13} strokeWidth={2} /> <span className="hidden sm:inline">Fichier</span></button>
+        <button className="btn-ghost text-[12px] px-2.5 sm:px-4" onClick={() => uploadRef.current?.click()} aria-label="Upload" title="Upload"><Upload size={13} strokeWidth={2} /> <span className="hidden sm:inline">Upload</span></button>
         {selected.size > 0 && (
           <button className="btn-danger text-[12px]" onClick={() => {
             if (confirm(`Supprimer ${selected.size} élément(s) ?`)) {
               selected.forEach((p) => deleteEntry(p)); clearSelect()
             }
-          }}><Trash2 size={13} strokeWidth={2} /> ({selected.size})</button>
+          }} aria-label="Supprimer la sélection"><Trash2 size={13} strokeWidth={2} /> ({selected.size})</button>
         )}
         <button className="btn-ghost text-[12px] px-2.5 py-1.5"
+          aria-label={viewMode === 'list' ? 'Vue grille' : 'Vue liste'}
           onClick={() => setViewMode(v => v === 'list' ? 'grid' : 'list')}>
           {viewMode === 'list' ? <Grid size={13} strokeWidth={2} /> : <List size={13} strokeWidth={2} />}
         </button>
       </div>
 
       {/* CONTENT */}
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 overflow-y-auto p-2 sm:p-4">
         {isLoading ? (
           <div className="flex justify-center items-center h-40">
             <div className="w-5 h-5 border-2 rounded-full animate-spin"
@@ -244,27 +257,30 @@ export default function FilesPage() {
           </div>
         ) : viewMode === 'list' ? (
           <div className="card overflow-hidden">
-            <div className="grid px-4 py-2 border-b text-[11px] font-semibold uppercase tracking-wide"
-              style={{ gridTemplateColumns: '18px 1fr 110px 150px 90px', borderColor: 'var(--border)', background: 'var(--surface2)', color: 'var(--text3)' }}>
+            <div className={`${LIST_COLS} gap-x-2 px-3 sm:px-4 py-2 border-b text-[11px] font-semibold uppercase tracking-wide`}
+              style={{ borderColor: 'var(--border)', background: 'var(--surface2)', color: 'var(--text3)' }}>
               <input type="checkbox" className="w-3.5 h-3.5 cursor-pointer"
                 checked={selected.size === filtered.length && filtered.length > 0}
                 onChange={(e) => e.target.checked ? selectAll() : clearSelect()} />
-              <span>Nom</span><span>Taille</span><span>Modifié</span><span>Permissions</span>
+              <span>Nom</span><span>Taille</span>
+              <span className="hidden md:block">Modifié</span>
+              <span className="hidden md:block">Permissions</span>
+              <span />
             </div>
             {filtered.map((entry) => (
               <div key={entry.path}
-                className="grid items-center px-4 py-2 border-b cursor-pointer transition-colors"
+                className={`${LIST_COLS} gap-x-2 items-center px-3 sm:px-4 py-2.5 sm:py-2 border-b cursor-pointer transition-colors`}
                 style={{
-                  gridTemplateColumns: '18px 1fr 110px 150px 90px',
                   borderColor: 'var(--border)',
                   background: selected.has(entry.path) ? 'var(--blue-dim)' : 'transparent',
                 }}
                 onMouseEnter={(e) => { if (!selected.has(entry.path)) e.currentTarget.style.background = 'var(--surface2)' }}
                 onMouseLeave={(e) => { if (!selected.has(entry.path)) e.currentTarget.style.background = 'transparent' }}
                 onDoubleClick={() => handleOpen(entry)}
+                onClick={() => { if (isTouch) handleOpen(entry) }}
                 onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, entry }) }}
               >
-                <input type="checkbox" className="w-3.5 h-3.5 cursor-pointer"
+                <input type="checkbox" className="w-4 h-4 sm:w-3.5 sm:h-3.5 cursor-pointer"
                   checked={selected.has(entry.path)}
                   onChange={() => toggleSelect(entry.path)}
                   onClick={(e) => e.stopPropagation()} />
@@ -272,16 +288,24 @@ export default function FilesPage() {
                   <FileIcon entry={entry} />
                   <span className="text-[13px] truncate" style={{ color: 'var(--text)' }}>{entry.name}</span>
                 </div>
-                <span className="text-[11.5px] font-mono" style={{ color: 'var(--text3)' }}>
+                <span className="text-[11.5px] font-mono truncate" style={{ color: 'var(--text3)' }}>
                   {entry.size != null ? formatBytes(entry.size) : '—'}
                 </span>
-                <span className="text-[11.5px]" style={{ color: 'var(--text3)' }}>{formatDate(entry.modified)}</span>
-                <span className="text-[11px] font-mono" style={{ color: 'var(--text3)' }}>{entry.permissions}</span>
+                <span className="hidden md:block text-[11.5px] truncate" style={{ color: 'var(--text3)' }}>{formatDate(entry.modified)}</span>
+                <span className="hidden md:block text-[11px] font-mono" style={{ color: 'var(--text3)' }}>{entry.permissions}</span>
+                <button
+                  className="w-7 h-7 -mr-1 rounded-md flex items-center justify-center hover:bg-[var(--surface3)]"
+                  style={{ color: 'var(--text3)' }}
+                  aria-label={`Actions pour ${entry.name}`}
+                  onClick={(e) => { e.stopPropagation(); openMenuAt(e.currentTarget, entry) }}
+                >
+                  <MoreVertical size={14} />
+                </button>
               </div>
             ))}
           </div>
         ) : (
-          <div className="grid gap-1.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(110px, 1fr))' }}>
+          <div className="grid gap-1.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))' }}>
             {filtered.map((entry) => (
               <div key={entry.path}
                 className="flex flex-col items-center gap-1.5 p-3 rounded-xl cursor-pointer transition-all text-center"
@@ -292,7 +316,7 @@ export default function FilesPage() {
                 onMouseEnter={(e) => { if (!selected.has(entry.path)) e.currentTarget.style.background = 'var(--surface2)' }}
                 onMouseLeave={(e) => { if (!selected.has(entry.path)) e.currentTarget.style.background = 'transparent' }}
                 onDoubleClick={() => handleOpen(entry)}
-                onClick={() => toggleSelect(entry.path)}
+                onClick={() => (isTouch ? handleOpen(entry) : toggleSelect(entry.path))}
                 onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, entry }) }}
               >
                 <FileIcon entry={entry} size={30} />
@@ -305,10 +329,10 @@ export default function FilesPage() {
       </div>
 
       {/* STATUS BAR */}
-      <div className="flex items-center justify-between px-5 py-1.5 border-t text-[11px] font-mono"
-        style={{ background: 'var(--surface)', borderColor: 'var(--border)', color: 'var(--text3)' }}>
-        <span>{filtered.length} élément(s)</span>
-        <span className="truncate max-w-sm">{currentPath}</span>
+      <div className="flex items-center justify-between gap-3 px-3 sm:px-5 py-1.5 border-t text-[11px] font-mono"
+        style={{ background: 'var(--surface)', borderColor: 'var(--border)', color: 'var(--text3)', paddingBottom: 'max(0.375rem, env(safe-area-inset-bottom))' }}>
+        <span className="flex-shrink-0">{filtered.length} élément(s)</span>
+        <span className="hidden sm:block truncate max-w-sm">{currentPath}</span>
         {selected.size > 0 && <span>{selected.size} sélectionné(s)</span>}
       </div>
 
@@ -316,8 +340,12 @@ export default function FilesPage() {
       {ctxMenu && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setCtxMenu(null)} />
-          <div className="fixed z-50 card py-1 min-w-[160px]"
-            style={{ top: ctxMenu.y, left: ctxMenu.x, boxShadow: 'var(--shadow-lg)' }}>
+          <div className="fixed z-50 card py-1 min-w-[180px]"
+            style={{
+              top:  Math.max(8, Math.min(ctxMenu.y, window.innerHeight - 230)),
+              left: Math.max(8, Math.min(ctxMenu.x, window.innerWidth - 190)),
+              boxShadow: 'var(--shadow-lg)',
+            }}>
             {[
               { icon: <Eye size={13} />, label: 'Ouvrir', action: () => { handleOpen(ctxMenu.entry); setCtxMenu(null) } },
               EDITABLE_EXTS.includes(ctxMenu.entry.extension || '') && {
@@ -332,7 +360,7 @@ export default function FilesPage() {
                 action: () => { if (confirm(`Supprimer "${ctxMenu.entry.name}" ?`)) deleteEntry(ctxMenu.entry.path); setCtxMenu(null) } },
             ].filter((x): x is { icon: React.ReactElement; label: string; action: () => void; danger?: boolean } => Boolean(x)).map((item) => (
               <button key={item.label}
-                className="flex items-center gap-2.5 w-full px-3 py-2 text-[12.5px] text-left transition-colors"
+                className="flex items-center gap-2.5 w-full px-3 py-2.5 sm:py-2 text-[13px] sm:text-[12.5px] text-left transition-colors"
                 style={{ color: item.danger ? 'var(--red)' : 'var(--text)' }}
                 onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface2)'}
                 onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}

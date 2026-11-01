@@ -80,6 +80,10 @@
     background-color: var(--bg);
     color: var(--text);
     min-height: 100vh;
+    min-height: 100dvh;
+    -webkit-tap-highlight-color: transparent;
+    text-size-adjust: 100%;
+    -webkit-text-size-adjust: 100%;
   }
 
   * {
@@ -193,6 +197,22 @@
   }
 
   .toggle:not(.off) .toggle-thumb { transform: translateX(14px); }
+
+  /* ── Responsive helpers ───────────────────────── */
+
+  /* Controls revealed on hover are always visible on touch screens */
+  @media (hover: none) {
+    .hover-reveal { opacity: 1 !important; }
+  }
+
+  /* iOS zooms into inputs smaller than 16px: avoid it on phones */
+  @media (max-width: 639px) {
+    .input, select.input, textarea.input { font-size: 16px !important; }
+    .nav-item { padding-top: 0.625rem; padding-bottom: 0.625rem; }
+  }
+
+  .scrollbar-none { scrollbar-width: none; }
+  .scrollbar-none::-webkit-scrollbar { display: none; }
 
   /* Terminal */
   .terminal-font { font-family: 'Geist Mono', monospace; }

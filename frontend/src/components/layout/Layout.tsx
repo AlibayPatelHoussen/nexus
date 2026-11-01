@@ -1,8 +1,9 @@
-import { NavLink, Outlet, useNavigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import {
   Layers, LayoutDashboard, FolderOpen, Terminal,
   Film, Tv2, BookOpen, Activity, Zap, Wifi,
-  Settings2, LogOut, Sun, Moon,
+  Settings2, LogOut, Sun, Moon, Menu, X,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 import { cn } from '@/utils'
@@ -42,6 +43,20 @@ export default function Layout() {
   const theme     = useAuthStore((s) => s.theme)
   const setTheme  = useAuthStore((s) => s.setTheme)
   const logout    = useAuthStore((s) => s.logout)
+  const location  = useLocation()
+  const [drawerOpen, setDrawerOpen] = useState(false)
+
+  // Close the mobile drawer on navigation and with Escape
+  useEffect(() => { setDrawerOpen(false) }, [location.pathname])
+  useEffect(() => {
+    if (!drawerOpen) return
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') setDrawerOpen(false) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [drawerOpen])
+
+  const currentLabel = NAV_SECTIONS.flatMap((s) => s.items)
+    .find((i) => location.pathname.startsWith(i.to))?.label ?? 'Nexus'
 
   function handleLogout() {
     logout()
@@ -53,11 +68,25 @@ export default function Layout() {
   }
 
   return (
-    <div className="flex h-screen overflow-hidden" style={{ background: 'var(--bg)' }}>
+    <div className="flex h-[100dvh] overflow-hidden" style={{ background: 'var(--bg)' }}>
 
-      {/* ── SIDEBAR ── */}
+      {/* ── Mobile backdrop ── */}
+      {drawerOpen && (
+        <div
+          className="fixed inset-0 z-40 bg-black/50 backdrop-blur-sm lg:hidden animate-fade-in"
+          onClick={() => setDrawerOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* ── SIDEBAR (static on desktop, drawer below lg) ── */}
       <aside
-        className="flex flex-col w-[240px] flex-shrink-0 border-r h-full overflow-hidden"
+        id="nexus-sidebar"
+        className={cn(
+          'flex flex-col w-[260px] lg:w-[240px] flex-shrink-0 border-r h-full overflow-hidden',
+          'fixed inset-y-0 left-0 z-50 transition-transform duration-200 ease-out lg:static lg:translate-x-0',
+          drawerOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full',
+        )}
         style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
       >
         {/* Header */}
@@ -73,10 +102,18 @@ export default function Layout() {
               <div className="text-[15px] font-bold tracking-tight" style={{ color: 'var(--text)' }}>
                 Nexus
               </div>
-              <div className="text-[10.5px] font-mono" style={{ color: 'var(--text3)' }}>
+              <div className="text-[10.5px] font-mono truncate" style={{ color: 'var(--text3)' }}>
                 {window.location.hostname}
               </div>
             </div>
+            <button
+              className="ml-auto p-2 -mr-2 rounded-lg lg:hidden"
+              style={{ color: 'var(--text2)' }}
+              onClick={() => setDrawerOpen(false)}
+              aria-label="Fermer le menu"
+            >
+              <X size={18} strokeWidth={2} />
+            </button>
           </div>
         </div>
 
@@ -169,9 +206,45 @@ export default function Layout() {
       </aside>
 
       {/* ── MAIN ── */}
-      <main className="flex-1 overflow-y-auto">
-        <Outlet />
-      </main>
+      <div className="flex-1 min-w-0 flex flex-col h-full">
+        {/* Mobile top bar */}
+        <header
+          className="lg:hidden flex items-center gap-3 px-4 h-14 border-b flex-shrink-0"
+          style={{ background: 'var(--surface)', borderColor: 'var(--border)', paddingTop: 'env(safe-area-inset-top)' }}
+        >
+          <button
+            className="p-2 -ml-2 rounded-lg"
+            style={{ color: 'var(--text)' }}
+            onClick={() => setDrawerOpen(true)}
+            aria-label="Ouvrir le menu"
+            aria-controls="nexus-sidebar"
+            aria-expanded={drawerOpen}
+          >
+            <Menu size={20} strokeWidth={2} />
+          </button>
+          <div
+            className="w-[28px] h-[28px] rounded-[8px] flex items-center justify-center flex-shrink-0"
+            style={{ background: 'var(--blue)' }}
+          >
+            <Layers size={14} color="white" strokeWidth={2.5} />
+          </div>
+          <span className="text-[15px] font-semibold truncate" style={{ color: 'var(--text)' }}>
+            {currentLabel}
+          </span>
+          <button
+            onClick={toggleTheme}
+            className="ml-auto p-2 -mr-2 rounded-lg"
+            style={{ color: 'var(--text2)' }}
+            aria-label={theme === 'dark' ? 'Mode clair' : 'Mode sombre'}
+          >
+            {theme === 'dark' ? <Sun size={18} strokeWidth={2} /> : <Moon size={18} strokeWidth={2} />}
+          </button>
+        </header>
+
+        <main className="flex-1 min-w-0 overflow-y-auto overflow-x-hidden">
+          <Outlet />
+        </main>
+      </div>
     </div>
   )
 }

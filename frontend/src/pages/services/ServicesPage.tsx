@@ -56,17 +56,17 @@ function ServiceCard({ service }: { service: ServiceInfo }) {
           <DynamicIcon name={service.icon} color={color} />
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-[14px] font-semibold" style={{ color: 'var(--text)' }}>
+          <div className="text-[14px] font-semibold truncate" style={{ color: 'var(--text)' }}>
             {service.displayName}
           </div>
-          <div className="text-[11px] font-mono" style={{ color: 'var(--text3)' }}>
+          <div className="text-[11px] font-mono truncate" style={{ color: 'var(--text3)' }}>
             {service.description}
           </div>
         </div>
 
         {/* Status badge */}
         <div
-          className="badge text-[10.5px] px-2 py-0.5"
+          className="badge text-[10.5px] px-2 py-0.5 flex-shrink-0"
           style={{
             background: isOn ? 'var(--green-dim)' : isFailed ? 'var(--red-dim)' : 'var(--surface3)',
             color:      isOn ? 'var(--green)'     : isFailed ? 'var(--red)'     : 'var(--text3)',
@@ -84,40 +84,44 @@ function ServiceCard({ service }: { service: ServiceInfo }) {
       </div>
 
       {/* Actions */}
-      <div className="flex items-center gap-1.5 p-3" style={{ background: 'var(--surface2)' }}>
+      <div className="flex items-center gap-1.5 p-2.5 sm:p-3" style={{ background: 'var(--surface2)' }}>
         <button
-          className="btn-ghost text-[12px] flex-1 justify-center"
+          className="btn-ghost text-[12px] flex-1 justify-center px-2 sm:px-4 min-w-0"
           disabled={isOn || toggleMut.isPending}
           style={{ opacity: isOn ? 0.4 : 1 }}
           onClick={() => toggleMut.mutate('start')}
+          aria-label="Démarrer"
         >
-          <Play size={12} strokeWidth={2} /> Démarrer
+          <Play size={12} strokeWidth={2} /> <span className="hidden min-[420px]:inline truncate">Démarrer</span>
         </button>
         <button
-          className="btn-ghost text-[12px] flex-1 justify-center"
+          className="btn-ghost text-[12px] flex-1 justify-center px-2 sm:px-4 min-w-0"
           disabled={!isOn || toggleMut.isPending}
           style={{ opacity: !isOn ? 0.4 : 1 }}
           onClick={() => toggleMut.mutate('stop')}
+          aria-label="Arrêter"
         >
-          <Square size={12} strokeWidth={2} /> Arrêter
+          <Square size={12} strokeWidth={2} /> <span className="hidden min-[420px]:inline truncate">Arrêter</span>
         </button>
         <button
-          className="btn-ghost text-[12px] flex-1 justify-center"
+          className="btn-ghost text-[12px] flex-1 justify-center px-2 sm:px-4 min-w-0"
           disabled={toggleMut.isPending}
           onClick={() => toggleMut.mutate('restart')}
+          aria-label="Redémarrer"
         >
-          <RotateCcw size={12} strokeWidth={2} /> Redémarrer
+          <RotateCcw size={12} strokeWidth={2} /> <span className="hidden min-[420px]:inline truncate">Redémarrer</span>
         </button>
         <button
-          className="btn-ghost text-[12px] px-3"
+          className="btn-ghost text-[12px] px-3 flex-shrink-0"
           onClick={fetchLogs}
           disabled={loadingLogs}
+          aria-label="Voir les logs"
         >
           <ScrollText size={12} strokeWidth={2} />
         </button>
         {service.url && (
           <a href={service.url} target="_blank" rel="noopener noreferrer"
-            className="btn-ghost text-[12px] px-3">
+            className="btn-ghost text-[12px] px-3 flex-shrink-0" aria-label="Ouvrir le service">
             <ExternalLink size={12} strokeWidth={2} />
           </a>
         )}
@@ -131,8 +135,8 @@ function ServiceCard({ service }: { service: ServiceInfo }) {
             <span className="text-[11px] font-semibold" style={{ color: 'var(--text3)' }}>
               LOGS — {service.displayName}
             </span>
-            <button className="text-[11px]" style={{ color: 'var(--text3)' }}
-              onClick={() => setShowLogs(false)}>✕</button>
+            <button className="text-[11px] p-1.5 -mr-1.5" style={{ color: 'var(--text3)' }}
+              onClick={() => setShowLogs(false)} aria-label="Fermer les logs">✕</button>
           </div>
           <div className="p-3 overflow-y-auto max-h-60 terminal-font text-[11px]"
             style={{ background: '#09090e', lineHeight: '1.7', color: '#9191a8' }}>
@@ -172,10 +176,10 @@ export default function ServicesPage() {
     <div className="min-h-full" style={{ background: 'var(--bg)' }}>
 
       {/* Topbar */}
-      <div className="sticky top-0 z-40 flex items-center justify-between px-7 pt-6 pb-1"
+      <div className="md:sticky top-0 z-30 flex items-center justify-between gap-3 px-4 sm:px-6 lg:px-7 pt-5 sm:pt-6 pb-1"
         style={{ background: 'var(--bg)' }}>
-        <div>
-          <h1 className="text-[26px] font-bold tracking-tight" style={{ color: 'var(--text)' }}>
+        <div className="min-w-0">
+          <h1 className="text-[22px] sm:text-[26px] font-bold tracking-tight" style={{ color: 'var(--text)' }}>
             Services
           </h1>
           <p className="text-[12.5px] mt-0.5" style={{ color: 'var(--text3)' }}>
@@ -187,21 +191,22 @@ export default function ServicesPage() {
           </p>
         </div>
         <button
-          className="btn-ghost text-[12.5px]"
+          className="btn-ghost text-[12.5px] flex-shrink-0"
           onClick={() => qc.invalidateQueries({ queryKey: ['services'] })}
+          aria-label="Actualiser"
         >
-          <RefreshCw size={13} strokeWidth={2} /> Actualiser
+          <RefreshCw size={13} strokeWidth={2} /> <span className="hidden sm:inline">Actualiser</span>
         </button>
       </div>
 
-      <div className="px-7 py-5">
+      <div className="px-4 sm:px-6 lg:px-7 py-5">
         {isLoading ? (
           <div className="flex justify-center items-center h-40">
             <div className="w-5 h-5 border-2 rounded-full animate-spin"
               style={{ borderColor: 'var(--border2)', borderTopColor: 'var(--blue)' }} />
           </div>
         ) : (
-          <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(320px, 1fr))' }}>
+          <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(min(320px, 100%), 1fr))' }}>
             {services.map((svc, i) => (
               <div key={svc.name} style={{ animationDelay: `${i * 40}ms` }}>
                 <ServiceCard service={svc} />

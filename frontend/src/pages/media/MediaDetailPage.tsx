@@ -113,7 +113,7 @@ export default function MediaDetailPage() {
     <div className="min-h-full" style={{ background: 'var(--bg)' }}>
 
       {/* ── BACKDROP ── */}
-      <div className="relative h-[420px] overflow-hidden">
+      <div className="relative h-[240px] sm:h-[340px] lg:h-[420px] overflow-hidden">
         {media.backdropPath && !imgErr ? (
           <img
             src={media.backdropPath}
@@ -134,7 +134,8 @@ export default function MediaDetailPage() {
 
         {/* Back button */}
         <button
-          className="absolute top-5 left-5 flex items-center gap-1.5 text-[13px] font-medium text-white/70 hover:text-white transition-colors"
+          className="absolute top-4 left-4 sm:top-5 sm:left-5 flex items-center gap-1.5 text-[13px] font-medium text-white/70 hover:text-white transition-colors p-1 -m-1"
+          style={{ marginTop: 'env(safe-area-inset-top)' }}
           onClick={() => navigate(-1)}
         >
           <ArrowLeft size={16} strokeWidth={2} /> Retour
@@ -143,7 +144,8 @@ export default function MediaDetailPage() {
         {/* Scan button (manga/webtoon only) */}
         {isReading && (
           <button
-            className="absolute top-5 right-5 flex items-center gap-1.5 text-[12px] font-medium text-white/60 hover:text-white transition-colors"
+            className="absolute top-4 right-4 sm:top-5 sm:right-5 flex items-center gap-1.5 text-[12px] font-medium text-white/60 hover:text-white transition-colors p-1 -m-1"
+            style={{ marginTop: 'env(safe-area-inset-top)' }}
             onClick={scan}
             disabled={scanning}
           >
@@ -154,25 +156,21 @@ export default function MediaDetailPage() {
       </div>
 
       {/* ── CONTENT ── */}
-      <div className="px-7 pb-10" style={{ marginTop: '-200px', position: 'relative' }}>
-        <div className="flex gap-6 mb-6">
+      <div className="relative px-4 sm:px-6 lg:px-7 pb-10 -mt-[150px] sm:-mt-[200px]">
+        <div className="flex flex-col sm:flex-row gap-4 sm:gap-6 mb-6">
 
           {/* Poster */}
           {media.posterPath && (
             <img
               src={media.posterPath}
               alt={media.title}
-              className="rounded-xl flex-shrink-0 object-cover"
-              style={{
-                width:     '160px',
-                height:    '230px',
-                boxShadow: 'var(--shadow-lg)',
-              }}
+              className="rounded-xl flex-shrink-0 object-cover w-[110px] h-[158px] sm:w-[160px] sm:h-[230px]"
+              style={{ boxShadow: 'var(--shadow-lg)' }}
             />
           )}
 
           {/* Info */}
-          <div className="flex-1 min-w-0 pt-20">
+          <div className="flex-1 min-w-0 sm:pt-20">
             {/* Type badge */}
             <div
               className="badge mb-2 text-[11px]"
@@ -184,7 +182,7 @@ export default function MediaDetailPage() {
               {typeLabel[media.type]}
             </div>
 
-            <h1 className="text-[28px] font-bold tracking-tight mb-1 leading-tight"
+            <h1 className="text-[22px] sm:text-[28px] font-bold tracking-tight mb-1 leading-tight break-words"
               style={{ color: 'var(--text)' }}>
               {media.title}
             </h1>
@@ -196,7 +194,7 @@ export default function MediaDetailPage() {
             )}
 
             {/* Meta row */}
-            <div className="flex flex-wrap items-center gap-3 mb-4">
+            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mb-4">
               {media.year && (
                 <div className="flex items-center gap-1 text-[12.5px]" style={{ color: 'var(--text3)' }}>
                   <Calendar size={12} strokeWidth={2} /> {media.year}
@@ -241,9 +239,9 @@ export default function MediaDetailPage() {
             )}
 
             {/* Action buttons */}
-            <div className="flex items-center gap-2.5">
+            <div className="flex flex-wrap items-center gap-2.5">
               <button
-                className="btn-primary text-[13px] px-5 py-2.5"
+                className="btn-primary text-[13px] px-5 py-2.5 flex-1 sm:flex-none justify-center"
                 onClick={() => play()}
               >
                 <Play size={14} fill="white" strokeWidth={0} />
@@ -254,7 +252,7 @@ export default function MediaDetailPage() {
               </button>
 
               <button
-                className="btn-ghost text-[13px] px-4 py-2.5"
+                className="btn-ghost text-[13px] px-4 py-2.5 justify-center"
                 onClick={() => favMut.mutate()}
                 disabled={favMut.isPending}
               >
@@ -274,7 +272,7 @@ export default function MediaDetailPage() {
 
         {/* Overview */}
         {media.overview && (
-          <div className="card p-5 mb-5 animate-fade-up">
+          <div className="card p-4 sm:p-5 mb-5 animate-fade-up">
             <h2 className="text-[13px] font-semibold uppercase tracking-wide mb-2"
               style={{ color: 'var(--text3)' }}>
               Synopsis
@@ -288,17 +286,17 @@ export default function MediaDetailPage() {
         {/* Episodes */}
         {episodes.length > 0 && (
           <div className="card overflow-hidden mb-5 animate-fade-up" style={{ animationDelay: '60ms' }}>
-            <div className="px-5 pt-5 pb-0 mb-4">
+            <div className="px-4 sm:px-5 pt-4 sm:pt-5 pb-0 mb-4">
               <h2 className="text-[14px] font-semibold mb-3" style={{ color: 'var(--text)' }}>
                 Épisodes
               </h2>
               {/* Season tabs */}
               {seasons.length > 1 && (
-                <div className="flex gap-2 mb-1">
+                <div className="flex gap-2 mb-1 overflow-x-auto scrollbar-none -mx-4 px-4 sm:mx-0 sm:px-0">
                   {seasons.map((s) => (
                     <button
                       key={s}
-                      className="px-3 py-1.5 rounded-full text-[12px] font-semibold transition-all"
+                      className="px-3 py-1.5 rounded-full text-[12px] font-semibold transition-all flex-shrink-0 whitespace-nowrap"
                       style={{
                         background: activeSeason === s ? 'var(--blue)' : 'var(--surface2)',
                         color:      activeSeason === s ? 'white'       : 'var(--text3)',
@@ -325,7 +323,7 @@ export default function MediaDetailPage() {
                   return (
                     <div
                       key={ep.id}
-                      className="flex items-center gap-3 px-5 py-3 cursor-pointer transition-colors border-b"
+                      className="flex items-center gap-3 px-4 sm:px-5 py-3 cursor-pointer transition-colors border-b"
                       style={{
                         borderColor: 'var(--border)',
                         background:  epProgress ? 'var(--blue-dim)' : 'transparent',
@@ -382,19 +380,19 @@ export default function MediaDetailPage() {
         {/* Chapters */}
         {chapters.length > 0 && (
           <div className="card overflow-hidden animate-fade-up" style={{ animationDelay: '60ms' }}>
-            <div className="flex items-center justify-between px-5 pt-5 pb-3">
+            <div className="flex flex-wrap items-center justify-between gap-2 px-4 sm:px-5 pt-4 sm:pt-5 pb-3">
               <h2 className="text-[14px] font-semibold" style={{ color: 'var(--text)' }}>
                 Chapitres ({chapters.length})
               </h2>
               <button className="btn-primary text-[12px]" onClick={() => play(undefined, chapters[0]?.id)}>
-                <BookOpen size={12} strokeWidth={2} /> Commencer la lecture
+                <BookOpen size={12} strokeWidth={2} /> <span className="hidden min-[400px]:inline">Commencer la lecture</span><span className="min-[400px]:hidden">Lire</span>
               </button>
             </div>
             <div className="pb-2">
               {chapters.map((chap) => (
                 <div
                   key={chap.id}
-                  className="flex items-center gap-3 px-5 py-2.5 cursor-pointer transition-colors border-b"
+                  className="flex items-center gap-3 px-4 sm:px-5 py-3 sm:py-2.5 cursor-pointer transition-colors border-b"
                   style={{ borderColor: 'var(--border)', background: 'transparent' }}
                   onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface2)' }}
                   onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}

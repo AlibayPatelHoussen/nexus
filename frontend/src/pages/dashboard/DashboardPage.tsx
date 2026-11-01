@@ -44,11 +44,11 @@ export default function DashboardPage() {
 
       {/* ── TOPBAR ── */}
       <div
-        className="sticky top-0 z-40 flex items-start justify-between px-7 pt-6 pb-1"
+        className="lg:sticky top-0 z-30 flex flex-col sm:flex-row sm:items-start justify-between gap-3 px-4 sm:px-6 lg:px-7 pt-5 sm:pt-6 pb-1"
         style={{ background: 'var(--bg)' }}
       >
-        <div>
-          <h1 className="text-[26px] font-bold tracking-tight" style={{ color: 'var(--text)' }}>
+        <div className="min-w-0">
+          <h1 className="text-[22px] sm:text-[26px] font-bold tracking-tight truncate" style={{ color: 'var(--text)' }}>
             Bonjour, {user?.username} 👋
           </h1>
           <p className="text-[12.5px] mt-0.5 capitalize" style={{ color: 'var(--text3)' }}>
@@ -60,7 +60,7 @@ export default function DashboardPage() {
           </p>
         </div>
 
-        <div className="flex items-center gap-2 pt-1">
+        <div className="flex items-center gap-2 sm:pt-1 flex-shrink-0">
           <button className="btn-ghost text-[12.5px]" onClick={handleUpdates}>
             <ArrowDownCircle size={13} strokeWidth={2} />
             Mises à jour
@@ -72,10 +72,10 @@ export default function DashboardPage() {
         </div>
       </div>
 
-      <div className="px-7 py-5 flex flex-col gap-4">
+      <div className="px-4 sm:px-6 lg:px-7 py-5 flex flex-col gap-4">
 
         {/* ── STATS ROW ── */}
-        <div className="grid grid-cols-4 gap-3 stagger">
+        <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 stagger">
           <StatCard
             icon={<Cpu size={15} strokeWidth={2} />}
             label="Utilisation CPU"
@@ -132,15 +132,15 @@ export default function DashboardPage() {
         </div>
 
         {/* ── MAIN GRID ── */}
-        <div className="grid gap-4" style={{ gridTemplateColumns: '1fr 300px' }}>
+        <div className="grid gap-4 grid-cols-1 xl:grid-cols-[minmax(0,1fr)_300px]">
 
           {/* LEFT */}
-          <div className="flex flex-col gap-4">
+          <div className="flex flex-col gap-4 min-w-0">
 
             {/* STORAGE VISUAL */}
             {stats && (
               <div className="card p-5 animate-fade-up" style={{ animationDelay: '200ms' }}>
-                <div className="flex items-center justify-between mb-4">
+                <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 mb-4">
                   <h2 className="text-[14px] font-semibold" style={{ color: 'var(--text)' }}>
                     Stockage
                   </h2>
@@ -177,7 +177,7 @@ export default function DashboardPage() {
                   )
                 })()}
 
-                <div className="flex flex-wrap gap-4">
+                <div className="flex flex-wrap gap-x-4 gap-y-2">
                   {[
                     { label: 'Films',  color: 'var(--red)',      bytes: stats.mediaStorage?.films  ?? 0 },
                     { label: 'Animes', color: 'var(--teal)',     bytes: stats.mediaStorage?.animes ?? 0 },
@@ -207,7 +207,7 @@ export default function DashboardPage() {
                   Réseau
                 </h2>
                 <div
-                  className="grid grid-cols-4 gap-px rounded-lg overflow-hidden"
+                  className="grid grid-cols-2 md:grid-cols-4 gap-px rounded-lg overflow-hidden"
                   style={{ background: 'var(--border)' }}
                 >
                   {[
@@ -218,12 +218,13 @@ export default function DashboardPage() {
                   ].map((cell) => (
                     <div
                       key={cell.label}
-                      className="px-4 py-3"
+                      className="px-3 sm:px-4 py-3 min-w-0"
                       style={{ background: 'var(--surface2)' }}
                     >
                       <div className="text-[10.5px] mb-1" style={{ color: 'var(--text3)' }}>{cell.label}</div>
                       <div
-                        className="text-[13px] font-semibold font-mono"
+                        className="text-[12px] sm:text-[13px] font-semibold font-mono truncate"
+                        title={cell.value}
                         style={{ color: cell.green ? 'var(--green)' : 'var(--text)' }}
                       >
                         {cell.value}
@@ -237,7 +238,7 @@ export default function DashboardPage() {
           </div>
 
           {/* RIGHT */}
-          <div className="flex flex-col gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-1 gap-4 content-start min-w-0">
 
             {/* SERVICES */}
             <div className="card animate-fade-up" style={{ animationDelay: '200ms' }}>
