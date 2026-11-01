@@ -1,15 +1,8 @@
 import request from 'supertest'
 import { app } from '../../src/index'
-import jwt from 'jsonwebtoken'
+import { makeToken } from '../helpers'
 
-// Generate a test admin token
-function adminToken(): string {
-  return jwt.sign(
-    { userId: 'test-uuid', username: 'testadmin', role: 'admin' },
-    process.env.JWT_SECRET || 'test_secret',
-    { expiresIn: '1h' },
-  )
-}
+const adminToken = () => makeToken('admin')
 
 describe('GET /api/files', () => {
   it('returns 401 without token', async () => {

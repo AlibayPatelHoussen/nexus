@@ -107,7 +107,7 @@ fi
 # ── Run schema (as postgres superuser to avoid permission issues) ─────
 echo "🗄️  Running database schema..."
 cd "$NEXUS_DIR"
-sudo -u postgres psql -d "$DB_NAME" -f backend/src/db/schema.sql 2>/dev/null || true
+bash scripts/migrate-db.sh "$DB_NAME"
 
 # Grant table-level privileges to nexus_houssen
 sudo -u postgres psql -d "$DB_NAME" -c "GRANT ALL PRIVILEGES ON ALL TABLES IN SCHEMA public TO $DB_USER;" 2>/dev/null || true

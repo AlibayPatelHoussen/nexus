@@ -1,39 +1,53 @@
 import { useEffect, useRef, useState } from 'react'
 import { io, Socket } from 'socket.io-client'
 import { useAuthStore } from '@/stores/authStore'
+import { getFreshAccessToken } from '@/services/api'
 import type { SystemStats } from '@/types'
+
+// Called on every (re)connection, so an expired access token is refreshed first
+const socketAuth = (cb: (data: object) => void) => {
+  getFreshAccessToken()
+    .then((token) => cb({ token }))
+    .catch(() => cb({ token: '' }))
+}
 
 export function useSystemStats() {
   const [stats, setStats]     = useState<SystemStats | null>(null)
   const [connected, setConnected] = useState(false)
   const socketRef = useRef<Socket | null>(null)
-  const token     = useAuthStore((s) => s.accessToken)
+  const userId    = useAuthStore((s) => s.user?.id)
 
   useEffect(() => {
-    if (!token) return
+    if (!userId) return
 
     const socket = io('/stats', {
-      auth: { token },
+      auth: socketAuth,
       transports: ['websocket'],
     })
 
     socketRef.current = socket
+    let retry: ReturnType<typeof setTimeout> | null = null
 
     socket.on('connect',    () => setConnected(true))
     socket.on('disconnect', () => setConnected(false))
     socket.on('stats',      (data: SystemStats) => setStats(data))
+    // Auth rejections are not retried automatically by socket.io
+    socket.on('connect_error', () => {
+      setConnected(false)
+      if (!socket.active) retry = setTimeout(() => socket.connect(), 5000)
+    })
 
     return () => {
+      if (retry) clearTimeout(retry)
       socket.disconnect()
     }
-  }, [token])
+  }, [userId])
 
   return { stats, connected }
 }
 
 export function useTerminalSocket() {
   const socketRef = useRef<Socket | null>(null)
-  const token     = useAuthStore((s) => s.accessToken)
 
   function connect(
     onOutput: (data: string) => void,
@@ -42,7 +56,7 @@ export function useTerminalSocket() {
     if (socketRef.current?.connected) return
 
     const socket = io('/terminal', {
-      auth: { token },
+      auth: socketAuth,
       transports: ['websocket'],
     })
 

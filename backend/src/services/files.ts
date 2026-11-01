@@ -15,11 +15,24 @@ export interface FileEntry {
   permissions: string
 }
 
-// Sanitize path to prevent traversal
-function sanitizePath(inputPath: string): string {
-  const normalized = path.normalize(inputPath)
-  // Allow any absolute path — user has admin access
-  return normalized.startsWith('/') ? normalized : `/${normalized}`
+// Normalize to an absolute path. The file manager is admin-only (see
+// routes/files.ts), so any absolute path is allowed here.
+export function sanitizePath(inputPath: string): string {
+  return path.resolve('/', inputPath)
+}
+
+/**
+ * True when `target` (after resolving symlinks) is `root` or inside it.
+ * Used to confine non-admin users to the media library.
+ */
+export async function isInsideDir(root: string, target: string): Promise<boolean> {
+  try {
+    const [realRoot, realTarget] = await Promise.all([fs.realpath(root), fs.realpath(target)])
+    const rel = path.relative(realRoot, realTarget)
+    return rel === '' || (!rel.startsWith('..') && !path.isAbsolute(rel))
+  } catch {
+    return false
+  }
 }
 
 export class FilesService {
@@ -70,7 +83,10 @@ export class FilesService {
   }
 
   static async rename(oldPath: string, newName: string): Promise<void> {
-    const safe    = sanitizePath(oldPath)
+    const safe = sanitizePath(oldPath)
+    if (!newName || newName !== path.basename(newName) || newName === '.' || newName === '..') {
+      throw new AppError('Invalid name', 422)
+    }
     const newPath = path.join(path.dirname(safe), newName)
     await fs.rename(safe, newPath)
   }

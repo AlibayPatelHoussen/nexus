@@ -1,18 +1,13 @@
 import { Server, Socket } from 'socket.io'
 import { spawn } from 'node-pty'
-import jwt from 'jsonwebtoken'
 import { SystemService } from './services/system'
 import { logger } from './utils/logger'
+import { verifyToken } from './middleware/auth'
 import type { JwtPayload } from './middleware/auth'
 
 function authenticateSocket(socket: Socket): JwtPayload | null {
-  try {
-    const token = socket.handshake.auth.token as string
-    if (!token) return null
-    return jwt.verify(token, process.env.JWT_SECRET!) as JwtPayload
-  } catch {
-    return null
-  }
+  const token = socket.handshake.auth?.token
+  return typeof token === 'string' && token ? verifyToken(token, 'access') : null
 }
 
 export function registerSocketHandlers(io: Server): void {
@@ -22,7 +17,7 @@ export function registerSocketHandlers(io: Server): void {
 
   statsNs.use((socket, next) => {
     const user = authenticateSocket(socket)
-    if (!user) { socket.disconnect(); return }
+    if (!user) { next(new Error('unauthorized')); return }
     next()
   })
 
@@ -50,7 +45,8 @@ export function registerSocketHandlers(io: Server): void {
 
   termNs.use((socket, next) => {
     const user = authenticateSocket(socket)
-    if (!user || user.role !== 'admin') { socket.disconnect(); return }
+    if (!user) { next(new Error('unauthorized')); return }
+    if (user.role !== 'admin') { next(new Error('forbidden')); return }
     next()
   })
 
@@ -73,10 +69,14 @@ export function registerSocketHandlers(io: Server): void {
       socket.disconnect()
     })
 
-    socket.on('input', (data: string) => shell.write(data))
+    socket.on('input', (data: unknown) => { if (typeof data === 'string') shell.write(data) })
 
-    socket.on('resize', ({ cols, rows }: { cols: number; rows: number }) => {
-      shell.resize(cols, rows)
+    socket.on('resize', (size: { cols?: unknown; rows?: unknown } | undefined) => {
+      const cols = Number(size?.cols)
+      const rows = Number(size?.rows)
+      if (Number.isInteger(cols) && Number.isInteger(rows) && cols > 0 && rows > 0 && cols <= 1000 && rows <= 1000) {
+        shell.resize(cols, rows)
+      }
     })
 
     socket.on('disconnect', () => {

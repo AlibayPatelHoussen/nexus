@@ -4,6 +4,26 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Security
+- File manager (`/api/files/*`) is now admin-only; non-admin users can only stream/download inside `MEDIA_ROOT`
+- Media URLs use a short-lived read-only *stream* token instead of the access token; tokens in URLs are redacted from access logs
+- Typed JWTs (`access` / `refresh` / `stream`), optional `JWT_REFRESH_SECRET`, access tokens now last 15 min
+- Refresh re-reads the user from the database (deleted or demoted users lose access)
+- Rate limiting on login/refresh and on the API (streaming excluded)
+- Script names validated against the scripts directory (no path traversal)
+- `execFile` instead of shell `exec` for systemctl/journalctl; unused `runCommand` removed
+- Upload filenames sanitized, `rename` rejects names containing a path, Range headers validated (416)
+
+### Fixed
+- Rescanning a manga no longer wipes reading progress (chapter upsert in a transaction)
+- `.sh` scripts can be run
+- Only one media scan runs at a time (409 otherwise)
+
+### Changed
+- Versioned database migrations (`backend/src/db/migrations`, `scripts/migrate-db.sh`) replace inline SQL in `deploy.sh`
+- Service links come from `SERVICES_DOMAIN`, sudoers file is a template (`NEXUS_USER`)
+- Admin-only pages hidden from the sidebar for regular users
+
 ### Added
 - Full-stack server control panel with React + Node.js + PostgreSQL
 - JWT authentication with bcrypt hashing and refresh tokens

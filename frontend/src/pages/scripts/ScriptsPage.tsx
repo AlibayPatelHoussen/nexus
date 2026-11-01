@@ -1,8 +1,7 @@
 import { useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { Play, Square, FileCode2, RefreshCw } from 'lucide-react'
-import { api } from '@/services/api'
-import { useAuthStore } from '@/stores/authStore'
+import { api, getFreshAccessToken } from '@/services/api'
 import toast from 'react-hot-toast'
 
 interface ScriptInfo {
@@ -18,7 +17,6 @@ function ScriptCard({ script }: { script: ScriptInfo }) {
   const [running, setRunning] = useState(false)
   const [output,  setOutput]  = useState<string[]>([])
   const [showOut, setShowOut] = useState(false)
-  const token = useAuthStore((s) => s.accessToken)
 
   async function run() {
     setRunning(true)
@@ -26,7 +24,8 @@ function ScriptCard({ script }: { script: ScriptInfo }) {
     setShowOut(true)
 
     try {
-      const res = await fetch(`/api/scripts/${script.name}/run`, {
+      const token = await getFreshAccessToken()
+      const res = await fetch(`/api/scripts/${encodeURIComponent(script.filename)}/run`, {
         method:  'POST',
         headers: { Authorization: `Bearer ${token}` },
       })

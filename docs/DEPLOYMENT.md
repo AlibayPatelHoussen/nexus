@@ -51,7 +51,7 @@ The backend serves both the API (`/api/*`) and the built frontend (`/`).
 ## Sudoers (for service control)
 
 ```bash
-sudo cp /opt/nexus/config/sudoers-nexus /etc/sudoers.d/nexus
+sed "s/NEXUS_USER/$(whoami)/g" /opt/nexus/config/sudoers-nexus | sudo tee /etc/sudoers.d/nexus > /dev/null
 sudo chmod 440 /etc/sudoers.d/nexus
 sudo visudo -c  # verify no syntax errors
 ```

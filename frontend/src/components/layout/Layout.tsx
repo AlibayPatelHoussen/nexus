@@ -12,8 +12,8 @@ const NAV_SECTIONS = [
     label: 'Principal',
     items: [
       { to: '/dashboard', icon: <LayoutDashboard size={13} strokeWidth={2} />, label: 'Dashboard', color: 'var(--blue-dim)', iconColor: 'var(--blue)' },
-      { to: '/files',     icon: <FolderOpen     size={13} strokeWidth={2} />, label: 'Fichiers',   color: 'var(--orange-dim)', iconColor: 'var(--orange)' },
-      { to: '/terminal',  icon: <Terminal        size={13} strokeWidth={2} />, label: 'Terminal',   color: 'var(--purple-dim)', iconColor: 'var(--purple)' },
+      { to: '/files',     icon: <FolderOpen     size={13} strokeWidth={2} />, label: 'Fichiers',   color: 'var(--orange-dim)', iconColor: 'var(--orange)', adminOnly: true },
+      { to: '/terminal',  icon: <Terminal        size={13} strokeWidth={2} />, label: 'Terminal',   color: 'var(--purple-dim)', iconColor: 'var(--purple)', adminOnly: true },
     ],
   },
   {
@@ -28,7 +28,7 @@ const NAV_SECTIONS = [
     label: 'Système',
     items: [
       { to: '/services', icon: <Activity  size={13} strokeWidth={2} />, label: 'Services',   color: 'var(--green-dim)',  iconColor: 'var(--green)'  },
-      { to: '/scripts',  icon: <Zap       size={13} strokeWidth={2} />, label: 'Scripts',    color: 'var(--blue-dim)',   iconColor: 'var(--blue)'   },
+      { to: '/scripts',  icon: <Zap       size={13} strokeWidth={2} />, label: 'Scripts',    color: 'var(--blue-dim)',   iconColor: 'var(--blue)',   adminOnly: true },
       { to: '/network',  icon: <Wifi      size={13} strokeWidth={2} />, label: 'Réseau',     color: 'var(--yellow-dim)', iconColor: 'var(--yellow)' },
       { to: '/settings', icon: <Settings2 size={13} strokeWidth={2} />, label: 'Paramètres', color: 'var(--surface3)',   iconColor: 'var(--text3)'  },
     ],
@@ -38,6 +38,7 @@ const NAV_SECTIONS = [
 export default function Layout() {
   const navigate  = useNavigate()
   const user      = useAuthStore((s) => s.user)
+  const isAdmin   = user?.role === 'admin'
   const theme     = useAuthStore((s) => s.theme)
   const setTheme  = useAuthStore((s) => s.setTheme)
   const logout    = useAuthStore((s) => s.logout)
@@ -73,7 +74,7 @@ export default function Layout() {
                 Nexus
               </div>
               <div className="text-[10.5px] font-mono" style={{ color: 'var(--text3)' }}>
-                houssen-serveur.com
+                {window.location.hostname}
               </div>
             </div>
           </div>
@@ -90,7 +91,7 @@ export default function Layout() {
                 {section.label}
               </div>
               <div className="flex flex-col gap-px">
-                {section.items.map((item) => (
+                {section.items.filter((item) => isAdmin || !('adminOnly' in item && item.adminOnly)).map((item) => (
                   <NavLink
                     key={item.to}
                     to={item.to}

@@ -1,6 +1,7 @@
 import fs from 'fs/promises'
 import path from 'path'
-import { query } from '../config/database'
+import { query, withTransaction } from '../config/database'
+import { ConflictError } from '../utils/errors'
 import { logger } from '../utils/logger'
 import axios from 'axios'
 
@@ -58,6 +59,16 @@ interface AniListResult {
   averageScore?: number
   status?: string
   startDate?: { year?: number }
+}
+
+// ─── Parse chapter number from a folder / PDF name ───
+// "Chapter 12", "ch.12.5", "Chapitre_3", "Vol 2 - 045" → 12, 12.5, 3, 2 …
+export function parseChapterNumber(name: string): number {
+  const explicit = name.match(/(?:ch(?:apter|apit(?:re)?)?)[.\s_-]*(\d+(?:[._]\d+)?)/i)
+  const fallback = name.match(/(?:^|[^a-z])(\d+(?:\.\d+)?)(?:[^a-z]|$)/i)
+  const rawNum   = explicit?.[1] ?? fallback?.[1] ?? '0'
+  const num      = parseFloat(rawNum.replace('_', '.'))
+  return Number.isFinite(num) ? num : 0
 }
 
 // ─── Parse filename ──────────────────────────────────
@@ -200,6 +211,23 @@ async function getDirSize(dirPath: string): Promise<number> {
 
 // ─── SCANNER ─────────────────────────────────────────
 export class MediaScanner {
+  private static running: string | null = null
+
+  static isRunning(): string | null {
+    return this.running
+  }
+
+  /** Run a scan, refusing to start while another one is in progress. */
+  static async exclusive<T>(label: string, fn: () => Promise<T>): Promise<T> {
+    if (this.running) throw new ConflictError(`A scan is already running (${this.running})`)
+    this.running = label
+    try {
+      return await fn()
+    } finally {
+      this.running = null
+    }
+  }
+
 
   static async scanFilms(): Promise<number> {
     const dir = process.env.FILMS_PATH || '/media/films'
@@ -521,29 +549,38 @@ export class MediaScanner {
       }
     }
 
-    // Replace all chapters for this manga with fresh data
-    await query('DELETE FROM chapters WHERE media_item_id = $1', [mediaId])
-
+    const chapterRows: { chapPath: string; chapNum: number; pageCount: number | null }[] = []
     for (const { chapPath, isPdf } of chapters) {
       const name = isPdf ? path.basename(chapPath, '.pdf') : path.basename(chapPath)
-
-      const explicit = name.match(/(?:ch(?:apter|apit(?:re)?)?)[.\s_-]*(\d+(?:[._]\d+)?)/i)
-      const fallback = name.match(/(?:^|[^a-z])(\d+(?:\.\d+)?)(?:[^a-z]|$)/i)
-      const rawNum   = explicit?.[1] ?? fallback?.[1] ?? '0'
-      const chapNum  = parseFloat(rawNum.replace('_', '.'))
 
       let pageCount: number | null = null
       if (!isPdf) {
         const files = await fs.readdir(chapPath)
         pageCount = files.filter((f) => IMAGE_EXTS.includes(path.extname(f).toLowerCase())).length || null
       }
-
-      await query(
-        `INSERT INTO chapters (media_item_id, chapter_number, title, folder_path, page_count, language)
-         VALUES ($1, $2, $3, $4, $5, NULL)`,
-        [mediaId, chapNum, null, chapPath, pageCount],
-      )
+      chapterRows.push({ chapPath, chapNum: parseChapterNumber(name), pageCount })
     }
+
+    // Upsert on folder_path so existing chapters keep their id (and therefore
+    // users' read_history), then drop chapters whose folder disappeared.
+    // Done atomically so a failing scan never leaves a manga without chapters.
+    await withTransaction(async (client) => {
+      for (const { chapPath, chapNum, pageCount } of chapterRows) {
+        await client.query(
+          `INSERT INTO chapters (media_item_id, chapter_number, title, folder_path, page_count, language)
+           VALUES ($1, $2, NULL, $3, $4, NULL)
+           ON CONFLICT (folder_path) DO UPDATE SET
+             media_item_id  = EXCLUDED.media_item_id,
+             chapter_number = EXCLUDED.chapter_number,
+             page_count     = EXCLUDED.page_count`,
+          [mediaId, chapNum, chapPath, pageCount],
+        )
+      }
+      await client.query(
+        'DELETE FROM chapters WHERE media_item_id = $1 AND NOT (folder_path = ANY($2::text[]))',
+        [mediaId, chapterRows.map((r) => r.chapPath)],
+      )
+    })
 
     logger.info(`scanChapters: ${chapters.length} chapters for ${mangaPath}`)
   }

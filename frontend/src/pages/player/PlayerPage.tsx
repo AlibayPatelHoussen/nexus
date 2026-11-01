@@ -4,6 +4,8 @@ import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft, Star, ChevronRight } from 'lucide-react'
 import { mediaService } from '@/services/mediaService'
 import { filesService } from '@/services/filesService'
+import { getStreamToken } from '@/services/streamToken'
+import { useAuthStore } from '@/stores/authStore'
 import { formatDuration } from '@/utils'
 import VideoPlayer from './VideoPlayer'
 import type { Episode } from '@/types'
@@ -34,8 +36,15 @@ export default function PlayerPage() {
     ? media?.episodes?.find((e: Episode) => e.id === episodeId)
     : null
 
+  const userId = useAuthStore((s) => s.user?.id)
+  const { data: streamToken } = useQuery({
+    queryKey:  ['stream-token', userId],
+    queryFn:   getStreamToken,
+    staleTime: 60 * 60 * 1000,
+  })
+
   const filePath  = currentEpisode?.filePath || media?.filePath || ''
-  const streamUrl = filePath ? filesService.getStreamUrl(filePath) : ''
+  const streamUrl = filePath && streamToken ? filesService.buildStreamUrl(filePath, streamToken) : ''
 
   useEffect(() => {
     if (savedProgress && savedProgress.progress > 30) {

@@ -1,5 +1,5 @@
 import { api } from './api'
-import { useAuthStore } from '@/stores/authStore'
+import { getStreamToken, withStreamToken } from './streamToken'
 import type { FileEntry } from '@/types'
 
 export const filesService = {
@@ -41,13 +41,17 @@ export const filesService = {
     await api.delete(`/files?path=${encodeURIComponent(path)}`)
   },
 
-  getDownloadUrl(path: string): string {
-    return `/api/files/download?path=${encodeURIComponent(path)}`
+  /** Build a media URL from an already-fetched stream token (see getStreamToken). */
+  buildStreamUrl(path: string, streamToken: string): string {
+    return withStreamToken(`/api/files/stream?path=${encodeURIComponent(path)}`, streamToken)
   },
 
-  getStreamUrl(path: string): string {
-    const token = useAuthStore.getState().accessToken ?? ''
-    return `/api/files/stream?path=${encodeURIComponent(path)}&token=${encodeURIComponent(token)}`
+  async getStreamUrl(path: string): Promise<string> {
+    return this.buildStreamUrl(path, await getStreamToken())
+  },
+
+  async getDownloadUrl(path: string): Promise<string> {
+    return withStreamToken(`/api/files/download?path=${encodeURIComponent(path)}`, await getStreamToken())
   },
 
   async upload(destPath: string, files: File[], onProgress?: (pct: number) => void): Promise<void> {
