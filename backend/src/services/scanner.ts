@@ -72,11 +72,22 @@ export function parseChapterNumber(name: string): number {
 }
 
 // ─── Parse filename ──────────────────────────────────
-function parseFilename(filename: string): { title: string; year?: number } {
+export function parseFilename(filename: string): { title: string; year?: number } {
   let name = path.basename(filename, path.extname(filename))
 
   // Remove content in square brackets e.g. [FR-EN], [OxTorrent.com]
   name = name.replace(/\[.*?\]/g, '')
+
+  // Series folders often carry season / episode info: "Show S02E12-22 FINAL",
+  // "Show.S01.1080p", "Show - Saison 2", "Show Complete Series" → keep the show name only
+  // (only after a separator, so titles like "Final Destination" are kept)
+  name = name
+    .replace(
+      /[\s._-]+(?:S\d{1,2}(?:[\s._-]*E\d{1,3}(?:[-–]E?\d{1,3})?)?|(?:saison|season|staffel)[\s._-]*\d+|int[ée]grale|complete|compl[eè]te?|the[\s._-]+complete[\s._-]+series)(?=$|[\s._-]).*$/i,
+      '',
+    )
+    .replace(/[\s._-]+final$/i, '')
+    .replace(/[\s._-]+$/, '')
 
   // Extract year (handles year at end of string too)
   const yearMatch = name.match(/(?:[^0-9]|^)(\d{4})(?:[^0-9]|$)/)

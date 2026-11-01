@@ -115,9 +115,14 @@ CREATE TABLE IF NOT EXISTS watch_history (
   duration        INTEGER, -- total duration
   completed       BOOLEAN NOT NULL DEFAULT FALSE,
   watched_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  CONSTRAINT watch_history_user_media_episode_key UNIQUE NULLS NOT DISTINCT (user_id, media_item_id, episode_id)
+  updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+
+-- One row per (user, media, episode); films have episode_id NULL (works on every PostgreSQL version)
+CREATE UNIQUE INDEX IF NOT EXISTS watch_history_uniq_episode ON watch_history (user_id, media_item_id, episode_id)
+  WHERE episode_id IS NOT NULL;
+CREATE UNIQUE INDEX IF NOT EXISTS watch_history_uniq_film ON watch_history (user_id, media_item_id)
+  WHERE episode_id IS NULL;
 
 CREATE INDEX IF NOT EXISTS idx_watch_user      ON watch_history(user_id);
 CREATE INDEX IF NOT EXISTS idx_watch_media     ON watch_history(media_item_id);

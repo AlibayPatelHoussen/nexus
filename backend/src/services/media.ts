@@ -229,13 +229,30 @@ export class MediaService {
   ): Promise<void> {
     const completed = duration > 0 && (progress / duration) > 0.9
 
-    await query(
-      `INSERT INTO watch_history (user_id, media_item_id, episode_id, progress, duration, completed, updated_at)
-       VALUES ($1, $2, $3, $4, $5, $6, NOW())
-       ON CONFLICT (user_id, media_item_id, episode_id)
-       DO UPDATE SET progress = $4, duration = $5, completed = $6, updated_at = NOW()`,
-      [userId, mediaId, episodeId || null, progress, duration, completed],
+    // Update-then-insert (works whatever the unique index flavour; IS NOT DISTINCT
+    // FROM matches films, whose episode_id is NULL)
+    const params = [userId, mediaId, episodeId || null, progress, duration, completed]
+    const updated = await query(
+      `UPDATE watch_history SET progress = $4, duration = $5, completed = $6, updated_at = NOW()
+       WHERE user_id = $1 AND media_item_id = $2 AND episode_id IS NOT DISTINCT FROM $3`,
+      params,
     )
+    if (updated.rowCount) return
+    try {
+      await query(
+        `INSERT INTO watch_history (user_id, media_item_id, episode_id, progress, duration, completed, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, NOW())`,
+        params,
+      )
+    } catch (err) {
+      // Concurrent save inserted the row first: update it instead
+      if ((err as { code?: string }).code !== '23505') throw err
+      await query(
+        `UPDATE watch_history SET progress = $4, duration = $5, completed = $6, updated_at = NOW()
+         WHERE user_id = $1 AND media_item_id = $2 AND episode_id IS NOT DISTINCT FROM $3`,
+        params,
+      )
+    }
   }
 
   static async getProgress(userId: string, mediaId: string, episodeId?: string) {

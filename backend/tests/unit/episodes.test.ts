@@ -1,4 +1,4 @@
-import { parseEpisodeInfo } from '../../src/services/scanner'
+import { parseEpisodeInfo, parseFilename } from '../../src/services/scanner'
 
 jest.mock('../../src/config/database', () => ({ query: jest.fn(), withTransaction: jest.fn() }))
 
@@ -24,5 +24,22 @@ describe('parseEpisodeInfo', () => {
 
   it('uses the closest season folder', () => {
     expect(parseEpisodeInfo('E01.mkv', ['Saison 1', 'Season 2'])).toEqual({ season: 2, episode: 1 })
+  })
+})
+
+describe('parseFilename (show / film folder names)', () => {
+  it.each([
+    ['Georgie and Mandys First Marriage S02E12-22 FINAL', 'Georgie and Mandys First Marriage'],
+    ['Breaking.Bad.S01.1080p.BluRay',                     'Breaking Bad'],
+    ['The Office - Saison 3',                             'The Office'],
+    ['Dark Season 2 MULTI',                               'Dark'],
+    ['Friends Integrale',                                 'Friends'],
+    ['Mr Robot Complete Series',                          'Mr Robot'],
+    ['Interstellar (2014) 1080p',                         'Interstellar'],
+    ['Suits',                                             'Suits'],
+    ['Final Destination 5',                               'Final Destination 5'],
+    ['The Last of Us S01E01-E09',                         'The Last of Us'],
+  ])('%s → %s', (input, title) => {
+    expect(parseFilename(input).title).toBe(title)
   })
 })

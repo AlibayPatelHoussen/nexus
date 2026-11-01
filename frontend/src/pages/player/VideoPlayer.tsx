@@ -11,6 +11,17 @@ interface Props {
   initialTime?: number
 }
 
+/** Browsers (Safari / iPhone especially) cannot play some containers natively. */
+function unsupportedHint(src: string): string | null {
+  let file = ''
+  try { file = new URL(src, window.location.origin).searchParams.get('path') ?? '' } catch { /* ignore */ }
+  const ext = file.split('.').pop()?.toLowerCase()
+  if (ext === 'mkv' || ext === 'avi' || ext === 'wmv' || ext === 'flv') {
+    return `Le format .${ext} n'est pas lu par ce navigateur (surtout sur iPhone). Convertis-le en .mp4 (H.264) ou ouvre-le avec VLC / Jellyfin.`
+  }
+  return null
+}
+
 export default function VideoPlayer({ src, onTimeUpdate, onEnded, initialTime }: Props) {
   const videoRef     = useRef<HTMLVideoElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -240,8 +251,10 @@ export default function VideoPlayer({ src, onTimeUpdate, onEnded, initialTime }:
       {error && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
           <div style={{ textAlign: 'center', color: 'rgba(255,255,255,0.7)' }}>
-            <div style={{ fontSize: 13 }}>Impossible de charger la vidéo</div>
-            <div style={{ fontSize: 11, marginTop: 4, opacity: 0.5 }}>Vérifiez le fichier ou rechargez</div>
+            <div style={{ fontSize: 13 }}>Impossible de lire la vidéo</div>
+            <div style={{ fontSize: 11, marginTop: 4, opacity: 0.6, maxWidth: 320, padding: '0 16px' }}>
+              {unsupportedHint(src) ?? 'Vérifiez le fichier ou rechargez'}
+            </div>
           </div>
         </div>
       )}

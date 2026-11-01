@@ -53,10 +53,11 @@ export default function PlayerPage() {
     : null
 
   const userId = useAuthStore((s) => s.user?.id)
-  const { data: streamToken } = useQuery({
+  const { data: streamToken, error: streamTokenError, refetch: retryToken } = useQuery({
     queryKey:  ['stream-token', userId],
     queryFn:   getStreamToken,
     staleTime: 60 * 60 * 1000,
+    retry:     1,
   })
 
   const isShow    = media?.type === 'serie' || media?.type === 'anime'
@@ -119,6 +120,26 @@ export default function PlayerPage() {
           <div className="flex flex-col items-center justify-center gap-2 text-center px-6" style={{ aspectRatio: '16/9', maxHeight: '75vh' }}>
             <p className="text-[14px] font-semibold text-white/80">Aucun épisode trouvé pour cette série</p>
             <p className="text-[12px] text-white/50">Lance un scan depuis la page de la série.</p>
+          </div>
+        )}
+        {/* Could not get a playback authorisation: say so instead of a blank page */}
+        {streamTokenError && (
+          <div className="flex flex-col items-center justify-center gap-2 text-center px-6" style={{ aspectRatio: '16/9', maxHeight: '75vh' }}>
+            <p className="text-[14px] font-semibold text-white/85">Lecture impossible</p>
+            <p className="text-[12px] text-white/55 max-w-sm">
+              Le serveur n'a pas autorisé la lecture
+              {(streamTokenError as { response?: { status?: number } }).response?.status
+                ? ` (erreur ${(streamTokenError as { response?: { status?: number } }).response?.status})`
+                : ''}.
+              {(streamTokenError as { response?: { status?: number } }).response?.status === 404
+                && ' Le backend n\'est probablement pas à jour : relance le déploiement.'}
+            </p>
+            <button className="btn-ghost text-[12px] mt-1" onClick={() => retryToken()}>Réessayer</button>
+          </div>
+        )}
+        {!streamTokenError && filePath && !streamToken && (
+          <div className="flex items-center justify-center" style={{ aspectRatio: '16/9', maxHeight: '75vh' }}>
+            <div className="w-6 h-6 border-2 rounded-full animate-spin" style={{ borderColor: 'rgba(255,255,255,0.2)', borderTopColor: 'white' }} />
           </div>
         )}
         {streamUrl && (

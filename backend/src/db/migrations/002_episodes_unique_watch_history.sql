@@ -11,11 +11,13 @@ END $$;
 
 -- 2. watch_history: the old UNIQUE(user_id, media_item_id, episode_id) never
 --    matched for films (episode_id IS NULL), so a new row was inserted on every
---    progress save. Keep the latest row and treat NULLs as equal (PostgreSQL 15+).
+--    progress save. Keep the latest row per (user, media, episode) and enforce
+--    uniqueness with two partial indexes (works on every PostgreSQL version).
 DO $$
 DECLARE c text;
 BEGIN
-  IF NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'watch_history_user_media_episode_key') THEN
+  IF NOT EXISTS (SELECT 1 FROM pg_class WHERE relname = 'watch_history_uniq_episode')
+     AND NOT EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'watch_history_user_media_episode_key') THEN
     DELETE FROM watch_history a USING watch_history b
       WHERE a.user_id = b.user_id AND a.media_item_id = b.media_item_id
         AND a.episode_id IS NOT DISTINCT FROM b.episode_id AND a.id <> b.id
@@ -26,8 +28,9 @@ BEGIN
     LOOP
       EXECUTE format('ALTER TABLE watch_history DROP CONSTRAINT %I', c);
     END LOOP;
-    ALTER TABLE watch_history
-      ADD CONSTRAINT watch_history_user_media_episode_key
-      UNIQUE NULLS NOT DISTINCT (user_id, media_item_id, episode_id);
+    CREATE UNIQUE INDEX watch_history_uniq_episode ON watch_history (user_id, media_item_id, episode_id)
+      WHERE episode_id IS NOT NULL;
+    CREATE UNIQUE INDEX watch_history_uniq_film ON watch_history (user_id, media_item_id)
+      WHERE episode_id IS NULL;
   END IF;
 END $$;
