@@ -5,6 +5,8 @@
 # ═══════════════════════════════════════════════════════
 
 set -e
+# Make a failed step obvious: the running backend is NOT restarted in that case
+trap 'echo ""; echo "❌ Déploiement interrompu (ligne $LINENO) — le backend n'"'"'a PAS été redémarré, corrige l'"'"'erreur ci-dessus puis relance."' ERR
 
 NEXUS_DIR="/opt/nexus"
 LOG_DIR="$NEXUS_DIR/logs"
