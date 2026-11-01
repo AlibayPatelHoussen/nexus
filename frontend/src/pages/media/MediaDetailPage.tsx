@@ -2,9 +2,10 @@ import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  ArrowLeft, Play, Heart, Star, BookOpen,
-  Calendar, Globe, Clock, Layers, ChevronRight, RefreshCw, Tv,
+  ArrowLeft, Play, Star, BookOpen,
+  Calendar, Globe, Clock, Layers, ChevronRight, RefreshCw, Tv, Plus, Check,
 } from 'lucide-react'
+import MediaRow from '@/components/media/MediaRow'
 import { mediaService } from '@/services/mediaService'
 import { formatDuration, formatBytes } from '@/utils'
 import EpisodesSection from '@/components/media/EpisodesSection'
@@ -50,6 +51,14 @@ export default function MediaDetailPage() {
     },
     enabled: !!id,
   })
+
+  // "More like this": same type, sharing the main genre
+  const { data: similarData } = useQuery({
+    queryKey: ['media', 'similar', id, media?.type, media?.genres?.[0]],
+    queryFn:  () => mediaService.getAll({ type: media!.type, genre: media!.genres[0], limit: 25, sortBy: 'rating', sortDir: 'desc' }),
+    enabled:  !!media?.genres?.length,
+  })
+  const similar = (similarData?.items ?? []).filter((m) => m.id !== id).slice(0, 20)
 
   const favMut = useMutation({
     mutationFn: () => mediaService.toggleFavorite(id!),
@@ -130,185 +139,158 @@ export default function MediaDetailPage() {
     manga: 'var(--purple)', webtoon: 'var(--orange)',
   }
 
+  const seasonsCount = seasons.length
+  const metaBits = [
+    media.year ? String(media.year) : null,
+    isShow && seasonsCount ? `${seasonsCount} saison${seasonsCount > 1 ? 's' : ''}` : null,
+    isShow && episodes.length ? `${episodes.length} épisode${episodes.length > 1 ? 's' : ''}` : null,
+    !isShow && media.duration ? formatDuration(media.duration) : null,
+    isReading && chapters.length ? `${chapters.length} chapitre${chapters.length > 1 ? 's' : ''}` : null,
+  ].filter(Boolean) as string[]
+  const art = !imgErr ? (media.backdropPath || media.posterPath) : null
+
   return (
     <div className="min-h-full" style={{ background: 'var(--bg)' }}>
 
-      {/* ── BACKDROP ── */}
-      <div className="relative h-[240px] sm:h-[340px] lg:h-[420px] overflow-hidden">
-        {media.backdropPath && !imgErr ? (
-          <img
-            src={media.backdropPath}
-            alt=""
-            className="w-full h-full object-cover"
-            style={{ filter: 'brightness(0.35)' }}
-            onError={() => setImgErr(true)}
-          />
-        ) : (
-          <div className="w-full h-full" style={{ background: 'var(--surface)' }} />
-        )}
-
-        {/* Gradient overlay */}
-        <div
-          className="absolute inset-0"
-          style={{ background: 'linear-gradient(to bottom, rgba(0,0,0,0.3) 0%, var(--bg) 90%)' }}
-        />
-
-        {/* Back button */}
-        <button
-          className="absolute top-4 left-4 sm:top-5 sm:left-5 flex items-center gap-1.5 text-[13px] font-medium text-white/70 hover:text-white transition-colors p-1 -m-1"
-          style={{ marginTop: 'env(safe-area-inset-top)' }}
-          onClick={() => navigate(-1)}
-        >
-          <ArrowLeft size={16} strokeWidth={2} /> Retour
-        </button>
-
-        {/* Scan button (manga / series / anime) */}
-        {(isReading || isShow) && (
-          <button
-            className="absolute top-4 right-4 sm:top-5 sm:right-5 flex items-center gap-1.5 text-[12px] font-medium text-white/60 hover:text-white transition-colors p-1 -m-1"
-            style={{ marginTop: 'env(safe-area-inset-top)' }}
-            onClick={scan}
-            disabled={scanning}
-          >
-            <RefreshCw size={13} strokeWidth={2} className={scanning ? 'animate-spin' : ''} />
-            Scanner
-          </button>
-        )}
-      </div>
-
-      {/* ── CONTENT ── */}
-      <div className="relative px-4 sm:px-6 lg:px-7 pb-10 -mt-[150px] sm:-mt-[200px]">
-        <div className="flex flex-col sm:flex-row gap-4 sm:gap-6 mb-6">
-
-          {/* Poster */}
-          {media.posterPath && (
+      {/* ── BILLBOARD ── */}
+      <section className="relative">
+        <div className="relative h-[62vh] min-h-[360px] max-h-[640px] sm:h-[520px] lg:h-[600px] overflow-hidden">
+          {art ? (
             <img
-              src={media.posterPath}
-              alt={media.title}
-              className="rounded-xl flex-shrink-0 object-cover w-[110px] h-[158px] sm:w-[160px] sm:h-[230px]"
-              style={{ boxShadow: 'var(--shadow-lg)' }}
+              src={art}
+              alt=""
+              className={`absolute inset-0 w-full h-full object-cover ${media.backdropPath ? 'object-center' : 'object-top'}`}
+              onError={() => setImgErr(true)}
             />
+          ) : (
+            <div className="absolute inset-0" style={{ background: 'linear-gradient(135deg, #2a2a3d, #0a0a0f)' }} />
           )}
+          <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.45) 50%, rgba(0,0,0,0.25) 100%)' }} />
+          <div className="absolute inset-0 hidden sm:block" style={{ background: 'linear-gradient(to right, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.3) 55%, transparent 80%)' }} />
 
-          {/* Info */}
-          <div className="flex-1 min-w-0 sm:pt-20">
-            {/* Type badge */}
-            <div
-              className="badge mb-2 text-[11px]"
-              style={{
-                background: `color-mix(in srgb, ${typeColor[media.type]} 15%, transparent)`,
-                color:      typeColor[media.type],
-              }}
+          {/* Top bar */}
+          <div className="absolute inset-x-0 top-0 flex items-center justify-between px-4 sm:px-6 lg:px-7 pt-4 sm:pt-5"
+            style={{ paddingTop: 'max(1rem, env(safe-area-inset-top))' }}>
+            <button
+              className="flex items-center gap-1.5 text-[13px] font-medium text-white/80 hover:text-white transition-colors px-3 py-1.5 rounded-full"
+              style={{ background: 'rgba(0,0,0,0.35)' }}
+              onClick={() => navigate(-1)}
             >
-              {typeLabel[media.type]}
-            </div>
-
-            <h1 className="text-[22px] sm:text-[28px] font-bold tracking-tight mb-1 leading-tight break-words"
-              style={{ color: 'var(--text)' }}>
-              {media.title}
-            </h1>
-
-            {media.originalTitle && media.originalTitle !== media.title && (
-              <p className="text-[13px] mb-2" style={{ color: 'var(--text3)' }}>
-                {media.originalTitle}
-              </p>
+              <ArrowLeft size={16} strokeWidth={2} /> Retour
+            </button>
+            {(isReading || isShow) && (
+              <button
+                className="flex items-center gap-1.5 text-[12px] font-medium text-white/80 hover:text-white transition-colors px-3 py-1.5 rounded-full"
+                style={{ background: 'rgba(0,0,0,0.35)' }}
+                onClick={scan}
+                disabled={scanning}
+              >
+                <RefreshCw size={13} strokeWidth={2} className={scanning ? 'animate-spin' : ''} />
+                Scanner
+              </button>
             )}
+          </div>
 
-            {/* Meta row */}
-            <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mb-4">
-              {media.year && (
-                <div className="flex items-center gap-1 text-[12.5px]" style={{ color: 'var(--text3)' }}>
-                  <Calendar size={12} strokeWidth={2} /> {media.year}
-                </div>
+          {/* Title block */}
+          <div className="absolute inset-x-0 bottom-0 px-4 sm:px-6 lg:px-7 pb-6 sm:pb-10 flex items-end gap-6">
+            {!media.backdropPath && media.posterPath && !imgErr && (
+              <img src={media.posterPath} alt="" className="hidden md:block w-[170px] aspect-[2/3] rounded-lg object-cover flex-shrink-0 shadow-2xl" />
+            )}
+            <div className="min-w-0 max-w-3xl">
+              <span className="text-[11px] font-bold uppercase tracking-[0.2em]" style={{ color: typeColor[media.type] }}>
+                {typeLabel[media.type]}
+              </span>
+              <h1 className="mt-1.5 text-[28px] sm:text-[40px] lg:text-[52px] font-extrabold tracking-tight leading-[1.05] text-white break-words drop-shadow-lg">
+                {media.title}
+              </h1>
+              {media.originalTitle && media.originalTitle !== media.title && (
+                <p className="text-[13px] mt-1 text-white/60">{media.originalTitle}</p>
               )}
-              {media.rating && (
-                <div className="flex items-center gap-1 text-[12.5px]" style={{ color: 'var(--yellow)' }}>
-                  <Star size={12} fill="var(--yellow)" color="var(--yellow)" />
-                  {Number(media.rating).toFixed(1)}
-                  {media.voteCount && (
-                    <span style={{ color: 'var(--text3)' }}>({media.voteCount.toLocaleString()})</span>
-                  )}
-                </div>
-              )}
-              {media.duration && (
-                <div className="flex items-center gap-1 text-[12.5px]" style={{ color: 'var(--text3)' }}>
-                  <Clock size={12} strokeWidth={2} /> {formatDuration(media.duration)}
-                </div>
-              )}
-              {media.language && (
-                <div className="flex items-center gap-1 text-[12.5px]" style={{ color: 'var(--text3)' }}>
-                  <Globe size={12} strokeWidth={2} /> {media.language.toUpperCase()}
-                </div>
-              )}
-              {media.fileSize && (
-                <div className="flex items-center gap-1 text-[12.5px] font-mono" style={{ color: 'var(--text3)' }}>
-                  <Layers size={12} strokeWidth={2} /> {formatBytes(media.fileSize)}
-                </div>
-              )}
-            </div>
 
-            {/* Genres */}
-            {media.genres && media.genres.length > 0 && (
-              <div className="flex flex-wrap gap-1.5 mb-4">
-                {media.genres.slice(0, 6).map((g) => (
-                  <span key={g} className="badge text-[11px]"
-                    style={{ background: 'var(--surface2)', color: 'var(--text2)' }}>
-                    {g}
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-3 text-[13px] sm:text-[14px] text-white/85">
+                {media.rating != null && Number(media.rating) > 0 && (
+                  <span className="flex items-center gap-1 font-semibold" style={{ color: 'var(--green)' }}>
+                    <Star size={13} fill="currentColor" /> {Number(media.rating).toFixed(1)}
+                    {media.voteCount ? <span className="font-normal text-white/50">({media.voteCount.toLocaleString('fr-FR')})</span> : null}
                   </span>
-                ))}
+                )}
+                {metaBits.map((b) => <span key={b}>{b}</span>)}
+                {media.language && (
+                  <span className="px-1.5 py-px rounded border border-white/40 text-[11px] font-semibold">{media.language.toUpperCase()}</span>
+                )}
+                {media.fileSize ? (
+                  <span className="flex items-center gap-1 text-white/60 font-mono text-[12px]"><Layers size={12} /> {formatBytes(media.fileSize)}</span>
+                ) : null}
               </div>
-            )}
 
-            {/* Action buttons */}
-            <div className="flex flex-wrap items-center gap-2.5">
-              <button
-                className="btn-primary text-[13px] px-5 py-2.5 flex-1 sm:flex-none justify-center disabled:opacity-50"
-                onClick={() => play()}
-                disabled={isShow && episodes.length === 0}
-              >
-                <Play size={14} fill="white" strokeWidth={0} />
-                {isShow
-                  ? episodes.length === 0
-                    ? 'Aucun épisode'
-                    : `${nextResumes ? 'Reprendre' : 'Regarder'} S${nextEpisode?.season ?? 1} · É${nextEpisode?.episodeNumber}`
-                  : progress && progressPct > 0 && progressPct < 95
-                    ? `Reprendre (${progressPct}%)`
-                    : isReading ? 'Lire' : 'Regarder'
-                }
-              </button>
-
-              <button
-                className="btn-ghost text-[13px] px-4 py-2.5 justify-center"
-                onClick={() => favMut.mutate()}
-                disabled={favMut.isPending}
-              >
-                <Heart
-                  size={14}
-                  strokeWidth={2}
-                  style={{
-                    color: isFav === true ? 'var(--red)' : 'var(--text2)',
-                    fill:  isFav === true ? 'var(--red)' : 'transparent',
-                  }}
-                />
-                {isFav === true ? 'Favori' : 'Ajouter'}
-              </button>
+              {/* Actions */}
+              <div className="flex flex-wrap items-center gap-2.5 mt-5">
+                <button
+                  className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-7 py-3 rounded-md text-[15px] font-bold bg-white text-black hover:bg-white/85 transition-colors disabled:opacity-50"
+                  onClick={() => play()}
+                  disabled={isShow && episodes.length === 0}
+                >
+                  <Play size={18} fill="black" strokeWidth={0} />
+                  {isShow
+                    ? episodes.length === 0
+                      ? 'Aucun épisode'
+                      : `${nextResumes ? 'Reprendre' : 'Lecture'} · S${nextEpisode?.season ?? 1} É${nextEpisode?.episodeNumber}`
+                    : progress && progressPct > 0 && progressPct < 95
+                      ? `Reprendre · ${progressPct}%`
+                      : isReading ? 'Lire' : 'Lecture'}
+                </button>
+                <button
+                  className="flex items-center justify-center gap-2 px-5 py-3 rounded-md text-[15px] font-bold text-white transition-colors hover:bg-white/30"
+                  style={{ background: 'rgba(109,109,110,0.7)' }}
+                  onClick={() => favMut.mutate()}
+                  disabled={favMut.isPending}
+                  aria-pressed={isFav === true}
+                >
+                  {isFav === true ? <Check size={18} strokeWidth={2.5} /> : <Plus size={18} strokeWidth={2.5} />}
+                  Ma liste
+                </button>
+              </div>
             </div>
           </div>
         </div>
+      </section>
 
-        {/* Overview */}
-        {media.overview && (
-          <div className="card p-4 sm:p-5 mb-5 animate-fade-up">
-            <h2 className="text-[13px] font-semibold uppercase tracking-wide mb-2"
-              style={{ color: 'var(--text3)' }}>
-              Synopsis
-            </h2>
-            <p className="text-[13.5px] leading-relaxed" style={{ color: 'var(--text2)' }}>
-              {media.overview}
+      {/* ── DETAILS ── */}
+      <div className="relative px-4 sm:px-6 lg:px-7 pb-12 pt-5 sm:pt-6">
+        <div className="grid gap-5 lg:gap-10 lg:grid-cols-[minmax(0,2fr)_minmax(0,1fr)] mb-8">
+          <div className="min-w-0">
+            {nextEpisode && isShow && (
+              <p className="text-[13px] font-semibold mb-2" style={{ color: 'var(--text)' }}>
+                S{nextEpisode.season ?? 1}:É{nextEpisode.episodeNumber}
+                {nextEpisode.title ? ` « ${nextEpisode.title} »` : ''}
+              </p>
+            )}
+            <p className="text-[14px] sm:text-[15px] leading-relaxed" style={{ color: 'var(--text2)' }}>
+              {media.overview || 'Aucun synopsis disponible.'}
             </p>
           </div>
-        )}
-
+          <dl className="text-[13px] leading-relaxed flex flex-col gap-2">
+            {media.genres && media.genres.length > 0 && (
+              <div>
+                <dt className="inline" style={{ color: 'var(--text3)' }}>Genres : </dt>
+                <dd className="inline" style={{ color: 'var(--text)' }}>{media.genres.join(', ')}</dd>
+              </div>
+            )}
+            {media.status && (
+              <div>
+                <dt className="inline" style={{ color: 'var(--text3)' }}>Statut : </dt>
+                <dd className="inline" style={{ color: 'var(--text)' }}>{media.status}</dd>
+              </div>
+            )}
+            {media.year && (
+              <div className="flex items-center gap-1.5" style={{ color: 'var(--text3)' }}>
+                <Calendar size={12} /> <span style={{ color: 'var(--text)' }}>{media.year}</span>
+                {media.duration ? <><Clock size={12} className="ml-2" /> <span style={{ color: 'var(--text)' }}>{formatDuration(media.duration)}</span></> : null}
+                {media.language ? <><Globe size={12} className="ml-2" /> <span style={{ color: 'var(--text)' }}>{media.language.toUpperCase()}</span></> : null}
+              </div>
+            )}
+          </dl>
+        </div>
         {/* Episodes (series / anime) */}
         {isShow && episodes.length > 0 && (
           <EpisodesSection
@@ -371,6 +353,9 @@ export default function MediaDetailPage() {
             </div>
           </div>
         )}
+
+        {/* More like this */}
+        {similar.length > 0 && <MediaRow title="Titres similaires" items={similar} />}
       </div>
     </div>
   )

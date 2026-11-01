@@ -153,7 +153,7 @@ export class MediaService {
     const where = type ? 'WHERE type = $2' : ''
     const params = type ? [limit, type] : [limit]
     const result = await query(
-      `SELECT id, type, title, poster_path, year, rating, duration
+      `SELECT id, type, title, poster_path, backdrop_path, overview, genres, year, rating, duration
        FROM media_items
        ${where}
        ORDER BY created_at DESC
@@ -163,16 +163,21 @@ export class MediaService {
     return result.rows.map(mapMedia)
   }
 
-  static async getContinueWatching(userId: string, limit = 10) {
+  static async getContinueWatching(userId: string, limit = 20) {
+    // One entry per title (latest episode in progress for a series)
     const result = await query(
-      `SELECT m.id, m.type, m.title, m.poster_path, m.year,
-              w.progress, w.duration, w.episode_id, w.updated_at,
-              e.season, e.episode_number, e.title as episode_title
-       FROM watch_history w
-       JOIN media_items m ON m.id = w.media_item_id
-       LEFT JOIN episodes e ON e.id = w.episode_id
-       WHERE w.user_id = $1 AND w.completed = false AND w.progress > 30
-       ORDER BY w.updated_at DESC
+      `SELECT * FROM (
+         SELECT DISTINCT ON (m.id)
+                m.id, m.type, m.title, m.poster_path, m.backdrop_path, m.year, m.rating,
+                w.progress, w.duration, w.episode_id, w.updated_at,
+                e.season, e.episode_number, e.title as episode_title
+         FROM watch_history w
+         JOIN media_items m ON m.id = w.media_item_id
+         LEFT JOIN episodes e ON e.id = w.episode_id
+         WHERE w.user_id = $1 AND w.completed = false AND w.progress > 30
+         ORDER BY m.id, w.updated_at DESC
+       ) t
+       ORDER BY updated_at DESC
        LIMIT $2`,
       [userId, limit],
     )

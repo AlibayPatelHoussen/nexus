@@ -101,10 +101,20 @@ function parseFilename(filename: string): { title: string; year?: number } {
 }
 
 // ─── TMDB search ─────────────────────────────────────
+let warnedNoTmdbKey = false
+
+/** True when a real TMDB API key is configured (not the .env.example placeholder). */
+export function hasTmdbKey(): boolean {
+  return !!TMDB_KEY && !/your_tmdb_api_key/i.test(TMDB_KEY)
+}
+
 async function searchTMDB(title: string, year?: number, type: 'movie' | 'tv' = 'movie'): Promise<TmdbResult | null> {
-  if (!TMDB_KEY) return null
+  if (!hasTmdbKey()) {
+    if (!warnedNoTmdbKey) { logger.warn('TMDB_API_KEY missing: posters and synopsis cannot be fetched'); warnedNoTmdbKey = true }
+    return null
+  }
   try {
-    const params: Record<string, string | number> = { api_key: TMDB_KEY, query: title, language: 'fr-FR' }
+    const params: Record<string, string | number> = { api_key: TMDB_KEY!, query: title, language: 'fr-FR' }
     if (year) params.year = year
     const { data } = await axios.get(`${TMDB_BASE}/search/${type}`, { params })
     return (data.results?.[0] as TmdbResult) || null
@@ -115,7 +125,7 @@ async function searchTMDB(title: string, year?: number, type: 'movie' | 'tv' = '
 }
 
 async function getTMDBDetails(id: number, type: 'movie' | 'tv'): Promise<TmdbResult | null> {
-  if (!TMDB_KEY) return null
+  if (!hasTmdbKey()) return null
   try {
     const { data } = await axios.get(`${TMDB_BASE}/${type}/${id}`, {
       params: { api_key: TMDB_KEY, language: 'fr-FR' },
@@ -190,7 +200,7 @@ interface TmdbEpisode {
 }
 
 async function getTMDBSeason(tvId: number, season: number): Promise<TmdbEpisode[]> {
-  if (!TMDB_KEY) return []
+  if (!hasTmdbKey()) return []
   try {
     const { data } = await axios.get(`${TMDB_BASE}/tv/${tvId}/season/${season}`, {
       params: { api_key: TMDB_KEY, language: 'fr-FR' },
@@ -406,12 +416,31 @@ export class MediaScanner {
         }
 
         const { title, year } = parseFilename(isDir ? entry.name : path.basename(videoPath, path.extname(videoPath)))
+
+        // Already indexed with metadata: only refresh size / scan date (no TMDB call)
+        const existing = await query<{ id: string; poster_path: string | null }>(
+          'SELECT id, poster_path FROM media_items WHERE file_path = $1', [videoPath],
+        )
+        if (existing.rows[0]?.poster_path) {
+          await query('UPDATE media_items SET file_size = $1, last_scanned = NOW() WHERE id = $2',
+            [await getFileSize(videoPath), existing.rows[0].id])
+          count++
+          continue
+        }
+
         const tmdb = await searchTMDB(title, year, 'movie')
 
         let details: TmdbResult | null = null
         if (tmdb?.id) details = await getTMDBDetails(tmdb.id, 'movie')
 
         const item = details || tmdb
+
+        // Lookup failed (no key, network, rate limit): never overwrite existing data
+        if (existing.rows[0] && !item) {
+          await query('UPDATE media_items SET last_scanned = NOW() WHERE id = $1', [existing.rows[0].id])
+          count++
+          continue
+        }
 
         await query(
           `INSERT INTO media_items
@@ -420,13 +449,20 @@ export class MediaScanner {
             status, language, file_size, last_scanned)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,NOW())
            ON CONFLICT (file_path) DO UPDATE SET
-             title = EXCLUDED.title, original_title = EXCLUDED.original_title,
-             tmdb_id = EXCLUDED.tmdb_id, overview = EXCLUDED.overview,
-             poster_path = EXCLUDED.poster_path, backdrop_path = EXCLUDED.backdrop_path,
-             genres = EXCLUDED.genres, year = EXCLUDED.year, rating = EXCLUDED.rating,
-             vote_count = EXCLUDED.vote_count, status = EXCLUDED.status,
-             language = EXCLUDED.language, file_size = EXCLUDED.file_size,
-             last_scanned = NOW()`,
+             title          = EXCLUDED.title,
+             original_title = COALESCE(EXCLUDED.original_title, media_items.original_title),
+             tmdb_id        = COALESCE(EXCLUDED.tmdb_id,        media_items.tmdb_id),
+             overview       = COALESCE(EXCLUDED.overview,       media_items.overview),
+             poster_path    = COALESCE(EXCLUDED.poster_path,    media_items.poster_path),
+             backdrop_path  = COALESCE(EXCLUDED.backdrop_path,  media_items.backdrop_path),
+             genres         = CASE WHEN cardinality(EXCLUDED.genres) > 0 THEN EXCLUDED.genres ELSE media_items.genres END,
+             year           = COALESCE(EXCLUDED.year,           media_items.year),
+             rating         = COALESCE(EXCLUDED.rating,         media_items.rating),
+             vote_count     = COALESCE(EXCLUDED.vote_count,     media_items.vote_count),
+             status         = COALESCE(EXCLUDED.status,         media_items.status),
+             language       = COALESCE(EXCLUDED.language,       media_items.language),
+             file_size      = EXCLUDED.file_size,
+             last_scanned   = NOW()`,
           [
             'film',
             item?.title || item?.name || title,
@@ -467,12 +503,48 @@ export class MediaScanner {
         const { title } = parseFilename(serieDir.name)
 
         // Already indexed: keep metadata, but always refresh its episodes
-        const existing = await query<{ id: string; tmdb_id: number | null }>(
-          'SELECT id, tmdb_id FROM media_items WHERE file_path = $1', [seriePath],
+        const existing = await query<{ id: string; tmdb_id: number | null; poster_path: string | null }>(
+          'SELECT id, tmdb_id, poster_path FROM media_items WHERE file_path = $1', [seriePath],
         )
         if (existing.rows[0]) {
-          await query('UPDATE media_items SET last_scanned = NOW() WHERE id = $1', [existing.rows[0].id])
-          await scanShowEpisodes(seriePath, existing.rows[0].id, existing.rows[0].tmdb_id)
+          const row = existing.rows[0]
+          let tmdbId = row.tmdb_id
+          // Metadata missing (e.g. an earlier lookup failed): try TMDB again, fill only what is empty
+          if (!row.poster_path) {
+            const found   = await searchTMDB(title, undefined, 'tv')
+            const details = found?.id ? await getTMDBDetails(found.id, 'tv') : null
+            const meta    = details || found
+            if (meta) {
+              tmdbId = meta.id ?? tmdbId
+              await query(
+                `UPDATE media_items SET
+                   title          = COALESCE($2, title),
+                   original_title = COALESCE(original_title, $3),
+                   tmdb_id        = COALESCE(tmdb_id, $4),
+                   overview       = COALESCE(overview, $5),
+                   poster_path    = COALESCE(poster_path, $6),
+                   backdrop_path  = COALESCE(backdrop_path, $7),
+                   genres         = CASE WHEN cardinality(genres) > 0 THEN genres ELSE $8 END,
+                   year           = COALESCE(year, $9),
+                   rating         = COALESCE(rating, $10),
+                   vote_count     = COALESCE(vote_count, $11),
+                   status         = COALESCE(status, $12),
+                   language       = COALESCE(language, $13)
+                 WHERE id = $1`,
+                [
+                  row.id, meta.name || null, meta.original_name || null, meta.id || null, meta.overview || null,
+                  meta.poster_path   ? `${TMDB_IMG}/w500${meta.poster_path}`   : null,
+                  meta.backdrop_path ? `${TMDB_IMG}/w1280${meta.backdrop_path}` : null,
+                  meta.genres?.map((g) => g.name) || [],
+                  meta.first_air_date ? parseInt(meta.first_air_date.slice(0, 4)) : null,
+                  meta.vote_average || null, meta.vote_count || null,
+                  meta.status || null, meta.original_language || null,
+                ],
+              )
+            }
+          }
+          await query('UPDATE media_items SET last_scanned = NOW() WHERE id = $1', [row.id])
+          await scanShowEpisodes(seriePath, row.id, tmdbId)
           continue
         }
 
@@ -529,7 +601,16 @@ export class MediaScanner {
            (type, title, original_title, file_path, anilist_id, overview,
             poster_path, backdrop_path, genres, year, rating, status, last_scanned)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW())
-           ON CONFLICT (file_path) DO UPDATE SET last_scanned = NOW()
+           ON CONFLICT (file_path) DO UPDATE SET
+             anilist_id    = COALESCE(media_items.anilist_id,    EXCLUDED.anilist_id),
+             overview      = COALESCE(media_items.overview,      EXCLUDED.overview),
+             poster_path   = COALESCE(media_items.poster_path,   EXCLUDED.poster_path),
+             backdrop_path = COALESCE(media_items.backdrop_path, EXCLUDED.backdrop_path),
+             genres        = CASE WHEN cardinality(media_items.genres) > 0 THEN media_items.genres ELSE EXCLUDED.genres END,
+             year          = COALESCE(media_items.year,   EXCLUDED.year),
+             rating        = COALESCE(media_items.rating, EXCLUDED.rating),
+             status        = COALESCE(media_items.status, EXCLUDED.status),
+             last_scanned  = NOW()
            RETURNING id`,
           [
             'anime',
@@ -576,7 +657,13 @@ export class MediaScanner {
            (type, title, original_title, file_path, mangadex_id,
             overview, poster_path, genres, status, last_scanned)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW())
-           ON CONFLICT (file_path) DO UPDATE SET last_scanned = NOW()`,
+           ON CONFLICT (file_path) DO UPDATE SET
+             mangadex_id  = COALESCE(media_items.mangadex_id, EXCLUDED.mangadex_id),
+             overview     = COALESCE(media_items.overview,    EXCLUDED.overview),
+             poster_path  = COALESCE(media_items.poster_path, EXCLUDED.poster_path),
+             genres       = CASE WHEN cardinality(media_items.genres) > 0 THEN media_items.genres ELSE EXCLUDED.genres END,
+             status       = COALESCE(media_items.status, EXCLUDED.status),
+             last_scanned = NOW()`,
           [
             'manga',
             mdx?.attributes?.title?.en || mdx?.attributes?.title?.['ja-ro'] || title,

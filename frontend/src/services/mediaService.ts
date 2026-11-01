@@ -92,6 +92,11 @@ export const mediaService = {
     return data.data
   },
 
+  async getMetadataStatus(): Promise<{ tmdb: boolean }> {
+    const { data } = await api.get<{ success: boolean; data: { tmdb: boolean } }>('/media/metadata/status')
+    return data.data
+  },
+
   async scan(type?: string): Promise<void> {
     await api.post(type ? `/media/scan/${type}` : '/media/scan')
   },
