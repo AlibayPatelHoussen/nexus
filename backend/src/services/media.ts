@@ -48,7 +48,9 @@ function mapEpisode(row: Record<string, any>) {
     title:         row['title'],
     overview:      row['overview'],
     filePath:      row['file_path'],
+    fileSize:      row['file_size'] != null ? Number(row['file_size']) : null,
     duration:      row['duration'],
+    thumbnailPath: row['thumbnail_path'],
     airDate:       row['air_date'],
   }
 }
@@ -245,6 +247,23 @@ export class MediaService {
       completed: r['completed'],
       episodeId: r['episode_id'],
     }
+  }
+
+  /** Progress of every episode of a show for a user (for "watched" marks and resume). */
+  static async getEpisodesProgress(userId: string, mediaId: string) {
+    const result = await query(
+      `SELECT episode_id, progress, duration, completed, updated_at FROM watch_history
+       WHERE user_id = $1 AND media_item_id = $2 AND episode_id IS NOT NULL
+       ORDER BY updated_at DESC`,
+      [userId, mediaId],
+    )
+    return result.rows.map((r) => ({
+      episodeId: r['episode_id'] as string,
+      progress:  r['progress'] as number,
+      duration:  r['duration'] as number | null,
+      completed: r['completed'] as boolean,
+      updatedAt: r['updated_at'] as string,
+    }))
   }
 
   static async getGenres(type?: string) {

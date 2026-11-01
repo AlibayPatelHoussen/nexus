@@ -3,10 +3,11 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowLeft, Play, Heart, Star, BookOpen,
-  Calendar, Globe, Clock, Layers, ChevronRight, RefreshCw,
+  Calendar, Globe, Clock, Layers, ChevronRight, RefreshCw, Tv,
 } from 'lucide-react'
 import { mediaService } from '@/services/mediaService'
 import { formatDuration, formatBytes } from '@/utils'
+import EpisodesSection from '@/components/media/EpisodesSection'
 import type { Episode, Chapter } from '@/types'
 import toast from 'react-hot-toast'
 
@@ -16,12 +17,20 @@ export default function MediaDetailPage() {
   const qc         = useQueryClient()
   const [isFav, setIsFav] = useState<boolean | null>(null)
   const [imgErr, setImgErr] = useState(false)
-  const [activeSeason, setActiveSeason] = useState(1)
+  const [activeSeason, setActiveSeason] = useState<number | null>(null)
   const [scanning, setScanning] = useState(false)
 
   const { data: media, isLoading } = useQuery({
     queryKey: ['media', id],
     queryFn:  () => mediaService.getById(id!),
+    enabled:  !!id,
+  })
+
+  const isShowType = (t?: string) => t === 'serie' || t === 'anime'
+
+  const { data: episodesProgress = [] } = useQuery({
+    queryKey: ['episodes-progress', id],
+    queryFn:  () => mediaService.getEpisodesProgress(id!),
     enabled:  !!id,
   })
 
@@ -54,7 +63,8 @@ export default function MediaDetailPage() {
   async function scan() {
     setScanning(true)
     try {
-      await mediaService.scan('manga')
+      const scanType = media?.type === 'serie' ? 'series' : media?.type === 'anime' ? 'animes' : 'manga'
+      await mediaService.scan(scanType)
       toast.success('Scan lancé — rechargement dans 4s')
       setTimeout(() => qc.invalidateQueries({ queryKey: ['media', id] }), 4000)
     } catch { toast.error('Erreur scan') }
@@ -74,12 +84,23 @@ export default function MediaDetailPage() {
 
   const episodes: Episode[] = media.episodes || []
   const chapters: Chapter[] = media.chapters  || []
-  const seasons  = [...new Set(episodes.map((e) => e.season || 1))].sort((a, b) => a - b)
+  const seasons  = [...new Set(episodes.map((e) => e.season ?? 1))].sort((a, b) => a - b)
   const isReading = ['manga', 'webtoon'].includes(media.type)
+  const isShow    = isShowType(media.type)
 
-  const resumeEpisode = progress?.episodeId
-    ? episodes.find((e) => e.id === progress.episodeId)
-    : null
+  // Streaming-style "next up": resume the last episode in progress, or the one
+  // after the last finished episode, otherwise the first episode
+  const progressByEpisode = new Map(episodesProgress.map((p) => [p.episodeId, p]))
+  const lastWatched = episodesProgress[0]
+  const lastIndex   = lastWatched ? episodes.findIndex((e) => e.id === lastWatched.episodeId) : -1
+  const nextEpisode = lastIndex === -1
+    ? episodes[0]
+    : lastWatched.completed ? (episodes[lastIndex + 1] ?? episodes[lastIndex]) : episodes[lastIndex]
+  const nextProgress = nextEpisode ? progressByEpisode.get(nextEpisode.id) : undefined
+  const nextResumes  = !!nextProgress && !nextProgress.completed && nextProgress.progress > 30
+  const currentSeason = activeSeason ?? nextEpisode?.season ?? seasons[0] ?? 1
+
+  const resumeEpisode = nextEpisode
 
   const progressPct = progress && progress.duration
     ? Math.round((progress.progress / progress.duration) * 100)
@@ -90,13 +111,13 @@ export default function MediaDetailPage() {
       const chapId = chapterId || chapters[0]?.id
       if (!chapId) { toast.error('Aucun chapitre — lancez un scan'); return }
       navigate(`/reader/${id}?ch=${chapId}`)
-    } else {
+    } else if (isShow) {
+      // A series is never played as a whole: always open a specific episode
       const epId = episodeId || resumeEpisode?.id || episodes[0]?.id
-      if (episodes.length > 0 && epId) {
-        navigate(`/player/${id}?ep=${epId}`)
-      } else {
-        navigate(`/player/${id}`)
-      }
+      if (!epId) { toast.error('Aucun épisode — lancez un scan'); return }
+      navigate(`/player/${id}?ep=${epId}`)
+    } else {
+      navigate(`/player/${id}`)
     }
   }
 
@@ -141,8 +162,8 @@ export default function MediaDetailPage() {
           <ArrowLeft size={16} strokeWidth={2} /> Retour
         </button>
 
-        {/* Scan button (manga/webtoon only) */}
-        {isReading && (
+        {/* Scan button (manga / series / anime) */}
+        {(isReading || isShow) && (
           <button
             className="absolute top-4 right-4 sm:top-5 sm:right-5 flex items-center gap-1.5 text-[12px] font-medium text-white/60 hover:text-white transition-colors p-1 -m-1"
             style={{ marginTop: 'env(safe-area-inset-top)' }}
@@ -241,13 +262,18 @@ export default function MediaDetailPage() {
             {/* Action buttons */}
             <div className="flex flex-wrap items-center gap-2.5">
               <button
-                className="btn-primary text-[13px] px-5 py-2.5 flex-1 sm:flex-none justify-center"
+                className="btn-primary text-[13px] px-5 py-2.5 flex-1 sm:flex-none justify-center disabled:opacity-50"
                 onClick={() => play()}
+                disabled={isShow && episodes.length === 0}
               >
                 <Play size={14} fill="white" strokeWidth={0} />
-                {progress && progressPct > 0 && progressPct < 95
-                  ? `Reprendre (${progressPct}%)`
-                  : isReading ? 'Lire' : 'Regarder'
+                {isShow
+                  ? episodes.length === 0
+                    ? 'Aucun épisode'
+                    : `${nextResumes ? 'Reprendre' : 'Regarder'} S${nextEpisode?.season ?? 1} · É${nextEpisode?.episodeNumber}`
+                  : progress && progressPct > 0 && progressPct < 95
+                    ? `Reprendre (${progressPct}%)`
+                    : isReading ? 'Lire' : 'Regarder'
                 }
               </button>
 
@@ -283,97 +309,30 @@ export default function MediaDetailPage() {
           </div>
         )}
 
-        {/* Episodes */}
-        {episodes.length > 0 && (
-          <div className="card overflow-hidden mb-5 animate-fade-up" style={{ animationDelay: '60ms' }}>
-            <div className="px-4 sm:px-5 pt-4 sm:pt-5 pb-0 mb-4">
-              <h2 className="text-[14px] font-semibold mb-3" style={{ color: 'var(--text)' }}>
-                Épisodes
-              </h2>
-              {/* Season tabs */}
-              {seasons.length > 1 && (
-                <div className="flex gap-2 mb-1 overflow-x-auto scrollbar-none -mx-4 px-4 sm:mx-0 sm:px-0">
-                  {seasons.map((s) => (
-                    <button
-                      key={s}
-                      className="px-3 py-1.5 rounded-full text-[12px] font-semibold transition-all flex-shrink-0 whitespace-nowrap"
-                      style={{
-                        background: activeSeason === s ? 'var(--blue)' : 'var(--surface2)',
-                        color:      activeSeason === s ? 'white'       : 'var(--text3)',
-                        border:     `1px solid ${activeSeason === s ? 'var(--blue)' : 'var(--border)'}`,
-                      }}
-                      onClick={() => setActiveSeason(s)}
-                    >
-                      Saison {s}
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
+        {/* Episodes (series / anime) */}
+        {isShow && episodes.length > 0 && (
+          <EpisodesSection
+            episodes={episodes}
+            seasons={seasons}
+            activeSeason={currentSeason}
+            onSeasonChange={setActiveSeason}
+            progress={progressByEpisode}
+            nextEpisodeId={nextEpisode?.id}
+            onPlay={(epId) => play(epId)}
+          />
+        )}
 
-            <div className="pb-2">
-              {episodes
-                .filter((e) => (e.season || 1) === activeSeason)
-                .map((ep) => {
-                  const epProgress = progress?.episodeId === ep.id ? progress : null
-                  const epPct = epProgress && epProgress.duration
-                    ? Math.round((epProgress.progress / epProgress.duration) * 100)
-                    : 0
-
-                  return (
-                    <div
-                      key={ep.id}
-                      className="flex items-center gap-3 px-4 sm:px-5 py-3 cursor-pointer transition-colors border-b"
-                      style={{
-                        borderColor: 'var(--border)',
-                        background:  epProgress ? 'var(--blue-dim)' : 'transparent',
-                      }}
-                      onMouseEnter={(e) => { if (!epProgress) e.currentTarget.style.background = 'var(--surface2)' }}
-                      onMouseLeave={(e) => { if (!epProgress) e.currentTarget.style.background = 'transparent' }}
-                      onClick={() => play(ep.id)}
-                    >
-                      {/* Number */}
-                      <span
-                        className="text-[12px] font-mono w-7 flex-shrink-0"
-                        style={{ color: 'var(--text3)' }}
-                      >
-                        {ep.episodeNumber}
-                      </span>
-
-                      {/* Info */}
-                      <div className="flex-1 min-w-0">
-                        <div className="text-[13px] font-medium truncate"
-                          style={{ color: epProgress ? 'var(--blue)' : 'var(--text)' }}>
-                          {ep.title || `Épisode ${ep.episodeNumber}`}
-                        </div>
-                        {ep.overview && (
-                          <div className="text-[11.5px] truncate mt-0.5" style={{ color: 'var(--text3)' }}>
-                            {ep.overview}
-                          </div>
-                        )}
-                        {/* Episode progress bar */}
-                        {epPct > 0 && epPct < 95 && (
-                          <div className="mt-1.5 h-[3px] rounded-full overflow-hidden"
-                            style={{ background: 'var(--surface3)', width: '120px' }}>
-                            <div className="h-full rounded-full"
-                              style={{ width: `${epPct}%`, background: 'var(--blue)' }} />
-                          </div>
-                        )}
-                      </div>
-
-                      {/* Duration */}
-                      {ep.duration && (
-                        <span className="text-[11.5px] font-mono flex-shrink-0"
-                          style={{ color: 'var(--text3)' }}>
-                          {formatDuration(ep.duration)}
-                        </span>
-                      )}
-
-                      <ChevronRight size={14} strokeWidth={2} style={{ color: 'var(--text3)', flexShrink: 0 }} />
-                    </div>
-                  )
-                })}
-            </div>
+        {/* Show without indexed episodes */}
+        {isShow && episodes.length === 0 && (
+          <div className="card p-5 sm:p-6 mb-5 flex flex-col items-center text-center gap-2 animate-fade-up">
+            <Tv size={32} strokeWidth={1.5} style={{ color: 'var(--text3)' }} />
+            <p className="text-[14px] font-semibold" style={{ color: 'var(--text)' }}>Aucun épisode trouvé</p>
+            <p className="text-[12px] max-w-sm" style={{ color: 'var(--text3)' }}>
+              Range les vidéos dans le dossier de la série (ex. <span className="font-mono">Saison 1/S01E01.mkv</span>) puis relance un scan.
+            </p>
+            <button className="btn-primary text-[12.5px] mt-2" onClick={scan} disabled={scanning}>
+              <RefreshCw size={13} strokeWidth={2} className={scanning ? 'animate-spin' : ''} /> Scanner les épisodes
+            </button>
           </div>
         )}
 

@@ -30,6 +30,14 @@ export interface MediaListResult {
   totalPages: number
 }
 
+export interface EpisodeProgress {
+  episodeId: string
+  progress:  number
+  duration:  number | null
+  completed: boolean
+  updatedAt: string
+}
+
 export const mediaService = {
   async getAll(filters: MediaFilters = {}): Promise<MediaListResult> {
     const { data } = await api.get<{ success: boolean; data: MediaListResult }>('/media', { params: filters })
@@ -76,6 +84,11 @@ export const mediaService = {
     const { data } = await api.get<{ success: boolean; data: { progress: number; duration: number; completed: boolean; episodeId?: string | null } | null }>(`/media/${id}/progress`, {
       params: { episodeId },
     })
+    return data.data
+  },
+
+  async getEpisodesProgress(id: string): Promise<EpisodeProgress[]> {
+    const { data } = await api.get<{ success: boolean; data: EpisodeProgress[] }>(`/media/${id}/episodes/progress`)
     return data.data
   },
 
