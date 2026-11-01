@@ -43,11 +43,44 @@ npm prune --omit=dev
 # ── Restart PM2 ──────────────────────────────────────
 echo "♻️  Restarting services..."
 # Kill any orphan process on port 3001 before starting
-fuser -k 3001/tcp 2>/dev/null || true
+fuser -k 3001/tcp 2>/dev/null || sudo -n fuser -k 3001/tcp 2>/dev/null || true
 sleep 1
 pm2 delete nexus-backend 2>/dev/null || true
 pm2 start ecosystem.config.cjs --env production
 pm2 save
 
-echo "✅ Deployment complete!"
-pm2 status nexus-backend
+# ── Verify the new backend is the one answering ─────
+# (an old process started outside PM2 can keep port 3001: the new one then
+#  crash-loops with EADDRINUSE while the old code keeps serving requests)
+EXPECTED=$(git rev-parse --short=12 HEAD)
+PORT=$(grep -E '^PORT=' backend/.env 2>/dev/null | cut -d= -f2 | tr -d '[:space:]')
+PORT=${PORT:-3001}
+echo "🔎 Checking the running backend (expected build $EXPECTED)..."
+RUNNING=""
+for _ in $(seq 1 20); do
+  RUNNING=$(curl -s "http://localhost:$PORT/api/health" | sed -n 's/.*"commit":"\([^"]*\)".*/\1/p')
+  [ "$RUNNING" = "$EXPECTED" ] && break
+  sleep 1
+done
+
+if [ "$RUNNING" = "$EXPECTED" ]; then
+  echo "✅ Deployment complete! Backend $RUNNING is running on port $PORT."
+  pm2 status nexus-backend
+else
+  echo ""
+  echo "❌ The backend answering on port $PORT is NOT the new build."
+  echo "   expected: $EXPECTED"
+  echo "   running : ${RUNNING:-old version (no build info) or not answering}"
+  echo ""
+  echo "   Process listening on port $PORT:"
+  { ss -ltnp 2>/dev/null | grep -E "[:.]$PORT[[:space:]]" \
+    || lsof -nP -iTCP:"$PORT" -sTCP:LISTEN 2>/dev/null \
+    || sudo -n lsof -nP -iTCP:"$PORT" -sTCP:LISTEN 2>/dev/null; } || echo "   (could not list it — try: sudo lsof -iTCP:$PORT -sTCP:LISTEN)"
+  echo ""
+  echo "   Last backend logs:"
+  pm2 logs nexus-backend --lines 15 --nostream 2>/dev/null || true
+  echo ""
+  echo "   If another process holds the port (started by hand, systemd or another user):"
+  echo "     sudo fuser -k $PORT/tcp && pm2 restart nexus-backend"
+  exit 1
+fi

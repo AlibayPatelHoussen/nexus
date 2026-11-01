@@ -64,7 +64,7 @@ export default function MediaDetailPage() {
     mutationFn: () => mediaService.toggleFavorite(id!),
     onSuccess:  (result) => {
       setIsFav(result)
-      toast.success(result ? 'Ajouté aux favoris' : 'Retiré des favoris')
+      toast.success(result ? 'Ajouté à ma liste' : 'Retiré de ma liste')
       qc.invalidateQueries({ queryKey: ['media', 'favorites'] })
     },
   })

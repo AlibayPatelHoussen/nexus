@@ -150,21 +150,41 @@ GET    /api/terminal (WebSocket)
 
 ## Production Deployment
 
+First install (Ubuntu): `bash scripts/setup-server.sh` (PostgreSQL, `.env`, schema, admin user).
+
+Every update:
+
 ```bash
-# On your server
-git clone https://github.com/AlibayPatelHoussen/nexus.git /opt/nexus
-cd /opt/nexus
-npm ci --omit=dev
-npm run build
-
-# Start with PM2
-pm2 start backend/dist/index.js --name nexus-backend
-pm2 save
+cd /opt/nexus && bash scripts/deploy.sh
 ```
 
-Expose via Cloudflare Tunnel:
+`deploy.sh` pulls `main`, installs dependencies, builds backend **and** frontend,
+applies database migrations, restarts PM2 and then **checks that the backend
+answering on the port is the new build**. It must end with
+`✅ Deployment complete! Backend <commit> is running…`; otherwise it prints why
+(old process still holding the port, migration error…) and what to run.
+
+The UI also shows a warning banner when the backend does not run the same build
+as the interface, and *Paramètres → Version* displays both versions.
+
+Expose the app (backend serving the built frontend) via Cloudflare Tunnel:
 ```
-nexus.houssen-serveur.com → localhost:5173 (or 3001 if serving static files)
+nexus.houssen-serveur.com → localhost:3001
+```
+
+### Troubleshooting
+| Symptom | Fix |
+|---|---|
+| Banner "Le serveur n'est pas à jour" / player "Lecture impossible (backend pas à jour)" | re-run `bash scripts/deploy.sh` and read its last lines |
+| Log `Port 3001 is already in use` | an old process holds the port: `sudo fuser -k 3001/tcp && pm2 restart nexus-backend` |
+| Orange "Clé TMDB absente" notice, no posters | set `TMDB_API_KEY` in `backend/.env`, redeploy, then scan |
+| `.mkv` / `.avi` will not play on iPhone | Safari cannot read these containers: convert to `.mp4` (H.264) |
+
+## Testing
+
+```bash
+npm test          # backend (Jest) + frontend (Vitest) unit/integration tests
+npm run e2e       # end-to-end tests on the production build (see e2e/README.md)
 ```
 
 ## License

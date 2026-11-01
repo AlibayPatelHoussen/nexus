@@ -14,8 +14,12 @@ export async function getStreamToken(): Promise<string> {
   const now    = Date.now() / 1000
   if (cached && cached.userId === userId && cached.exp - MIN_VALIDITY_S > now) return cached.token
 
-  const { data } = await api.get<{ success: boolean; data: { token: string } }>('/auth/stream-token')
-  const token = data.data.token
+  const { data } = await api.get<{ success: boolean; data?: { token?: string } }>('/auth/stream-token')
+  const token = typeof data === 'object' && data ? data.data?.token : undefined
+  // An outdated backend (or a proxy) can answer 200 with an HTML page
+  if (typeof token !== 'string' || !token) {
+    throw new Error('Réponse invalide du serveur pour l\'autorisation de lecture (backend pas à jour ?)')
+  }
   cached = { userId, token, exp: tokenExpiresAt(token) ?? now + MIN_VALIDITY_S }
   return token
 }

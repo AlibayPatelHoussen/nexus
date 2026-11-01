@@ -116,7 +116,7 @@ let warnedNoTmdbKey = false
 
 /** True when a real TMDB API key is configured (not the .env.example placeholder). */
 export function hasTmdbKey(): boolean {
-  return !!TMDB_KEY && !/your_tmdb_api_key/i.test(TMDB_KEY)
+  return !!TMDB_KEY && !/your_|_here|changeme|^x+$/i.test(TMDB_KEY)
 }
 
 async function searchTMDB(title: string, year?: number, type: 'movie' | 'tv' = 'movie'): Promise<TmdbResult | null> {

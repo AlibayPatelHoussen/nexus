@@ -23,6 +23,15 @@ import scriptsRoutes  from './routes/scripts'
 import terminalRoutes from './routes/terminal'
 import { registerSocketHandlers } from './socket'
 
+const STARTED_AT = new Date().toISOString()
+const BUILD_INFO: { commit: string; builtAt: string | null } = (() => {
+  try {
+    return JSON.parse(fs.readFileSync(path.join(__dirname, 'build-info.json'), 'utf8'))
+  } catch {
+    return { commit: 'dev', builtAt: null }
+  }
+})()
+
 const app    = express()
 app.set('trust proxy', 1)
 const server = createServer(app)
@@ -69,7 +78,16 @@ app.use('/api/media',    chaptersRoutes)
 app.use('/api/services', servicesRoutes)
 app.use('/api/scripts',  scriptsRoutes)
 app.use('/api/terminal', terminalRoutes)
-app.get('/api/health',   (_req, res) => res.json({ status: 'ok', timestamp: new Date().toISOString() }))
+app.get('/api/health',   (_req, res) => res.json({
+  status:    'ok',
+  timestamp: new Date().toISOString(),
+  // Lets the UI detect a backend that was not rebuilt / restarted after a deploy
+  build:     BUILD_INFO,
+  startedAt: STARTED_AT,
+}))
+
+// Unknown API routes are real 404s (never the SPA's index.html)
+app.use('/api', notFound)
 
 registerSocketHandlers(io)
 
@@ -99,7 +117,19 @@ app.use(notFound)
 app.use(errorHandler)
 
 if (require.main === module) {
-  server.listen(PORT, () => logger.info(`Nexus backend running on port ${PORT} [${process.env.NODE_ENV}]`))
+  server.on('error', (err: NodeJS.ErrnoException) => {
+    if (err.code === 'EADDRINUSE') {
+      // Typical after a deploy when an old Nexus process (started by hand, systemd
+      // or another user) still holds the port: it would keep serving the old code
+      logger.error(
+        `Port ${PORT} is already in use — another process (probably an old Nexus backend) is running. ` +
+        `Stop it (e.g. "sudo fuser -k ${PORT}/tcp") then "pm2 restart nexus-backend".`,
+      )
+      process.exit(1)
+    }
+    throw err
+  })
+  server.listen(PORT, () => logger.info(`Nexus backend ${BUILD_INFO.commit} running on port ${PORT} [${process.env.NODE_ENV}]`))
 }
 
 export { app, io }

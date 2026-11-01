@@ -1,4 +1,5 @@
-import { useState, useRef } from 'react'
+import { useState, useRef, useEffect } from 'react'
+import { useSearchParams } from 'react-router-dom'
 import {
   ChevronRight, ChevronUp, FolderPlus, FilePlus,
   Upload, Download, Trash2, Edit2, Search,
@@ -143,12 +144,25 @@ function openInNewTab(urlPromise: Promise<string>) {
 }
 
 export default function FilesPage() {
+  const [searchParams, setSearchParams] = useSearchParams()
+  const urlPath = searchParams.get('path') || '/'
+
   const {
     currentPath, entries, isLoading, breadcrumbs,
     selected, navigate, goUp,
     toggleSelect, selectAll, clearSelect,
     deleteEntry, renameEntry, createDir, createFile,
-  } = useFiles('/')
+  } = useFiles(urlPath)
+
+  // Keep the current folder in the URL (?path=…): reload, share and Back work
+  useEffect(() => {
+    if (currentPath !== urlPath) setSearchParams({ path: currentPath })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [currentPath])
+  useEffect(() => {
+    if (urlPath !== currentPath) navigate(urlPath)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [urlPath])
 
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('list')
   const [search,   setSearch]   = useState('')

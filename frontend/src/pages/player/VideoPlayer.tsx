@@ -9,6 +9,8 @@ interface Props {
   onTimeUpdate?: (current: number, duration: number) => void
   onEnded?: () => void
   initialTime?: number
+  /** Imperative seek (e.g. "Recommencer"): a new key triggers the seek */
+  seekTo?: { time: number; key: number }
 }
 
 /** Browsers (Safari / iPhone especially) cannot play some containers natively. */
@@ -22,7 +24,7 @@ function unsupportedHint(src: string): string | null {
   return null
 }
 
-export default function VideoPlayer({ src, onTimeUpdate, onEnded, initialTime }: Props) {
+export default function VideoPlayer({ src, onTimeUpdate, onEnded, initialTime, seekTo }: Props) {
   const videoRef     = useRef<HTMLVideoElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const scrubberRef  = useRef<HTMLDivElement>(null)
@@ -99,6 +101,19 @@ export default function VideoPlayer({ src, onTimeUpdate, onEnded, initialTime }:
       v.removeEventListener('error',          onErr)
     }
   }, [src, onTimeUpdate, onEnded, scheduleHide, initialTime])
+
+  useEffect(() => {
+    const v = videoRef.current
+    if (v && seekTo) { v.currentTime = seekTo.time; setCurrent(seekTo.time) }
+  }, [seekTo])
+
+  // Resume position known only after the metadata loaded: seek once, if still at the start
+  useEffect(() => {
+    const v = videoRef.current
+    if (v && initialTime && initialTime > 0 && v.readyState >= 1 && v.currentTime < 1 && initialTime < v.duration) {
+      v.currentTime = initialTime
+    }
+  }, [initialTime])
 
   // ── Fullscreen ─────────────────────────────────────
   useEffect(() => {

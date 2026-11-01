@@ -4,6 +4,15 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Fixed (playback & deploy diagnostics)
+- Playback progress was never really saved (the periodic save kept the first position); resume now works and "Recommencer" restarts from 0
+- Unknown `/api/*` routes returned the SPA page with HTTP 200 instead of a 404 (an outdated backend looked "OK" to the UI)
+- Backend reports its build (`/api/health`), the UI warns when it differs from the interface; `deploy.sh` verifies the running build; clear log when the port is already in use
+- File manager keeps the current folder in the URL
+
+### Added
+- End-to-end test suite on the production build (`npm run e2e`)
+
 ### Security
 - File manager (`/api/files/*`) is now admin-only; non-admin users can only stream/download inside `MEDIA_ROOT`
 - Media URLs use a short-lived read-only *stream* token instead of the access token; tokens in URLs are redacted from access logs
