@@ -15,9 +15,11 @@ interface MediaCardProps {
   duration?:  number
   /** Fill the grid cell instead of the fixed 120px used in horizontal rows */
   fluid?:     boolean
+  /** Fluid on phones/tablets (grid), fixed 120px from lg up (scroll row) */
+  adaptive?:  boolean
 }
 
-export default function MediaCard({ item, showType, progress, duration, fluid }: MediaCardProps) {
+export default function MediaCard({ item, showType, progress, duration, fluid, adaptive }: MediaCardProps) {
   const navigate  = useNavigate()
   const qc        = useQueryClient()
   const isAdmin   = useAuthStore((s) => s.user?.role === 'admin')
@@ -62,7 +64,11 @@ export default function MediaCard({ item, showType, progress, duration, fluid }:
 
   return (
     <div
-      className={`${fluid ? 'w-full min-w-0' : 'flex-shrink-0 w-[108px] sm:w-[120px]'} cursor-pointer group`}
+      className={`${
+        fluid    ? 'w-full min-w-0'
+        : adaptive ? 'w-full min-w-0 lg:w-[120px] lg:flex-shrink-0'
+        : 'flex-shrink-0 w-[108px] sm:w-[120px]'
+      } cursor-pointer group`}
       onClick={handleClick}
     >
       {/* Poster */}
