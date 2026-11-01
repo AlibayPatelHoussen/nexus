@@ -6,7 +6,14 @@ import {
   Settings2, LogOut, Sun, Moon, Menu, X,
 } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
+import { useMediaQuery } from '@/hooks/useMediaQuery'
 import { cn } from '@/utils'
+
+const COLLAPSE_KEY = 'nexus-sidebar-collapsed'
+
+function readCollapsed(): boolean {
+  try { return localStorage.getItem(COLLAPSE_KEY) === '1' } catch { return false }
+}
 
 const NAV_SECTIONS = [
   {
@@ -45,6 +52,17 @@ export default function Layout() {
   const logout    = useAuthStore((s) => s.logout)
   const location  = useLocation()
   const [drawerOpen, setDrawerOpen] = useState(false)
+  // Desktop: sidebar can be collapsed to an icon rail (remembered per browser)
+  const [collapsed, setCollapsed] = useState(readCollapsed)
+  const isDesktop = useMediaQuery('(min-width: 1024px)')
+  const rail = collapsed && isDesktop
+
+  function toggleCollapsed() {
+    setCollapsed((c) => {
+      try { localStorage.setItem(COLLAPSE_KEY, c ? '0' : '1') } catch { /* storage unavailable */ }
+      return !c
+    })
+  }
 
   // Close the mobile drawer on navigation and with Escape
   useEffect(() => { setDrawerOpen(false) }, [location.pathname])
@@ -83,22 +101,35 @@ export default function Layout() {
       <aside
         id="nexus-sidebar"
         className={cn(
-          'flex flex-col w-[260px] lg:w-[240px] flex-shrink-0 border-r h-full overflow-hidden',
-          'fixed inset-y-0 left-0 z-50 transition-transform duration-200 ease-out lg:static lg:translate-x-0',
+          'flex flex-col w-[260px] flex-shrink-0 border-r h-full overflow-hidden',
+          rail ? 'lg:w-[68px]' : 'lg:w-[240px]',
+          'fixed inset-y-0 left-0 z-50 transition-[transform,width] duration-200 ease-out lg:static lg:translate-x-0',
           drawerOpen ? 'translate-x-0 shadow-2xl' : '-translate-x-full',
         )}
         style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}
       >
         {/* Header */}
-        <div className="p-5 pb-4 border-b" style={{ borderColor: 'var(--border)' }}>
-          <div className="flex items-center gap-2.5">
+        <div className={cn('border-b', rail ? 'px-3 py-4' : 'p-5 pb-4')} style={{ borderColor: 'var(--border)' }}>
+          <div className={cn('flex items-center gap-2.5', rail && 'flex-col')}>
+            {/* Desktop hamburger: collapse / expand the sidebar */}
+            <button
+              className={cn('hidden lg:flex w-[34px] h-[34px] rounded-[9px] items-center justify-center flex-shrink-0 transition-colors hover:bg-[var(--surface2)]', !rail && 'order-last ml-auto -mr-1.5')}
+              style={{ color: 'var(--text2)' }}
+              onClick={toggleCollapsed}
+              aria-label={rail ? 'Déplier le menu' : 'Replier le menu'}
+              aria-expanded={!rail}
+              aria-controls="nexus-sidebar"
+              title={rail ? 'Déplier le menu' : 'Replier le menu'}
+            >
+              <Menu size={18} strokeWidth={2} />
+            </button>
             <div
               className="w-[34px] h-[34px] rounded-[9px] flex items-center justify-center flex-shrink-0"
               style={{ background: 'var(--blue)', boxShadow: '0 0 16px var(--blue-dim)' }}
             >
               <Layers size={16} color="white" strokeWidth={2.5} />
             </div>
-            <div>
+            <div className={cn('min-w-0', rail && 'hidden')}>
               <div className="text-[15px] font-bold tracking-tight" style={{ color: 'var(--text)' }}>
                 Nexus
               </div>
@@ -118,22 +149,28 @@ export default function Layout() {
         </div>
 
         {/* Nav */}
-        <nav className="flex-1 overflow-y-auto p-3 flex flex-col gap-5">
-          {NAV_SECTIONS.map((section) => (
+        <nav className={cn('flex-1 overflow-y-auto overflow-x-hidden p-3 flex flex-col', rail ? 'gap-3' : 'gap-5')}>
+          {NAV_SECTIONS.map((section, si) => (
             <div key={section.label}>
-              <div
-                className="text-[10px] font-semibold uppercase tracking-widest px-2 mb-1"
-                style={{ color: 'var(--text3)' }}
-              >
-                {section.label}
-              </div>
+              {rail ? (
+                si > 0 && <div className="h-px mx-2 mb-3" style={{ background: 'var(--border)' }} />
+              ) : (
+                <div
+                  className="text-[10px] font-semibold uppercase tracking-widest px-2 mb-1"
+                  style={{ color: 'var(--text3)' }}
+                >
+                  {section.label}
+                </div>
+              )}
               <div className="flex flex-col gap-px">
                 {section.items.filter((item) => isAdmin || !('adminOnly' in item && item.adminOnly)).map((item) => (
                   <NavLink
                     key={item.to}
                     to={item.to}
+                    title={rail ? item.label : undefined}
+                    aria-label={rail ? item.label : undefined}
                     className={({ isActive }) =>
-                      cn('nav-item text-[13.5px] font-medium', isActive && 'active')
+                      cn('nav-item text-[13.5px] font-medium', rail && 'justify-center !px-0', isActive && 'active')
                     }
                   >
                     {({ isActive }) => (
@@ -146,7 +183,7 @@ export default function Layout() {
                             {item.icon}
                           </div>
                         </div>
-                        <span>{item.label}</span>
+                        {!rail && <span className="truncate">{item.label}</span>}
                       </>
                     )}
                   </NavLink>
@@ -161,7 +198,9 @@ export default function Layout() {
           {/* Theme toggle */}
           <button
             onClick={toggleTheme}
-            className="nav-item w-full text-[13px] font-medium"
+            className={cn('nav-item w-full text-[13px] font-medium', rail && 'justify-center !px-0')}
+            title={rail ? (theme === 'dark' ? 'Mode clair' : 'Mode sombre') : undefined}
+            aria-label={theme === 'dark' ? 'Mode clair' : 'Mode sombre'}
           >
             <div
               className="w-[26px] h-[26px] rounded-[7px] flex items-center justify-center"
@@ -172,20 +211,23 @@ export default function Layout() {
                 : <Moon size={13} strokeWidth={2} style={{ color: 'var(--blue)'   }} />
               }
             </div>
-            <span style={{ color: 'var(--text2)' }}>
-              {theme === 'dark' ? 'Mode clair' : 'Mode sombre'}
-            </span>
+            {!rail && (
+              <span style={{ color: 'var(--text2)' }}>
+                {theme === 'dark' ? 'Mode clair' : 'Mode sombre'}
+              </span>
+            )}
           </button>
 
           {/* User */}
-          <div className="flex items-center gap-2.5 px-2.5 py-2 rounded-lg">
+          <div className={cn('flex items-center gap-2.5 py-2 rounded-lg', rail ? 'flex-col px-0' : 'px-2.5')}>
             <div
               className="w-[30px] h-[30px] rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0"
               style={{ background: 'linear-gradient(135deg, var(--blue), var(--purple))' }}
+              title={rail ? `${user?.username ?? ''} (${user?.role ?? ''})` : undefined}
             >
-              {user?.username?.[0]?.toUpperCase() || 'H'}
+              {user?.username?.[0]?.toUpperCase() || '?'}
             </div>
-            <div className="flex-1 min-w-0">
+            <div className={cn('flex-1 min-w-0', rail && 'hidden')}>
               <div className="text-[13px] font-semibold truncate" style={{ color: 'var(--text)' }}>
                 {user?.username}
               </div>
@@ -198,6 +240,7 @@ export default function Layout() {
               className="p-1.5 rounded-lg transition-colors"
               style={{ color: 'var(--text3)' }}
               title="Déconnexion"
+              aria-label="Déconnexion"
             >
               <LogOut size={14} strokeWidth={2} />
             </button>
