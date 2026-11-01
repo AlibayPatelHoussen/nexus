@@ -76,8 +76,23 @@ registerSocketHandlers(io)
 // Serve frontend — __dirname is dist/ in production
 const frontendDist = path.resolve(__dirname, '../../frontend/dist')
 if (fs.existsSync(frontendDist)) {
-  app.use(express.static(frontendDist))
-  app.use((_req, res) => res.sendFile(path.join(frontendDist, 'index.html')))
+  // index.html must always be revalidated so a deploy is picked up immediately;
+  // Vite's hashed assets (/assets/*-<hash>.js|css) never change and can be cached for a year.
+  const noCache = (res: express.Response) => res.setHeader('Cache-Control', 'no-cache')
+  app.use(express.static(frontendDist, {
+    index: false,
+    setHeaders: (res, filePath) => {
+      if (filePath.includes(`${path.sep}assets${path.sep}`)) {
+        res.setHeader('Cache-Control', 'public, max-age=31536000, immutable')
+      } else {
+        noCache(res)
+      }
+    },
+  }))
+  app.use((_req, res) => {
+    noCache(res)
+    res.sendFile(path.join(frontendDist, 'index.html'))
+  })
 }
 
 app.use(notFound)
