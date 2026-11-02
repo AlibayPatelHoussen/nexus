@@ -54,6 +54,11 @@ async function newPage(session, { width = 390, height = 844, theme = 'dark' } = 
   page.on('pageerror', (e) => errorsByPage.push(`${page.url()}: ${e.message}`))
   return page
 }
+/** Start playback once the player attached its source (like a user pressing play). */
+async function playVideo(page) {
+  await page.waitForFunction(() => (document.querySelector('video')?.readyState ?? 0) >= 1, null, { timeout: 30000 })
+  await page.evaluate(() => { const v = document.querySelector('video'); v.muted = true; return v.play() })
+}
 const mediaId = (title) => sql(`SELECT id FROM media_items WHERE title = '${title.replace(/'/g, "''")}' LIMIT 1`)
 
 // ═════════════════════════ API / backend ═════════════════════════
@@ -208,7 +213,7 @@ test('UI: film page → Lecture actually plays the video', async () => {
   await page.click('button:has-text("Lecture"), button:has-text("Reprendre")')
   await page.waitForURL(`**/player/${id}**`)
   const video = await page.waitForSelector('video', { timeout: 10000 })
-  await page.evaluate(() => { const v = document.querySelector('video'); v.muted = true; return v.play() })
+  await playVideo(page)
   await page.waitForFunction(() => document.querySelector('video').currentTime > 1, null, { timeout: 15000 })
   assert(video, 'video element')
   await page.screenshot({ path: `${SHOTS}/player-film.png` })
@@ -298,7 +303,7 @@ test('UI: regular user — no admin pages, can still watch', async () => {
   const id = sql(`SELECT id FROM media_items WHERE file_path LIKE '%Demo Webm%'`)
   await page.goto(`${B}/player/${id}`, { waitUntil: 'networkidle' })
   await page.waitForSelector('video')
-  await page.evaluate(() => { const v = document.querySelector('video'); v.muted = true; return v.play() })
+  await playVideo(page)
   await page.waitForFunction(() => document.querySelector('video').currentTime > 0.5, null, { timeout: 15000 })
   await page.context().close()
 })
@@ -422,7 +427,7 @@ test('UI: playback progress is saved while watching', async () => {
   const page = await newPage(admin)
   await page.goto(`${B}/player/${id}`, { waitUntil: 'networkidle' })
   await page.waitForSelector('video')
-  await page.evaluate(() => { const v = document.querySelector('video'); v.muted = true; return v.play() })
+  await playVideo(page)
   await page.waitForFunction(() => document.querySelector('video').currentTime > 7, null, { timeout: 20000 })
   await page.waitForTimeout(5500) // one periodic save (every 5 s)
   const saved = Number(sql(`SELECT max(progress) FROM watch_history WHERE media_item_id='${id}'`))
@@ -467,7 +472,7 @@ test('conversion: HEVC film shows a spinner + "Préparation de la vidéo…", th
   await page.waitForSelector('[role="status"] >> text=Préparation de la vidéo…', { timeout: 15000 })
   eq((await started).status(), 201, 'transcode started')
   await page.waitForSelector('video')
-  await page.evaluate(() => { const v = document.querySelector('video'); v.muted = true; return v.play().catch(() => {}) })
+  await playVideo(page)
   await page.waitForFunction(() => document.querySelector('video').currentTime > 2, null, { timeout: 30000 })
   // Spinner hidden while playing, total duration shown (not the converted part only)
   await page.waitForFunction(() => !document.querySelector('[role="status"]'), null, { timeout: 10000 })
@@ -481,7 +486,7 @@ test('conversion: MKV h264+AC3 (audio converted) plays', async () => {
   const page = await newPage(admin)
   await page.goto(`${B}/player/${id}`)
   await page.waitForSelector('video')
-  await page.evaluate(() => { const v = document.querySelector('video'); v.muted = true; return v.play().catch(() => {}) })
+  await playVideo(page)
   await page.waitForFunction(() => document.querySelector('video').currentTime > 2, null, { timeout: 30000 })
   await page.context().close()
 })
@@ -491,7 +496,7 @@ test('conversion: seeking past the converted part restarts ffmpeg there', async 
   const page = await newPage(admin, { width: 1280, height: 800 })
   await page.goto(`${B}/player/${id}`)
   await page.waitForSelector('video')
-  await page.evaluate(() => { const v = document.querySelector('video'); v.muted = true; return v.play().catch(() => {}) })
+  await playVideo(page)
   await page.waitForFunction(() => document.querySelector('video').currentTime > 1, null, { timeout: 30000 })
   // Click at 80 % of the scrubber (72 s of 90 s)
   const restart = page.waitForResponse((r) => r.url().includes('/api/files/transcode?') && r.url().includes('start=7'), { timeout: 15000 })
@@ -518,7 +523,7 @@ test('conversion: closing the player kills ffmpeg', async () => {
   await page.click('text=Retour')
   await stopped
   await sleep(1500)
-  const left = Number(execFileSync('bash', ['-c', `pgrep -f "nexus-hls/${jobId}" | wc -l`]).toString().trim())
+  const left = Number(execFileSync('bash', ['-c', `pgrep -f "nexus-hl[s]/${jobId}" | wc -l`]).toString().trim())
   eq(left, 0, 'ffmpeg of this player still running')
   await page.context().close()
 })
