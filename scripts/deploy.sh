@@ -29,6 +29,12 @@ if ! git diff --quiet || ! git diff --cached --quiet; then
 fi
 git pull --ff-only origin main
 
+# ── ffmpeg is needed to convert videos the browser cannot read ──
+if ! command -v ffmpeg &> /dev/null || ! command -v ffprobe &> /dev/null; then
+  echo "⚠️  ffmpeg is not installed: MKV/AVI/HEVC videos will not play in the browser."
+  echo "   Install it with: sudo apt-get install -y ffmpeg   (then re-run this script)"
+fi
+
 # ── Install dependencies (including devDeps for build) ─
 echo "📦 Installing dependencies..."
 npm ci --include=dev

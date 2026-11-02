@@ -27,5 +27,5 @@ manga image/PDF chapters), rescans never wiping metadata when the metadata API
 is down, HTTP range streaming, progress saving & resume, every page of the UI
 (catalogue, title pages, real video playback, series, manga reader, files with
 upload, services, scripts, network, settings, terminal), regular-user
-restrictions, outdated-backend diagnostics, access-token refresh, live stats,
+restrictions, on-the-fly conversion (MKV h264+AC3 remux, HEVC transcode, spinner, real HLS playback, seeking past the converted part, ffmpeg stopped when leaving), outdated-backend diagnostics, access-token refresh, live stats,
 "Ma liste", search & genres, password change, theme and phone layouts.

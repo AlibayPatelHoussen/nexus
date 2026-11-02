@@ -39,6 +39,13 @@ sudo apt-get install -y python3 python3-pip
 # ── Build tools (for node-pty) ────────────────────────
 sudo apt-get install -y build-essential python3-dev
 
+# ── ffmpeg (on-the-fly conversion of MKV/AVI/HEVC… for the browser player) ──
+if ! command -v ffmpeg &> /dev/null || ! command -v ffprobe &> /dev/null; then
+  echo "📦 Installing ffmpeg..."
+  sudo apt-get install -y ffmpeg
+fi
+echo "ffmpeg: $(ffmpeg -version | head -1)"
+
 # ── Setup PostgreSQL DB ──────────────────────────────
 echo "🗄️  Setting up database..."
 DB_NAME="nexus"

@@ -6,6 +6,10 @@ import fs from 'fs'
 import { authenticate, authenticateStream, requireAdmin } from '../middleware/auth'
 import { FilesService, isInsideDir, sanitizePath } from '../services/files'
 import { AppError, ForbiddenError, NotFoundError, ValidationError } from '../utils/errors'
+import {
+  decide, getJob, hasFfmpeg, probe, rewritePlaylist, startJob, stopJob, waitForPlaylist,
+  type ClientCaps,
+} from '../services/transcode'
 
 const MEDIA_ROOT = process.env.MEDIA_ROOT || '/media'
 
@@ -101,6 +105,82 @@ router.get('/stream', authenticateStream, asyncHandler(async (req: Request, res:
   if (isPdf) headers['Content-Disposition'] = 'inline'
   res.writeHead(200, headers)
   fs.createReadStream(filePath).pipe(res)
+}))
+
+// ─── PLAYBACK: direct when the browser can read the file, HLS conversion otherwise ──
+const capsFrom = (req: Request): ClientCaps => ({ webm: req.query.webm === '1' })
+
+/** How the player should read this video: direct stream, or converted (remux/transcode). */
+router.get('/play-info', authenticateStream, asyncHandler(async (req: Request, res: Response) => {
+  const filePath = await resolveReadable(req)
+  await statFile(filePath)
+  if (!(await hasFfmpeg())) {
+    res.json({ success: true, data: { mode: 'direct', duration: null, video: null, audio: null, reason: 'ffmpeg not installed', ffmpeg: false } })
+    return
+  }
+  try {
+    const decision = decide(await probe(filePath), capsFrom(req))
+    res.json({ success: true, data: { ...decision, ffmpeg: true } })
+  } catch (err) {
+    // Unreadable by ffprobe: let the browser try the file as-is
+    res.json({ success: true, data: { mode: 'direct', duration: null, video: null, audio: null, reason: `probe failed: ${(err as Error).message}`, ffmpeg: true } })
+  }
+}))
+
+/** Start a conversion at `start` seconds; returns the HLS playlist URL. */
+router.post('/transcode', authenticateStream, asyncHandler(async (req: Request, res: Response) => {
+  const filePath = await resolveReadable(req)
+  await statFile(filePath)
+  if (!(await hasFfmpeg())) throw new AppError('ffmpeg is not installed on the server', 501)
+
+  const decision = decide(await probe(filePath), capsFrom(req))
+  const mode = decision.mode === 'direct' ? 'remux' : decision.mode
+  let start = Math.max(0, Number(req.query.start) || 0)
+  if (decision.duration) start = Math.min(start, Math.max(0, decision.duration - 1))
+
+  const job = await startJob(req.user!.userId, filePath, mode, start)
+  res.status(201).json({
+    success: true,
+    data: {
+      id:       job.id,
+      mode,
+      start,
+      duration: decision.duration,
+      playlist: `/api/files/transcode/${job.id}/index.m3u8`,
+    },
+  })
+}))
+
+function ownJob(req: Request) {
+  const job = getJob(req.params.id)
+  if (!job || job.userId !== req.user!.userId) throw new NotFoundError('Transcode')
+  return job
+}
+
+router.get('/transcode/:id/index.m3u8', authenticateStream, asyncHandler(async (req: Request, res: Response) => {
+  const job = ownJob(req)
+  const text = await waitForPlaylist(job)
+  if (!text) throw new AppError(job.failed ? `Conversion failed: ${job.failed}` : 'Conversion did not start in time', 502)
+  res.setHeader('Content-Type', 'application/vnd.apple.mpegurl')
+  res.setHeader('Cache-Control', 'no-cache')
+  res.send(rewritePlaylist(text, String(req.query.token ?? '')))
+}))
+
+router.get('/transcode/:id/:segment', authenticateStream, asyncHandler((req: Request, res: Response) => {
+  if (!/^seg\d{5}\.ts$/.test(req.params.segment)) throw new NotFoundError('Segment')
+  const job = ownJob(req)
+  const file = path.join(job.dir, req.params.segment)
+  if (!fs.existsSync(file)) throw new NotFoundError('Segment')
+  res.setHeader('Content-Type', 'video/mp2t')
+  res.setHeader('Cache-Control', 'no-cache')
+  fs.createReadStream(file).pipe(res)
+}))
+
+/** Player closed / seeked elsewhere: stop ffmpeg right away. */
+router.delete('/transcode/:id', authenticateStream, asyncHandler((req: Request, res: Response) => {
+  const job = getJob(req.params.id)
+  if (job && job.userId === req.user!.userId) stopJob(job.id, 'client closed the player')
+  res.json({ success: true })
 }))
 
 // ─── DOWNLOAD ───────────────────────────────────────────────────────────────
