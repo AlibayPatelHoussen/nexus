@@ -1,3 +1,4 @@
+import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import { AppError } from './errors'
@@ -32,4 +33,37 @@ export function fsError(err: unknown, target?: string): AppError | null {
     case 'EXDEV':     return new AppError('Déplacement impossible entre deux disques différents', 400)
     default:          return null
   }
+}
+
+/** Name of a local user id (from /etc/passwd), or the numeric id. */
+function userName(uid: number): string {
+  try {
+    const line = fs.readFileSync('/etc/passwd', 'utf8').split('\n').find((l) => l.split(':')[2] === String(uid))
+    if (line) return line.split(':')[0]
+  } catch { /* not readable */ }
+  return String(uid)
+}
+
+function writable(dir: string): boolean {
+  try { fs.accessSync(dir, fs.constants.W_OK | fs.constants.X_OK); return true } catch { return false }
+}
+
+/**
+ * Explain a permission error on deletion precisely: removing an entry needs
+ * write access to the folder that CONTAINS it, so the blocking folder is the
+ * parent (or, inside a folder deleted recursively, the folder of the file
+ * that could not be removed). Names that folder and its real owner.
+ */
+export function deletePermissionError(target: string, err: NodeJS.ErrnoException): AppError {
+  const failing = err.path && err.path !== target ? err.path : target
+  let blocking = path.dirname(failing)
+  if (writable(blocking) && failing !== target) blocking = failing
+  let owner = '?'
+  try { owner = userName(fs.statSync(blocking).uid) } catch { /* gone */ }
+  const what = path.basename(target)
+  return new AppError(
+    `Impossible de supprimer « ${what} » : Nexus (utilisateur ${runAs}) n'a pas le droit d'écrire dans ` +
+    `« ${blocking} », qui appartient à ${owner}. Sur le serveur : sudo chown -R ${runAs}: "${blocking}"`,
+    403,
+  )
 }

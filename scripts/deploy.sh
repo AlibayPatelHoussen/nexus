@@ -82,6 +82,22 @@ done
 if [ "$RUNNING" = "$EXPECTED" ]; then
   echo "✅ Deployment complete! Backend $RUNNING is running on port $PORT."
   pm2 status nexus-backend
+
+  # ── Library folders Nexus cannot modify (delete / rename from the UI fails) ──
+  env_val() { grep -E "^$1=" backend/.env 2>/dev/null | tail -1 | cut -d= -f2- | tr -d '"' | tr -d "'"; }
+  NOT_OWNED=""
+  for key in MEDIA_ROOT FILMS_PATH SERIES_PATH ANIMES_PATH MANGA_PATH SCRIPTS_PATH; do
+    dir=$(env_val "$key"); [ -d "$dir" ] || continue
+    bad=$(find "$dir" -maxdepth 3 ! -user "$(id -un)" -print -quit 2>/dev/null || true)
+    [ -n "$bad" ] && NOT_OWNED="$NOT_OWNED $dir"
+  done
+  if [ -n "$NOT_OWNED" ]; then
+    MEDIA=$(env_val MEDIA_ROOT)
+    echo ""
+    echo "⚠️  Some library files do not belong to $(id -un): deleting or renaming them from Nexus will fail."
+    echo "   Folders concerned:$NOT_OWNED"
+    echo "   Fix (once):  sudo chown -R $(id -un): \"${MEDIA:-/media}\""
+  fi
 else
   echo ""
   echo "❌ The backend answering on port $PORT is NOT the new build."

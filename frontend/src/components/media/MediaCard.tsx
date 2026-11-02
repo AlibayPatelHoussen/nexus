@@ -9,6 +9,7 @@ import { api } from '@/services/api'
 import toast from 'react-hot-toast'
 import { ROW_CARD_WIDTH } from './layout'
 import Artwork from './Artwork'
+import { useConfirm } from '@/components/ui/useConfirm'
 
 interface MediaCardProps {
   item:       MediaItem
@@ -33,6 +34,7 @@ export default function MediaCard({ item, showType, progress, duration, subtitle
   const navigate  = useNavigate()
   const qc        = useQueryClient()
   const isAdmin   = useAuthStore((s) => s.user?.role === 'admin')
+  const confirm   = useConfirm()
   const [isFav,     setIsFav]     = useState(false)
   const [deleting,  setDeleting]  = useState(false)
 
@@ -40,7 +42,13 @@ export default function MediaCard({ item, showType, progress, duration, subtitle
 
   async function handleDelete(e: React.MouseEvent) {
     e.stopPropagation()
-    if (!confirm(`Supprimer "${item.title}" de la bibliothèque ?`)) return
+    const ok = await confirm({
+      title: `Retirer « ${item.title} » de la bibliothèque ?`,
+      message: 'Le titre disparaît de Nexus. Les fichiers sur le disque ne sont pas supprimés (un nouveau scan le fera réapparaître).',
+      confirmLabel: 'Retirer',
+      danger: true,
+    })
+    if (!ok) return
     setDeleting(true)
     try {
       await api.delete(`/media/${item.id}`)

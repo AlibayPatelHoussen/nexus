@@ -637,11 +637,30 @@ test('files: delete a non-empty folder with accents from the UI, list refreshed'
   fs.mkdirSync(`${dir}/Saison 1 (2024)`, { recursive: true })
   fs.writeFileSync(`${dir}/Saison 1 (2024)/Épisode #1 & co.mkv`, 'x')
   const page = await newPage(admin, { width: 1280, height: 800 })
-  page.on('dialog', (d) => d.accept())
+  let native = false
+  page.on('dialog', (d) => { native = true; d.dismiss() })
   await page.goto(`${B}/files?path=${encodeURIComponent(cfg.media)}`, { waitUntil: 'networkidle' })
+  const dlg = '[role="alertdialog"]'
+  // In-app confirmation (not the browser's confirm()), "Annuler" keeps the folder
   await page.click('button[aria-label="Actions pour à supprimer"]')
   await page.click('button:has-text("Supprimer")')
+  await page.waitForSelector(`${dlg} >> text=Supprimer « à supprimer » ?`)
+  await page.click(`${dlg} button:has-text("Annuler")`)
+  await page.waitForSelector(dlg, { state: 'detached' })
+  assert(fs.existsSync(dir), 'cancel must keep the folder')
+  // Escape cancels too
+  await page.click('button[aria-label="Actions pour à supprimer"]')
+  await page.click('button:has-text("Supprimer")')
+  await page.waitForSelector(dlg)
+  await page.keyboard.press('Escape')
+  await page.waitForSelector(dlg, { state: 'detached' })
+  assert(fs.existsSync(dir), 'Escape must keep the folder')
+  // Confirm
+  await page.click('button[aria-label="Actions pour à supprimer"]')
+  await page.click('button:has-text("Supprimer")')
+  await page.click(`${dlg} button:has-text("Supprimer")`)
   await page.waitForSelector('text=Supprimé', { timeout: 10000 })
+  assert(!native, 'native confirm() used')
   await page.waitForFunction(() => !document.body.textContent.includes('à supprimer'), null, { timeout: 10000 })
   assert(!fs.existsSync(dir), 'folder still on disk')
   await page.context().close()
@@ -651,13 +670,14 @@ test('files: multiple delete reports the failure with its reason, deletes the re
   const a = `${cfg.media}/del-a`; const b = `${cfg.media}/del b é.txt`
   fs.mkdirSync(`${a}/x`, { recursive: true }); fs.writeFileSync(b, 'x')
   const page = await newPage(admin, { width: 1280, height: 800 })
-  page.on('dialog', (d) => d.accept())
   await page.goto(`${B}/files?path=${encodeURIComponent(cfg.media)}`, { waitUntil: 'networkidle' })
   // Remove one of them behind the UI's back → its deletion fails (already gone)
   for (const name of ['del-a', 'del b é.txt', 'films']) {
     await page.locator(`xpath=//span[normalize-space()="${name}"]/ancestor::div[contains(@class,"grid")][1]//input[@type="checkbox"]`).check()
   }
   await page.click('button[aria-label="Supprimer la sélection"]')
+  await page.waitForSelector('[role="alertdialog"] >> text=Supprimer 3 élément(s) ?')
+  await page.click('[role="alertdialog"] button:has-text("Supprimer")')
   await page.waitForSelector('text=2 élément(s) supprimé(s)', { timeout: 10000 })
   await page.waitForSelector('text=protégé', { timeout: 10000 })
   assert(!fs.existsSync(a) && !fs.existsSync(b), 'deletable entries removed')

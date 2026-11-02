@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { filesService } from '@/services/filesService'
 import toast from 'react-hot-toast'
+import { showError } from '@/utils/errorToast'
 
 /** Error message sent by the server (falls back to a generic text). */
 function serverError(err: unknown): string {
@@ -50,7 +51,7 @@ export function useFiles(initialPath = '/') {
   const deleteMut = useMutation({
     mutationFn: (path: string) => filesService.delete(path),
     onSuccess:  () => toast.success('Supprimé'),
-    onError:    (err) => toast.error(`Suppression impossible : ${serverError(err)}`, { duration: 8000 }),
+    onError:    (err) => showError('Suppression impossible', serverError(err)),
     onSettled:  () => invalidate(),
   })
 
@@ -60,15 +61,13 @@ export function useFiles(initialPath = '/') {
     onSuccess:  ({ deleted, failed }) => {
       if (deleted.length) toast.success(`${deleted.length} élément(s) supprimé(s)`)
       if (failed.length) {
-        const first = failed[0]
-        toast.error(
-          `${failed.length} élément(s) non supprimé(s) — ${first.path.split('/').pop()} : ${first.error}`
-            + (failed.length > 1 ? ` (+${failed.length - 1} autre(s))` : ''),
-          { duration: 10_000 },
+        showError(
+          `${failed.length} élément(s) non supprimé(s)` + (failed.length > 1 ? ` — premier échec : ${failed[0].path.split('/').pop()}` : ''),
+          failed[0].error,
         )
       }
     },
-    onError:    (err) => toast.error(`Suppression impossible : ${serverError(err)}`, { duration: 8000 }),
+    onError:    (err) => showError('Suppression impossible', serverError(err)),
     onSettled:  () => invalidate(),
   })
 

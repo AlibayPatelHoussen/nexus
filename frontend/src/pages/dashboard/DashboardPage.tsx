@@ -11,10 +11,12 @@ import StatCard from '@/components/ui/StatCard'
 import ServiceRow from '@/components/services/ServiceRow'
 import { formatBytes, formatUptime } from '@/utils'
 import toast from 'react-hot-toast'
+import { useConfirm } from '@/components/ui/useConfirm'
 
 export default function DashboardPage() {
   const user    = useAuthStore((s) => s.user)
   const navigate = useNavigate()
+  const confirm  = useConfirm()
 
   // Real-time stats via WebSocket
   const { stats, connected } = useSystemStats()
@@ -31,7 +33,7 @@ export default function DashboardPage() {
   })
 
   async function handleRestart() {
-    if (!confirm('Redémarrer le serveur ?')) return
+    if (!(await confirm({ title: 'Redémarrer le serveur ?', message: 'Les lectures et transferts en cours seront interrompus.', confirmLabel: 'Redémarrer', danger: true }))) return
     toast('Redémarrage en cours…')
   }
 

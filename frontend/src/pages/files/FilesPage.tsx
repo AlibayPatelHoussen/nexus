@@ -8,6 +8,7 @@ import {
   Eye, MoreVertical,
 } from 'lucide-react'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
+import { useConfirm } from '@/components/ui/useConfirm'
 import { useFiles } from '@/hooks/useFiles'
 import { filesService } from '@/services/filesService'
 import { formatBytes, formatDate } from '@/utils'
@@ -177,6 +178,22 @@ export default function FilesPage() {
   const filtered = entries.filter((e) =>
     e.name.toLowerCase().includes(search.toLowerCase()))
 
+  const confirm = useConfirm()
+
+  async function confirmDelete(entry: FileEntry) {
+    const isDir = entry.type === 'directory'
+    const ok = await confirm({
+      title: `Supprimer « ${entry.name} » ?`,
+      message: isDir
+        ? 'Le dossier et tout son contenu seront définitivement supprimés du serveur.'
+        : 'Le fichier sera définitivement supprimé du serveur.',
+      details: [entry.path],
+      confirmLabel: 'Supprimer',
+      danger: true,
+    })
+    if (ok) deleteEntry(entry.path)
+  }
+
   // On touch screens a single tap opens (no double-click / right-click)
   const isTouch = useMediaQuery('(pointer: coarse)')
 
@@ -242,10 +259,16 @@ export default function FilesPage() {
         <button className="btn-ghost text-[12px] px-2.5 sm:px-4" onClick={() => { setCreating('file'); setNewItem('') }} aria-label="Nouveau fichier" title="Nouveau fichier"><FilePlus size={13} strokeWidth={2} /> <span className="hidden sm:inline">Fichier</span></button>
         <button className="btn-ghost text-[12px] px-2.5 sm:px-4" onClick={() => uploadRef.current?.click()} aria-label="Upload" title="Upload"><Upload size={13} strokeWidth={2} /> <span className="hidden sm:inline">Upload</span></button>
         {selected.size > 0 && (
-          <button className="btn-danger text-[12px]" disabled={deleting} onClick={() => {
-            if (confirm(`Supprimer ${selected.size} élément(s) ?`)) {
-              deleteEntries([...selected]); clearSelect()
-            }
+          <button className="btn-danger text-[12px]" disabled={deleting} onClick={async () => {
+            const paths = [...selected]
+            const ok = await confirm({
+              title: `Supprimer ${paths.length} élément(s) ?`,
+              message: 'Ils seront définitivement supprimés du serveur, dossiers compris avec tout leur contenu.',
+              details: paths.map((p) => p.split('/').pop() || p),
+              confirmLabel: 'Supprimer',
+              danger: true,
+            })
+            if (ok) { deleteEntries(paths); clearSelect() }
           }} aria-label="Supprimer la sélection"><Trash2 size={13} strokeWidth={2} /> ({selected.size})</button>
         )}
         <button className="btn-ghost text-[12px] px-2.5 py-1.5"
@@ -371,7 +394,7 @@ export default function FilesPage() {
               { icon: <Edit2 size={13} />, label: 'Renommer',
                 action: () => { setRenaming(ctxMenu.entry); setNewName(ctxMenu.entry.name); setCtxMenu(null) } },
               { icon: <Trash2 size={13} />, label: 'Supprimer', danger: true,
-                action: () => { if (confirm(`Supprimer "${ctxMenu.entry.name}" ?`)) deleteEntry(ctxMenu.entry.path); setCtxMenu(null) } },
+                action: () => { const entry = ctxMenu.entry; setCtxMenu(null); confirmDelete(entry) } },
             ].filter((x): x is { icon: React.ReactElement; label: string; action: () => void; danger?: boolean } => Boolean(x)).map((item) => (
               <button key={item.label}
                 className="flex items-center gap-2.5 w-full px-3 py-2.5 sm:py-2 text-[13px] sm:text-[12.5px] text-left transition-colors"

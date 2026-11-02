@@ -1,4 +1,7 @@
-import { fsError } from '../../src/utils/fsErrors'
+import fs from 'fs'
+import os from 'os'
+import path from 'path'
+import { deletePermissionError, fsError } from '../../src/utils/fsErrors'
 
 const err = (code: string) => Object.assign(new Error(code), { code })
 
@@ -18,6 +21,21 @@ describe('fsError', () => {
   })
   it('ignores non file-system errors', () => {
     expect(fsError(new Error('x'))).toBeNull()
+  })
+})
+
+describe('deletePermissionError', () => {
+  it('names the folder that blocks the deletion and the command to fix it', () => {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'nexus-perm-'))
+    const target = path.join(dir, 'Naruto')
+    fs.mkdirSync(target)
+    try {
+      const e = deletePermissionError(target, Object.assign(new Error('EACCES'), { code: 'EACCES', path: target }))
+      expect(e.statusCode).toBe(403)
+      expect(e.message).toContain('« Naruto »')
+      expect(e.message).toContain(`« ${dir} »`)
+      expect(e.message).toMatch(new RegExp(`Sur le serveur : sudo chown -R \\S+: "${dir}"$`))
+    } finally { fs.rmSync(dir, { recursive: true, force: true }) }
   })
 })
 
