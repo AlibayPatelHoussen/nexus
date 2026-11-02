@@ -134,13 +134,16 @@ export class FilesService {
   }
 
   /** Delete several entries; every failure is reported, none blocks the others. */
-  static async deleteMany(paths: string[]): Promise<{ deleted: string[]; failed: { path: string; error: string }[] }> {
+  static async deleteMany(paths: string[]): Promise<{ deleted: string[]; failed: { path: string; error: string; code?: string }[] }> {
     const results = await Promise.allSettled(paths.map((p) => FilesService.delete(p)))
     const deleted: string[] = []
-    const failed: { path: string; error: string }[] = []
+    const failed: { path: string; error: string; code?: string }[] = []
     results.forEach((r, i) => {
       if (r.status === 'fulfilled') deleted.push(paths[i])
-      else failed.push({ path: paths[i], error: (r.reason as Error)?.message || 'Erreur inconnue' })
+      else {
+        const code = (r.reason as AppError)?.code
+        failed.push({ path: paths[i], error: (r.reason as Error)?.message || 'Erreur inconnue', ...(code ? { code } : {}) })
+      }
     })
     return { deleted, failed }
   }

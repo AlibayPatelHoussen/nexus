@@ -4,6 +4,11 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Added — force a deletion with the server password
+- When a deletion in the media library is refused for lack of rights (folder owned by root…), Nexus asks for the server account's password (the one used for `sudo`) and deletes it anyway
+- Only inside the library folders (never a library/category folder itself, a system folder, or outside through a symlink or `../`); the password goes to `sudo` on stdin, is never stored or logged; `sudo -k` always re-checks it
+- 5 wrong attempts → blocked 15 min (`SUDO_RATE_LIMIT_MAX`); cancelling shows the `chown` command to fix the rights for good
+
 ### Changed — confirmations and permission errors
 - Confirmations (delete files, remove a title from the library, restart the server) use an in-app dialog instead of the browser's `confirm()`: clear title, what will happen, list of items, red "Supprimer" button, Escape / "Annuler" cancel
 - "Permission denied" on deletion now names the folder that actually blocks it (deleting needs write access to the parent folder) and its owner; the error toast shows the `sudo chown` command with a "Copier" button

@@ -88,3 +88,28 @@ describe('POST /api/files/delete (several)', () => {
 })
 
 afterAll(() => fs.rmSync(BASE, { recursive: true, force: true }))
+
+describe('POST /api/files/delete-elevated', () => {
+  const url = '/api/files/delete-elevated'
+  it('is admin only', async () => {
+    const res = await request(app).post(url).set({ Authorization: `Bearer ${makeToken('user')}` }).send({ paths: ['/media/x'], password: 'p' })
+    expect(res.status).toBe(403)
+  })
+  it('validates paths and password', async () => {
+    expect((await request(app).post(url).set(admin).send({ paths: [], password: 'p' })).status).toBe(422)
+    expect((await request(app).post(url).set(admin).send({ paths: ['/media/x'] })).status).toBe(422)
+  })
+  it('refuses when Nexus already runs as root (nothing to force)', async () => {
+    if (process.getuid?.() !== 0) return
+    const res = await request(app).post(url).set(admin).send({ paths: [path.join(BASE, 'x')], password: 'p' })
+    expect(res.status).toBe(400)
+    expect(res.body.error).toMatch(/root/)
+  })
+  it('blocks after 5 failed attempts (password guessing)', async () => {
+    let last = 0
+    for (let i = 0; i < 8; i++) {
+      last = (await request(app).post(url).set(admin).send({ paths: [path.join(BASE, 'x')], password: `essai${i}` })).status
+    }
+    expect(last).toBe(429)
+  })
+})

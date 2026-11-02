@@ -61,9 +61,32 @@ export function deletePermissionError(target: string, err: NodeJS.ErrnoException
   let owner = '?'
   try { owner = userName(fs.statSync(blocking).uid) } catch { /* gone */ }
   const what = path.basename(target)
-  return new AppError(
+  const e = new AppError(
     `Impossible de supprimer « ${what} » : Nexus (utilisateur ${runAs}) n'a pas le droit d'écrire dans ` +
     `« ${blocking} », qui appartient à ${owner}. Sur le serveur : sudo chown -R ${runAs}: "${blocking}"`,
     403,
   )
+  // Inside the media library, the UI can offer to force it with the sudo password
+  if (runAs !== 'root' && inLibrary(target)) e.code = 'NEEDS_PASSWORD'
+  return e
+}
+
+/** Media library folders (where a password-forced deletion is allowed). */
+export function libraryRoots(): string[] {
+  const roots = ['MEDIA_ROOT', 'FILMS_PATH', 'SERIES_PATH', 'ANIMES_PATH', 'MANGA_PATH', 'YOUTUBE_PATH']
+    .map((k) => process.env[k]).filter((v): v is string => !!v)
+  if (!process.env.MEDIA_ROOT) roots.push('/media')
+  return [...new Set(roots.map((r) => path.resolve(r)))]
+}
+
+/** True when `p` is strictly inside one of `roots` (never a root itself). */
+export function strictlyInside(roots: string[], p: string): boolean {
+  return roots.some((r) => {
+    const rel = path.relative(r, p)
+    return rel !== '' && !rel.startsWith('..') && !path.isAbsolute(rel)
+  })
+}
+
+function inLibrary(p: string): boolean {
+  return strictlyInside(libraryRoots(), path.resolve(p))
 }

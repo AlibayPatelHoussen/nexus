@@ -3,12 +3,20 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { filesService } from '@/services/filesService'
 import toast from 'react-hot-toast'
 import { showError } from '@/utils/errorToast'
+import { useOptionalConfirm } from '@/components/ui/useConfirm'
 
 /** Error message sent by the server (falls back to a generic text). */
 function serverError(err: unknown): string {
   const e = err as { response?: { data?: { error?: string } }; message?: string }
   return e?.response?.data?.error || e?.message || 'erreur inconnue'
 }
+
+/** The server can force this deletion with the sudo password (permission problem in the library). */
+function needsPassword(err: unknown): boolean {
+  return (err as { response?: { data?: { code?: string } } })?.response?.data?.code === 'NEEDS_PASSWORD'
+}
+
+const baseName = (p: string) => p.split('/').filter(Boolean).pop() ?? p
 
 export function useFiles(initialPath = '/') {
   const [currentPath, setCurrentPath] = useState(initialPath)
@@ -22,6 +30,37 @@ export function useFiles(initialPath = '/') {
   })
 
   const invalidate = () => qc.invalidateQueries({ queryKey: ['files', currentPath] })
+  const confirm = useOptionalConfirm()
+
+  /**
+   * Deletion refused for lack of rights: offer to force it with the server's
+   * sudo password. Cancelled → the explanation with the chown command.
+   */
+  const forceDelete = async (paths: string[], reason: string) => {
+    if (!confirm) { showError('Suppression impossible', reason); return }
+    let result: Awaited<ReturnType<typeof filesService.deleteElevated>> | null = null
+    const ok = await confirm({
+      title:   paths.length > 1 ? `Forcer la suppression de ${paths.length} éléments ?` : `Forcer la suppression de « ${baseName(paths[0])} » ?`,
+      message: 'Nexus n\'a pas les droits pour supprimer ' + (paths.length > 1 ? 'ces éléments' : 'cet élément') +
+               ' (ils appartiennent à un autre utilisateur, souvent root). Entre le mot de passe du serveur ' +
+               '(celui que tu utilises pour sudo) pour les supprimer quand même. Il n\'est pas enregistré.',
+      details: paths,
+      confirmLabel: 'Supprimer',
+      danger:  true,
+      password: {
+        label:  'Mot de passe du serveur (sudo)',
+        submit: async (password) => {
+          try { result = await filesService.deleteElevated(paths, password); return null }
+          catch (err) { return serverError(err) }
+        },
+      },
+    })
+    invalidate()
+    if (!ok || !result) { showError('Suppression impossible', reason); return }
+    const { deleted, failed } = result as Awaited<ReturnType<typeof filesService.deleteElevated>>
+    if (deleted.length) toast.success(deleted.length > 1 ? `${deleted.length} élément(s) supprimé(s)` : 'Supprimé')
+    if (failed.length) showError(`${failed.length} élément(s) non supprimé(s)`, failed[0].error)
+  }
 
   // Navigate
   const navigate = useCallback((path: string) => {
@@ -51,7 +90,10 @@ export function useFiles(initialPath = '/') {
   const deleteMut = useMutation({
     mutationFn: (path: string) => filesService.delete(path),
     onSuccess:  () => toast.success('Supprimé'),
-    onError:    (err) => showError('Suppression impossible', serverError(err)),
+    onError:    (err, path) => {
+      if (needsPassword(err)) void forceDelete([path], serverError(err))
+      else showError('Suppression impossible', serverError(err))
+    },
     onSettled:  () => invalidate(),
   })
 
@@ -60,12 +102,15 @@ export function useFiles(initialPath = '/') {
     mutationFn: (paths: string[]) => filesService.deleteMany(paths),
     onSuccess:  ({ deleted, failed }) => {
       if (deleted.length) toast.success(`${deleted.length} élément(s) supprimé(s)`)
-      if (failed.length) {
+      const forcible = failed.filter((f) => f.code === 'NEEDS_PASSWORD')
+      const other    = failed.filter((f) => f.code !== 'NEEDS_PASSWORD')
+      if (other.length) {
         showError(
-          `${failed.length} élément(s) non supprimé(s)` + (failed.length > 1 ? ` — premier échec : ${failed[0].path.split('/').pop()}` : ''),
-          failed[0].error,
+          `${other.length} élément(s) non supprimé(s)` + (other.length > 1 ? ` — premier échec : ${baseName(other[0].path)}` : ''),
+          other[0].error,
         )
       }
+      if (forcible.length) void forceDelete(forcible.map((f) => f.path), forcible[0].error)
     },
     onError:    (err) => showError('Suppression impossible', serverError(err)),
     onSettled:  () => invalidate(),

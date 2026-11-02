@@ -4,6 +4,8 @@ import multer from 'multer'
 import path from 'path'
 import fs from 'fs'
 import { authenticate, authenticateStream, requireAdmin } from '../middleware/auth'
+import { sudoLimiter } from '../middleware/rateLimit'
+import { elevatedDelete } from '../services/elevatedDelete'
 import { FilesService, isInsideDir, sanitizePath } from '../services/files'
 import { AppError, ForbiddenError, NotFoundError, ValidationError } from '../utils/errors'
 import { query } from '../config/database'
@@ -311,6 +313,19 @@ router.post('/delete', asyncHandler(async (req: Request, res: Response) => {
   }
   if (paths.length > 1000) throw new ValidationError('Too many paths at once (max 1000)')
   const result = await FilesService.deleteMany([...new Set(paths as string[])])
+  res.status(result.failed.length && !result.deleted.length ? 422 : 200).json({ success: result.failed.length === 0, data: result })
+}))
+
+// DELETE forced with the server's sudo password (library entries owned by root…)
+router.post('/delete-elevated', sudoLimiter, asyncHandler(async (req: Request, res: Response) => {
+  const paths = req.body?.paths
+  const password = req.body?.password
+  if (!Array.isArray(paths) || !paths.length || !paths.every((p) => typeof p === 'string' && p)) {
+    throw new ValidationError('paths must be a non-empty array of paths')
+  }
+  if (paths.length > 1000) throw new ValidationError('Too many paths at once (max 1000)')
+  if (typeof password !== 'string' || !password) throw new ValidationError('password is required')
+  const result = await elevatedDelete([...new Set(paths as string[])], password)
   res.status(result.failed.length && !result.deleted.length ? 422 : 200).json({ success: result.failed.length === 0, data: result })
 }))
 
