@@ -1,3 +1,4 @@
+import { useState } from 'react'
 import { Check, Play, Tv } from 'lucide-react'
 import type { Episode } from '@/types'
 import type { EpisodeProgress } from '@/services/mediaService'
@@ -19,6 +20,7 @@ const seasonLabel = (s: number) => (s === 0 ? 'Spéciaux' : `Saison ${s}`)
 export default function EpisodesSection({
   episodes, seasons, activeSeason, onSeasonChange, progress, nextEpisodeId, onPlay,
 }: Props) {
+  const [brokenThumbs, setBrokenThumbs] = useState<Set<string>>(new Set())
   const list = episodes.filter((e) => (e.season ?? 1) === activeSeason)
   const watched = list.filter((e) => progress.get(e.id)?.completed).length
 
@@ -95,9 +97,10 @@ export default function EpisodesSection({
                   className="relative flex-shrink-0 w-[124px] sm:w-[176px] aspect-video rounded-lg overflow-hidden"
                   style={{ background: 'var(--surface3)' }}
                 >
-                  {ep.thumbnailPath ? (
-                    <img src={ep.thumbnailPath} alt="" loading="lazy" className="w-full h-full object-cover"
-                      onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
+                  {ep.thumbnailPath && !brokenThumbs.has(ep.id) ? (
+                    // Stills are 16:9 like the frame: contain keeps them whole
+                    <img src={ep.thumbnailPath} alt="" loading="lazy" className="w-full h-full object-contain"
+                      onError={() => setBrokenThumbs((b) => new Set(b).add(ep.id))} />
                   ) : (
                     <div className="w-full h-full flex items-center justify-center gap-1.5"
                       style={{ background: 'linear-gradient(135deg, var(--surface2), var(--surface3))', color: 'var(--text3)' }}>

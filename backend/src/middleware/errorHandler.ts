@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express'
 import { AppError } from '../utils/errors'
 import { logger } from '../utils/logger'
+import { fsError } from '../utils/fsErrors'
 
 export function errorHandler(
   err: Error,
@@ -8,6 +9,13 @@ export function errorHandler(
   res: Response,
   _next: NextFunction,
 ): void {
+  // File-system errors (EACCES, ENOENT…) become clear messages instead of a bare 500
+  const fsErr = !(err instanceof AppError) ? fsError(err) : null
+  if (fsErr) {
+    logger.warn(`${(err as NodeJS.ErrnoException).code}: ${err.message}`)
+    err = fsErr
+  }
+
   if (err instanceof AppError) {
     if (err.statusCode >= 500) logger.error(err.message, { stack: err.stack })
 

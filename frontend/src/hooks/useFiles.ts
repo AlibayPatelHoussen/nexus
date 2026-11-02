@@ -3,6 +3,12 @@ import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { filesService } from '@/services/filesService'
 import toast from 'react-hot-toast'
 
+/** Error message sent by the server (falls back to a generic text). */
+function serverError(err: unknown): string {
+  const e = err as { response?: { data?: { error?: string } }; message?: string }
+  return e?.response?.data?.error || e?.message || 'erreur inconnue'
+}
+
 export function useFiles(initialPath = '/') {
   const [currentPath, setCurrentPath] = useState(initialPath)
   const [selected, setSelected]       = useState<Set<string>>(new Set())
@@ -43,8 +49,27 @@ export function useFiles(initialPath = '/') {
   // Mutations
   const deleteMut = useMutation({
     mutationFn: (path: string) => filesService.delete(path),
-    onSuccess:  () => { invalidate(); toast.success('Supprimé') },
-    onError:    () => toast.error('Erreur lors de la suppression'),
+    onSuccess:  () => toast.success('Supprimé'),
+    onError:    (err) => toast.error(`Suppression impossible : ${serverError(err)}`, { duration: 8000 }),
+    onSettled:  () => invalidate(),
+  })
+
+  // Several entries at once: each failure is reported, none blocks the others
+  const deleteManyMut = useMutation({
+    mutationFn: (paths: string[]) => filesService.deleteMany(paths),
+    onSuccess:  ({ deleted, failed }) => {
+      if (deleted.length) toast.success(`${deleted.length} élément(s) supprimé(s)`)
+      if (failed.length) {
+        const first = failed[0]
+        toast.error(
+          `${failed.length} élément(s) non supprimé(s) — ${first.path.split('/').pop()} : ${first.error}`
+            + (failed.length > 1 ? ` (+${failed.length - 1} autre(s))` : ''),
+          { duration: 10_000 },
+        )
+      }
+    },
+    onError:    (err) => toast.error(`Suppression impossible : ${serverError(err)}`, { duration: 8000 }),
+    onSettled:  () => invalidate(),
   })
 
   const renameMut = useMutation({
@@ -93,6 +118,8 @@ export function useFiles(initialPath = '/') {
     selectAll,
     clearSelect,
     deleteEntry:  deleteMut.mutate,
+    deleteEntries: deleteManyMut.mutate,
+    deleting:     deleteMut.isPending || deleteManyMut.isPending,
     renameEntry:  renameMut.mutate,
     createDir:    createDirMut.mutate,
     createFile:   createFileMut.mutate,

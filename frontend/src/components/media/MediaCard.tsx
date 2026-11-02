@@ -8,6 +8,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { api } from '@/services/api'
 import toast from 'react-hot-toast'
 import { ROW_CARD_WIDTH } from './layout'
+import Artwork from './Artwork'
 
 interface MediaCardProps {
   item:       MediaItem
@@ -33,11 +34,9 @@ export default function MediaCard({ item, showType, progress, duration, subtitle
   const qc        = useQueryClient()
   const isAdmin   = useAuthStore((s) => s.user?.role === 'admin')
   const [isFav,     setIsFav]     = useState(false)
-  const [imgError,  setImgError]  = useState(false)
   const [deleting,  setDeleting]  = useState(false)
 
   const pct = progress && duration ? Math.round((progress / duration) * 100) : 0
-  const hasPoster = !!item.posterPath && !imgError
 
   async function handleDelete(e: React.MouseEvent) {
     e.stopPropagation()
@@ -67,32 +66,15 @@ export default function MediaCard({ item, showType, progress, duration, subtitle
       role="link"
       aria-label={item.title}
     >
-      {/* Poster */}
-      <div
-        className="relative w-full aspect-[2/3] rounded-lg overflow-hidden mb-1.5 transition-transform duration-300 lg:group-hover:scale-[1.04] lg:group-hover:shadow-xl"
-        style={{ background: 'var(--surface2)' }}
+      {/* Poster (whole image, never cropped; placeholder when missing) */}
+      <Artwork
+        src={item.posterPath}
+        alt={item.title}
+        type={item.type}
+        title={item.title}
+        subtitle={item.year}
+        className="w-full rounded-lg mb-1.5 transition-transform duration-300 lg:group-hover:scale-[1.04] lg:group-hover:shadow-xl"
       >
-        {hasPoster ? (
-          <img
-            src={item.posterPath!}
-            alt={item.title}
-            loading="lazy"
-            className="w-full h-full object-cover"
-            onError={() => setImgError(true)}
-          />
-        ) : (
-          // No poster: a readable title card instead of an empty box
-          <div
-            className="w-full h-full flex flex-col justify-end p-2.5"
-            style={{ background: `linear-gradient(160deg, color-mix(in srgb, ${TYPE_COLORS[item.type] ?? 'var(--blue)'} 35%, var(--surface2)), var(--surface3))` }}
-          >
-            <span className="text-[12px] sm:text-[13px] font-bold leading-tight line-clamp-4" style={{ color: 'var(--text)' }}>
-              {item.title}
-            </span>
-            {item.year && <span className="text-[10px] font-mono mt-1" style={{ color: 'var(--text3)' }}>{item.year}</span>}
-          </div>
-        )}
-
         {/* Hover overlay */}
         <div className="absolute inset-0 hidden lg:flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity duration-200"
           style={{ background: 'rgba(0,0,0,0.35)' }}>
@@ -147,7 +129,7 @@ export default function MediaCard({ item, showType, progress, duration, subtitle
             <div className="h-full" style={{ width: `${pct}%`, background: 'var(--red)' }} />
           </div>
         )}
-      </div>
+      </Artwork>
 
       {/* Title */}
       <div className="text-[11.5px] sm:text-[12.5px] font-semibold truncate" style={{ color: 'var(--text)' }}>

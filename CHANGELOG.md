@@ -4,6 +4,12 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Fixed — artwork, manga chapters, file deletion
+- Anime covers never displayed: AniList serves them from `s4.anilist.co`, blocked by the CSP; MangaDex refuses hotlinked covers. All remote artwork now goes through a backend proxy with a disk cache (`/api/images/…`), with a clean placeholder when an image is missing
+- Manga chapters: recursive discovery (image folders at any depth, PDF and CBZ/ZIP anywhere, one-shots), CBZ reader support, one broken manga no longer stops the scan; chapter list sorted by number with empty / error states
+- Artwork is shown whole (object-fit: contain, 2:3 frame, blurred fill) on title pages, the billboard, cards and episode stills; text never overlaps it
+- File deletion: clear messages (permission denied with the `chown` command, missing file, busy…), batch delete reporting each failure, protected system/library folders, `../` cannot escape `FILES_ROOT`, list refreshed after deletion
+
 ### Added — play every video in the browser
 - ffprobe detects whether a file is browser-ready (MP4 + H.264 8-bit + AAC/MP3); if so it is streamed directly with range requests
 - Otherwise the server converts it on the fly to HLS with ffmpeg: H.264 video is copied and only the audio is converted to AAC; HEVC/MPEG-4/10-bit… are re-encoded with `libx264 -preset veryfast` (max 1080p)

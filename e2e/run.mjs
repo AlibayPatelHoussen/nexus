@@ -528,6 +528,143 @@ test('conversion: closing the player kills ffmpeg', async () => {
   await page.context().close()
 })
 
+// ═════════════════════════ Artwork, manga chapters, file deletion ═════════════════════════
+
+test('images: anime & manga covers are served by the proxy and actually load', async () => {
+  admin = await login('admin', 'Admin1234')
+  for (const type of ['anime', 'manga']) {
+    const items = (await api(`/api/media?type=${type}&limit=50`, { token: admin.accessToken })).json.data.items
+    const withPoster = items.filter((i) => i.posterPath)
+    assert(withPoster.length > 0, `${type}: no poster at all`)
+    assert(withPoster.every((i) => i.posterPath.startsWith('/api/images/media/')), `${type}: posters must be proxied: ${withPoster[0].posterPath}`)
+    const res = await fetch(B + withPoster[0].posterPath)
+    eq(res.status, 200, `${type} poster status`)
+    assert(res.headers.get('content-type').startsWith('image/'), 'image content-type')
+  }
+  for (const [path, type] of [['/animes', 'anime'], ['/manga', 'manga']]) {
+    const page = await newPage(admin)
+    await page.goto(B + path, { waitUntil: 'networkidle' })
+    await page.waitForFunction(() => [...document.images].filter((i) => i.src.includes('/api/images/') && i.naturalWidth > 0).length >= 2, null, { timeout: 15000 })
+    await page.screenshot({ path: `${SHOTS}/covers-${type}.png` })
+    await page.context().close()
+  }
+})
+
+test('images: the proxy caches (second request does not reach the source)', async () => {
+  const items = (await api('/api/media?type=manga&limit=50', { token: admin.accessToken })).json.data.items
+  const poster = items.find((i) => i.posterPath).posterPath
+  const count = async () => (await (await fetch(`${cfg.mock}/__requests`)).json()).filter((r) => r.path.startsWith('/covers/')).length
+  await fetch(B + poster)
+  const before = await count()
+  for (let i = 0; i < 3; i++) eq((await fetch(B + poster)).status, 200, 'cached poster')
+  eq(await count(), before, 'requests to the image source')
+})
+
+test('images: a missing image shows a clean placeholder', async () => {
+  const id = sql(`SELECT id FROM media_items WHERE type='anime' LIMIT 1`)
+  const old = sql(`SELECT poster_path FROM media_items WHERE id='${id}'`)
+  sql(`UPDATE media_items SET poster_path='http://localhost:4010/img/missing.png' WHERE id='${id}'`)
+  try {
+    const page = await newPage(admin)
+    await page.goto(`${B}/media/${id}`, { waitUntil: 'networkidle' })
+    await page.waitForSelector('section [role="img"]', { timeout: 10000 })
+    await page.context().close()
+  } finally { sql(`UPDATE media_items SET poster_path='${old}' WHERE id='${id}'`) }
+})
+
+test('detail page: artwork is whole (contain), 2:3, and never covered by the text', async () => {
+  for (const width of [390, 1280]) {
+    const id = sql(`SELECT id FROM media_items WHERE type='manga' AND poster_path IS NOT NULL LIMIT 1`)
+    const page = await newPage(admin, { width, height: 900 })
+    await page.goto(`${B}/media/${id}`, { waitUntil: 'networkidle' })
+    await page.waitForFunction(() => [...document.querySelectorAll('section img[alt]')].some((i) => i.alt && i.naturalWidth > 0))
+    const r = await page.evaluate(() => {
+      const img = [...document.querySelectorAll('section img')].find((i) => i.alt && i.naturalWidth > 0)
+      const frame = img.parentElement.getBoundingClientRect()
+      const h1 = document.querySelector('h1').getBoundingClientRect()
+      const btn = [...document.querySelectorAll('button')].find((b) => /Lire|Lecture|Aucun chapitre/.test(b.textContent)).getBoundingClientRect()
+      const overlap = (a, b) => !(a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top)
+      return {
+        fit: getComputedStyle(img).objectFit,
+        ratio: frame.width / frame.height,
+        overTitle: overlap(frame, h1), overButton: overlap(frame, btn),
+        inside: frame.left >= 0 && frame.right <= window.innerWidth,
+      }
+    })
+    eq(r.fit, 'contain', `object-fit at ${width}px`)
+    assert(Math.abs(r.ratio - 2 / 3) < 0.02, `ratio ${r.ratio} at ${width}px`)
+    assert(!r.overTitle && !r.overButton, `text over the artwork at ${width}px`)
+    assert(r.inside, `artwork out of the screen at ${width}px`)
+    await page.screenshot({ path: `${SHOTS}/detail-manga-${width}.png` })
+    await page.context().close()
+  }
+})
+
+test('manga chapters: every folder layout is found and sorted', async () => {
+  const chapters = (like) => sql(`SELECT string_agg(c.chapter_number::text || ':' || regexp_replace(c.folder_path, '^.*/', ''), ',' ORDER BY c.chapter_number) FROM chapters c JOIN media_items m ON m.id=c.media_item_id WHERE m.file_path LIKE '%/${like}'`)
+  eq(chapters('Vinland Saga'), '1.0:Vinland Saga - Chapter 001.cbz,2.0:Vinland Saga - Chapter 002.cbz,10.0:Vinland Saga - Chapter 010.cbz', 'CBZ at the root')
+  eq(chapters('Vagabond'), '1.0:Vagabond 01.pdf,2.0:Vagabond 02.pdf', 'PDF at the root')
+  eq(chapters('Nested Manga'), '1.0:Chapitre 1,2.0:Chapitre 2,3.0:Chapitre 3', 'volume/chapter folders')
+  eq(chapters('Oneshot Manga'), '1.0:Oneshot Manga', 'images at the root')
+  eq(chapters('Empty Manga') || '', '', 'no chapter')
+})
+
+test('manga chapters: listed on the title page, a click opens the reader (CBZ pages load)', async () => {
+  const id = sql(`SELECT id FROM media_items WHERE file_path LIKE '%/Vinland Saga'`)
+  const page = await newPage(admin)
+  await page.goto(`${B}/media/${id}`, { waitUntil: 'networkidle' })
+  await page.waitForSelector('text=Chapitres')
+  const order = await page.$$eval('ol li', (els) => els.map((e) => e.textContent.match(/#(\d+)/)?.[1]))
+  eq(order, ['1', '2', '10'], 'sorted by number')
+  await page.click('ol li:nth-child(3) button')
+  await page.waitForURL('**/reader/**')
+  await page.waitForFunction(() => [...document.images].filter((i) => i.alt.startsWith('Page') && i.naturalWidth > 0).length === 3, null, { timeout: 15000 })
+  await page.screenshot({ path: `${SHOTS}/reader-cbz.png` })
+  await page.context().close()
+})
+
+test('manga chapters: clear message when there is none', async () => {
+  const id = sql(`SELECT id FROM media_items WHERE file_path LIKE '%/Empty Manga'`)
+  const page = await newPage(admin)
+  await page.goto(`${B}/media/${id}`, { waitUntil: 'networkidle' })
+  await page.waitForSelector('text=Aucun chapitre trouvé')
+  assert(await page.$('button:has-text("Scanner les chapitres")'), 'scan button')
+  await page.context().close()
+})
+
+test('files: delete a non-empty folder with accents from the UI, list refreshed', async () => {
+  const dir = `${cfg.media}/à supprimer`
+  fs.mkdirSync(`${dir}/Saison 1 (2024)`, { recursive: true })
+  fs.writeFileSync(`${dir}/Saison 1 (2024)/Épisode #1 & co.mkv`, 'x')
+  const page = await newPage(admin, { width: 1280, height: 800 })
+  page.on('dialog', (d) => d.accept())
+  await page.goto(`${B}/files?path=${encodeURIComponent(cfg.media)}`, { waitUntil: 'networkidle' })
+  await page.click('button[aria-label="Actions pour à supprimer"]')
+  await page.click('button:has-text("Supprimer")')
+  await page.waitForSelector('text=Supprimé', { timeout: 10000 })
+  await page.waitForFunction(() => !document.body.textContent.includes('à supprimer'), null, { timeout: 10000 })
+  assert(!fs.existsSync(dir), 'folder still on disk')
+  await page.context().close()
+})
+
+test('files: multiple delete reports the failure with its reason, deletes the rest', async () => {
+  const a = `${cfg.media}/del-a`; const b = `${cfg.media}/del b é.txt`
+  fs.mkdirSync(`${a}/x`, { recursive: true }); fs.writeFileSync(b, 'x')
+  const page = await newPage(admin, { width: 1280, height: 800 })
+  page.on('dialog', (d) => d.accept())
+  await page.goto(`${B}/files?path=${encodeURIComponent(cfg.media)}`, { waitUntil: 'networkidle' })
+  // Remove one of them behind the UI's back → its deletion fails (already gone)
+  for (const name of ['del-a', 'del b é.txt', 'films']) {
+    await page.locator(`xpath=//span[normalize-space()="${name}"]/ancestor::div[contains(@class,"grid")][1]//input[@type="checkbox"]`).check()
+  }
+  await page.click('button[aria-label="Supprimer la sélection"]')
+  await page.waitForSelector('text=2 élément(s) supprimé(s)', { timeout: 10000 })
+  await page.waitForSelector('text=protégé', { timeout: 10000 })
+  assert(!fs.existsSync(a) && !fs.existsSync(b), 'deletable entries removed')
+  assert(fs.existsSync(`${cfg.media}/films`), 'protected library folder kept')
+  await page.context().close()
+})
+
 test('UI: logout', async () => {
   const page = await newPage(admin, { width: 1280, height: 800 })
   await page.goto(`${B}/dashboard`, { waitUntil: 'networkidle' })

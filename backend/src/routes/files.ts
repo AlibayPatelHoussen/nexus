@@ -6,6 +6,8 @@ import fs from 'fs'
 import { authenticate, authenticateStream, requireAdmin } from '../middleware/auth'
 import { FilesService, isInsideDir, sanitizePath } from '../services/files'
 import { AppError, ForbiddenError, NotFoundError, ValidationError } from '../utils/errors'
+import { query } from '../config/database'
+import { archivePages, chapterKind } from '../services/chapters'
 import {
   decide, getJob, hasFfmpeg, probe, rewritePlaylist, startJob, stopJob, waitForPlaylist,
   type ClientCaps,
@@ -183,6 +185,23 @@ router.delete('/transcode/:id', authenticateStream, asyncHandler((req: Request, 
   res.json({ success: true })
 }))
 
+// ─── One page of a CBZ / ZIP manga chapter (used by <img> in the reader) ────
+router.get('/archive-page', authenticateStream, asyncHandler(async (req: Request, res: Response) => {
+  const { rows } = await query('SELECT folder_path FROM chapters WHERE id = $1', [String(req.query.chapter ?? '')])
+  const file = rows[0]?.folder_path as string | undefined
+  if (!file || chapterKind(file) !== 'archive') throw new NotFoundError('Chapter')
+  if (req.user!.role !== 'admin' && !(await isInsideDir(MEDIA_ROOT, file))) throw new ForbiddenError('Outside the media library')
+
+  const { zip, pages } = await archivePages(file)
+  const name = pages[Number(req.query.page)]
+  if (!name) throw new NotFoundError('Page')
+  const data = zip.readFile(name)
+  if (!data) throw new NotFoundError('Page')
+  res.setHeader('Content-Type', MIME[path.extname(name).toLowerCase()] || 'application/octet-stream')
+  res.setHeader('Cache-Control', 'private, max-age=86400')
+  res.end(data)
+}))
+
 // ─── DOWNLOAD ───────────────────────────────────────────────────────────────
 router.get('/download', authenticateStream, asyncHandler(async (req: Request, res: Response) => {
   const filePath = await resolveReadable(req)
@@ -276,13 +295,23 @@ router.patch('/move', asyncHandler(async (req: Request, res: Response) => {
   res.json({ success: true })
 }))
 
-// DELETE
+// DELETE (one)
 router.delete('/', asyncHandler(async (req: Request, res: Response) => {
   const filePath = req.query.path as string
   if (!filePath) throw new ValidationError('path is required')
-  if (sanitizePath(filePath) === '/') throw new ValidationError('Refusing to delete /')
   await FilesService.delete(filePath)
   res.json({ success: true })
+}))
+
+// DELETE (several): every result is reported, a failure does not stop the others
+router.post('/delete', asyncHandler(async (req: Request, res: Response) => {
+  const paths = req.body?.paths
+  if (!Array.isArray(paths) || !paths.length || !paths.every((p) => typeof p === 'string' && p)) {
+    throw new ValidationError('paths must be a non-empty array of paths')
+  }
+  if (paths.length > 1000) throw new ValidationError('Too many paths at once (max 1000)')
+  const result = await FilesService.deleteMany([...new Set(paths as string[])])
+  res.status(result.failed.length && !result.deleted.length ? 422 : 200).json({ success: result.failed.length === 0, data: result })
 }))
 
 // UPLOAD

@@ -21,6 +21,7 @@ import chaptersRoutes from './routes/chapters'
 import servicesRoutes from './routes/services'
 import scriptsRoutes  from './routes/scripts'
 import terminalRoutes from './routes/terminal'
+import imagesRoutes   from './routes/images'
 import { registerSocketHandlers } from './socket'
 
 const STARTED_AT = new Date().toISOString()
@@ -70,6 +71,7 @@ app.use(morgan(
 app.use('/api', apiLimiter)
 
 
+app.use('/api/images',   imagesRoutes)
 app.use('/api/auth',     authRoutes)
 app.use('/api/system',   systemRoutes)
 app.use('/api/files',    filesRoutes)
