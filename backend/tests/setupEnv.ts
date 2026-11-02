@@ -6,5 +6,7 @@ import fs from 'fs'
 process.env.JWT_SECRET ||= 'test_secret_for_jest_only_not_production'
 process.env.MEDIA_ROOT   = path.join(os.tmpdir(), 'nexus-test-media')
 process.env.SCRIPTS_PATH = path.join(os.tmpdir(), 'nexus-test-scripts')
+process.env.TRANSCODE_IDLE_MS = '1500'
+process.env.TRANSCODE_DIR = path.join(os.tmpdir(), 'nexus-test-hls')
 fs.mkdirSync(process.env.MEDIA_ROOT, { recursive: true })
 fs.mkdirSync(process.env.SCRIPTS_PATH, { recursive: true })

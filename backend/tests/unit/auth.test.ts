@@ -24,6 +24,14 @@ describe('AuthService', () => {
     })
   })
 
+  describe('token uniqueness', () => {
+    it('two refresh tokens issued in the same second differ (stored with a UNIQUE constraint)', () => {
+      process.env.JWT_SECRET = 'test_secret_for_unit_tests_minimum_length_ok'
+      const payload = { userId: 'u1', username: 'a', role: 'admin' as const }
+      expect(AuthService.generateRefreshToken(payload)).not.toBe(AuthService.generateRefreshToken(payload))
+    })
+  })
+
   describe('login', () => {
     it('should throw UnauthorizedError when user not found', async () => {
       mockQuery.mockResolvedValueOnce({ rows: [], rowCount: 0, command: '', oid: 0, fields: [] })

@@ -11,7 +11,7 @@
 
 - **Full server control** — files, services, terminal, network, users
 - **Media center** — films, series, animes, manga/webtoon with metadata from TMDB & AniList
-- **Custom video player** — resume, favorites, subtitles, history
+- **Custom video player** — resume, favorites, history; plays every format in the browser (MKV, AVI, HEVC… converted on the fly with ffmpeg, like Jellyfin)
 - **Manga/Webtoon reader** — vertical scroll & page mode
 - **Real-time stats** — CPU, RAM, disk, temperature via WebSocket
 - **Dark/Light theme**
@@ -178,7 +178,7 @@ nexus.houssen-serveur.com → localhost:3001
 | Banner "Le serveur n'est pas à jour" / player "Lecture impossible (backend pas à jour)" | re-run `bash scripts/deploy.sh` and read its last lines |
 | Log `Port 3001 is already in use` | an old process holds the port: `sudo fuser -k 3001/tcp && pm2 restart nexus-backend` |
 | Orange "Clé TMDB absente" notice, no posters | set `TMDB_API_KEY` in `backend/.env`, redeploy, then scan |
-| `.mkv` / `.avi` will not play on iPhone | Safari cannot read these containers: convert to `.mp4` (H.264) |
+| MKV/AVI/HEVC videos do not play | the server converts them with ffmpeg: check `ffmpeg -version` (install with `sudo apt-get install -y ffmpeg`) |
 
 ## Testing
 

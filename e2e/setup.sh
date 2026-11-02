@@ -73,6 +73,10 @@ vid "$MEDIA/films/Tu.ne.tueras.point.2016.MULTi.1080p.mp4"
 ffmpeg -loglevel error -y -f lavfi -i "testsrc=size=320x180:rate=24" -f lavfi -i "sine=frequency=440" -t 8 -c:v libvpx -b:v 300k -c:a libopus -shortest "$MEDIA/films/Demo Webm (2020).webm"
 ffmpeg -loglevel error -y -f lavfi -i "testsrc=size=160x90:rate=12" -f lavfi -i "sine=frequency=330" -t 60 -c:v libvpx -b:v 60k -c:a libopus -b:a 24k -shortest "$MEDIA/films/Long Webm (2021).webm"
 mkdir -p "$MEDIA/films"; cp "$MEDIA/films/Tu.ne.tueras.point.2016.MULTi.1080p.mp4" "$MEDIA/films/Notfound Movie 2019.mkv"
+# Files a browser cannot read directly → converted on the fly by the server
+SRC=(-f lavfi -i "testsrc=size=480x270:rate=24" -f lavfi -i "sine=frequency=550")
+ffmpeg -loglevel error -y "${SRC[@]}" -t 30 -c:v libx264 -pix_fmt yuv420p -g 48 -c:a ac3 "$MEDIA/films/Remux Test (2018).mkv"
+ffmpeg -loglevel error -y "${SRC[@]}" -t 90 -c:v libx265 -x265-params log-level=error -c:a aac "$MEDIA/films/Hevc Test (2017).mkv"
 S="$MEDIA/series/Georgie and Mandys First Marriage S02E12-22 FINAL"
 for e in 12 13 14; do vid "$S/Georgie.and.Mandys.First.Marriage.S02E$e.1080p.WEB.H264.mp4" 4; done
 vid "$MEDIA/series/Breaking Bad/Saison 1/Episode 1.mp4" 4

@@ -17,11 +17,12 @@ export const authLimiter = rateLimit({
 })
 
 /**
- * General API limiter. Media streaming (video range requests, manga pages)
- * is excluded: a single reader session easily issues hundreds of requests.
+ * General API limiter. Media streaming (video range requests, HLS segments,
+ * manga pages) is excluded: a single session easily issues hundreds of requests.
  */
 export const apiLimiter = rateLimit({
   ...handler,
   limit: parseInt(process.env.RATE_LIMIT_MAX || '1000', 10),
-  skip: (req) => req.path.startsWith('/files/stream'),
+  // Playback (direct streaming, HLS playlists / segments, play info) is never limited
+  skip: (req) => /^\/files\/(stream|transcode|play-info)(\/|$)/.test(req.path),
 })

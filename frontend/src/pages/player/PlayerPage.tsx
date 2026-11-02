@@ -3,7 +3,6 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { ArrowLeft, Star, ChevronRight } from 'lucide-react'
 import { mediaService } from '@/services/mediaService'
-import { filesService } from '@/services/filesService'
 import { getStreamToken } from '@/services/streamToken'
 import { useAuthStore } from '@/stores/authStore'
 import { formatDuration } from '@/utils'
@@ -40,7 +39,7 @@ export default function PlayerPage() {
     enabled:  !!id,
   })
 
-  const { data: savedProgress } = useQuery({
+  const { data: savedProgress, isFetched: progressFetched, isError: progressError } = useQuery({
     queryKey: ['progress', id, episodeId],
     queryFn:  () => mediaService.getProgress(id!, episodeId),
     enabled:  !!id,
@@ -76,7 +75,12 @@ export default function PlayerPage() {
 
   const isShow    = media?.type === 'serie' || media?.type === 'anime'
   const filePath  = currentEpisode?.filePath || (isShow ? '' : media?.filePath) || ''
-  const streamUrl = filePath && streamToken ? filesService.buildStreamUrl(filePath, streamToken) : ''
+  const progressReady = progressFetched || progressError
+  // Computed synchronously (not from state) so the player gets it on its very first render
+  const resumePosition = savedProgress && savedProgress.progress > 30 && !savedProgress.completed
+    ? savedProgress.progress : undefined
+  // Mount the player once the saved position is known: a converted stream starts at that position
+  const canPlay = !!filePath && !!streamToken && progressReady
 
   // Netflix-like: resume automatically where the user stopped (unless almost finished)
   useEffect(() => {
@@ -164,10 +168,12 @@ export default function PlayerPage() {
             <div className="w-6 h-6 border-2 rounded-full animate-spin" style={{ borderColor: 'rgba(255,255,255,0.2)', borderTopColor: 'white' }} />
           </div>
         )}
-        {streamUrl && (
+        {canPlay && (
           <VideoPlayer
-            src={streamUrl}
-            initialTime={resumeAt ?? undefined}
+            key={filePath}
+            filePath={filePath}
+            streamToken={streamToken!}
+            initialTime={resumePosition}
             seekTo={seekTo}
             onTimeUpdate={handleTimeUpdate}
             onEnded={handleEnded}

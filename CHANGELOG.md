@@ -4,6 +4,13 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Added — play every video in the browser
+- ffprobe detects whether a file is browser-ready (MP4 + H.264 8-bit + AAC/MP3); if so it is streamed directly with range requests
+- Otherwise the server converts it on the fly to HLS with ffmpeg: H.264 video is copied and only the audio is converted to AAC; HEVC/MPEG-4/10-bit… are re-encoded with `libx264 -preset veryfast` (max 1080p)
+- Seeking anywhere: the conversion restarts at the requested position; ffmpeg is stopped when the player closes, the tab is hidden, or the player stops requesting segments
+- Player: centered loading spinner (load / buffering), "Préparation de la vidéo…" while converting
+- Fixed: the player reloaded the video (back to 0) on some re-renders
+
 ### Fixed (playback & deploy diagnostics)
 - Playback progress was never really saved (the periodic save kept the first position); resume now works and "Recommencer" restarts from 0
 - Unknown `/api/*` routes returned the SPA page with HTTP 200 instead of a 404 (an outdated backend looked "OK" to the UI)

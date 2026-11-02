@@ -3,9 +3,15 @@ import {
   Play, Pause, Volume2, VolumeX,
   Maximize, Minimize, RotateCcw, RotateCw,
 } from 'lucide-react'
+import type Hls from 'hls.js'
+import { filesService } from '@/services/filesService'
+import { getPlayInfo, startTranscode, stopTranscode } from '@/services/playbackService'
 
 interface Props {
-  src: string
+  /** Video file on the server */
+  filePath: string
+  /** Read-only stream token (media elements cannot send headers) */
+  streamToken: string
   onTimeUpdate?: (current: number, duration: number) => void
   onEnded?: () => void
   initialTime?: number
@@ -13,23 +19,34 @@ interface Props {
   seekTo?: { time: number; key: number }
 }
 
-/** Browsers (Safari / iPhone especially) cannot play some containers natively. */
-function unsupportedHint(src: string): string | null {
-  let file = ''
-  try { file = new URL(src, window.location.origin).searchParams.get('path') ?? '' } catch { /* ignore */ }
-  const ext = file.split('.').pop()?.toLowerCase()
-  if (ext === 'mkv' || ext === 'avi' || ext === 'wmv' || ext === 'flv') {
-    return `Le format .${ext} n'est pas lu par ce navigateur (surtout sur iPhone). Convertis-le en .mp4 (H.264) ou ouvre-le avec VLC / Jellyfin.`
-  }
-  return null
-}
+/**
+ * Playback source:
+ * - direct: the browser reads the file itself (HTTP range requests)
+ * - hls:    the server converts it on the fly (ffmpeg → HLS) starting at `offset`;
+ *           the player shows a virtual timeline `offset + video.currentTime`
+ *           over the real duration, and restarts the conversion when the user
+ *           seeks outside of what has been converted.
+ */
+type Source =
+  | { kind: 'direct' }
+  | { kind: 'hls'; jobId: string; offset: number; total: number }
 
-export default function VideoPlayer({ src, onTimeUpdate, onEnded, initialTime, seekTo }: Props) {
+export default function VideoPlayer({ filePath, streamToken, onTimeUpdate, onEnded, initialTime, seekTo }: Props) {
   const videoRef     = useRef<HTMLVideoElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const scrubberRef  = useRef<HTMLDivElement>(null)
   const hideTimer    = useRef<ReturnType<typeof setTimeout> | null>(null)
   const lastPointer  = useRef<string>('mouse')
+  const hlsRef       = useRef<Hls | null>(null)
+  const sourceRef    = useRef<Source | null>(null)
+  const pendingSeek  = useRef<number | null>(null)
+  const resumePlay   = useRef(false)
+  const scrubTarget  = useRef<number | null>(null)
+  // Latest callbacks without re-binding the media listeners on every render
+  const onTimeRef    = useRef(onTimeUpdate)
+  const onEndedRef   = useRef(onEnded)
+  onTimeRef.current  = onTimeUpdate
+  onEndedRef.current = onEnded
 
   const [playing,      setPlaying]      = useState(false)
   const [current,      setCurrent]      = useState(0)
@@ -41,7 +58,19 @@ export default function VideoPlayer({ src, onTimeUpdate, onEnded, initialTime, s
   const [scrubbing,    setScrubbing]    = useState(false)
   const [scrubHover,   setScrubHover]   = useState(false)
   const [buffered,     setBuffered]     = useState(0)
-  const [error,        setError]        = useState(false)
+  const [error,        setError]        = useState<string | null>(null)
+  const [loading,      setLoading]      = useState(true)
+  const [converting,   setConverting]   = useState(false)
+
+  // ── Virtual timeline (identity for direct playback) ─
+  const offset = () => (sourceRef.current?.kind === 'hls' ? sourceRef.current.offset : 0)
+  const total  = () => {
+    const s = sourceRef.current
+    if (s?.kind === 'hls') return s.total
+    const d = videoRef.current?.duration ?? 0
+    return isFinite(d) ? d : 0
+  }
+  const now = () => offset() + (videoRef.current?.currentTime ?? 0)
 
   // ── Auto-hide controls ─────────────────────────────
   const scheduleHide = useCallback(() => {
@@ -56,30 +85,43 @@ export default function VideoPlayer({ src, onTimeUpdate, onEnded, initialTime, s
     scheduleHide()
   }
 
-  // ── Video events ───────────────────────────────────
+  // ── Media element events (bound once) ──────────────
   useEffect(() => {
     const v = videoRef.current
     if (!v) return
 
     const onLoaded = () => {
-      setDuration(v.duration)
-      setError(false)
-      if (initialTime && initialTime > 0 && isFinite(v.duration)) v.currentTime = initialTime
+      setDuration(total())
+      if (pendingSeek.current != null) {
+        const t = pendingSeek.current
+        pendingSeek.current = null
+        if (t > 0 && t < v.duration) v.currentTime = t
+      }
+      if (resumePlay.current) { resumePlay.current = false; v.play().catch(() => {}) }
     }
-    const onTime   = () => {
-      setCurrent(v.currentTime)
-      if (v.buffered.length > 0) setBuffered(v.buffered.end(v.buffered.length - 1))
-      onTimeUpdate?.(v.currentTime, v.duration)
+    const onTime = () => {
+      const t = now()
+      setCurrent(scrubTarget.current ?? t)
+      setDuration(total())
+      if (v.buffered.length > 0) setBuffered(offset() + v.buffered.end(v.buffered.length - 1))
+      onTimeRef.current?.(t, total())
     }
-    const onPlay   = () => { setPlaying(true);  setError(false); scheduleHide() }
-    const onPause  = () => {
+    const onPlay    = () => { setPlaying(true);  setError(null); scheduleHide() }
+    const onPause   = () => {
       setPlaying(false)
       setShowControls(true)
       if (hideTimer.current) clearTimeout(hideTimer.current)
     }
-    const onEnded_ = () => { setPlaying(false); setShowControls(true); onEnded?.() }
-    const onVol    = () => { setVolume(v.volume); setMuted(v.muted) }
-    const onErr    = () => { setError(true); setPlaying(false); setShowControls(true) }
+    const onEnded_  = () => { setPlaying(false); setShowControls(true); onEndedRef.current?.() }
+    const onVol     = () => { setVolume(v.volume); setMuted(v.muted) }
+    const onWaiting = () => setLoading(true)
+    const onReady   = () => setLoading(false)
+    const onErr     = () => {
+      // hls.js reports its own (recoverable) errors; only native errors land here
+      if (hlsRef.current) return
+      setError('Le navigateur n\'a pas pu lire ce flux.')
+      setLoading(false); setPlaying(false); setShowControls(true)
+    }
 
     v.addEventListener('loadedmetadata', onLoaded)
     v.addEventListener('timeupdate',     onTime)
@@ -87,10 +129,10 @@ export default function VideoPlayer({ src, onTimeUpdate, onEnded, initialTime, s
     v.addEventListener('pause',          onPause)
     v.addEventListener('ended',          onEnded_)
     v.addEventListener('volumechange',   onVol)
+    v.addEventListener('waiting',        onWaiting)
+    v.addEventListener('playing',        onReady)
+    v.addEventListener('canplay',        onReady)
     v.addEventListener('error',          onErr)
-
-    if (src) v.load()
-
     return () => {
       v.removeEventListener('loadedmetadata', onLoaded)
       v.removeEventListener('timeupdate',     onTime)
@@ -98,21 +140,133 @@ export default function VideoPlayer({ src, onTimeUpdate, onEnded, initialTime, s
       v.removeEventListener('pause',          onPause)
       v.removeEventListener('ended',          onEnded_)
       v.removeEventListener('volumechange',   onVol)
+      v.removeEventListener('waiting',        onWaiting)
+      v.removeEventListener('playing',        onReady)
+      v.removeEventListener('canplay',        onReady)
       v.removeEventListener('error',          onErr)
     }
-  }, [src, onTimeUpdate, onEnded, scheduleHide, initialTime])
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  // ── Sources ────────────────────────────────────────
+  function detach() {
+    hlsRef.current?.destroy()
+    hlsRef.current = null
+    const s = sourceRef.current
+    if (s?.kind === 'hls') stopTranscode(s.jobId)
+    sourceRef.current = null
+  }
+
+  /** (Re)start the server-side conversion at `at` seconds and attach the HLS stream. */
+  async function playConverted(at: number, autoplay: boolean) {
+    const v = videoRef.current
+    if (!v) return
+    setLoading(true); setConverting(true); setError(null)
+    detach()
+    try {
+      const session = await startTranscode(filePath, at)
+      sourceRef.current = { kind: 'hls', jobId: session.id, offset: session.start, total: session.duration ?? 0 }
+      setCurrent(session.start)
+      setDuration(session.duration ?? 0)
+      resumePlay.current = autoplay
+      const url = `${session.playlist}?token=${encodeURIComponent(streamToken)}`
+
+      const { default: HlsJs } = await import('hls.js')
+      if (HlsJs.isSupported()) {
+        const hls = new HlsJs({ startPosition: 0, maxBufferLength: 30 })
+        hls.on(HlsJs.Events.ERROR, (_e, data) => {
+          if (!data.fatal) return
+          if (data.type === HlsJs.ErrorTypes.MEDIA_ERROR) { hls.recoverMediaError(); return }
+          setError('La conversion de la vidéo a échoué.')
+          setLoading(false)
+        })
+        hls.loadSource(url)
+        hls.attachMedia(v)
+        hlsRef.current = hls
+      } else if (v.canPlayType('application/vnd.apple.mpegurl')) {
+        v.src = url            // Safari / iPhone: native HLS
+        v.load()
+      } else {
+        setError('Ce navigateur ne sait pas lire les vidéos converties.')
+        setLoading(false)
+      }
+    } catch (err) {
+      const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
+      setError(msg ? `Conversion impossible : ${msg}` : 'Impossible de préparer la vidéo.')
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
     const v = videoRef.current
-    if (v && seekTo) { v.currentTime = seekTo.time; setCurrent(seekTo.time) }
+    if (!v || !filePath || !streamToken) return
+    let cancelled = false
+    setLoading(true); setError(null); setConverting(false)
+
+    getPlayInfo(filePath)
+      .catch(() => null)
+      .then((info) => {
+        if (cancelled) return
+        if (!info || info.mode === 'direct') {
+          sourceRef.current = { kind: 'direct' }
+          pendingSeek.current = initialTime && initialTime > 0 ? initialTime : null
+          v.src = filesService.buildStreamUrl(filePath, streamToken)
+          v.load()
+        } else {
+          playConverted(initialTime && initialTime > 0 ? initialTime : 0, false)
+        }
+      })
+
+    return () => {
+      cancelled = true
+      detach()
+      v.removeAttribute('src')
+      v.load()
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filePath, streamToken])
+
+  // Tab closed / app sent to background on a phone: stop the conversion now
+  // (the server also stops it by itself after a short idle time)
+  useEffect(() => {
+    const onHide = () => {
+      const s = sourceRef.current
+      if (s?.kind === 'hls') stopTranscode(s.jobId)
+    }
+    window.addEventListener('pagehide', onHide)
+    return () => window.removeEventListener('pagehide', onHide)
+  }, [])
+
+  /** Seek on the virtual timeline (restarts the conversion when needed). */
+  function seekAbs(t: number) {
+    const v = videoRef.current
+    const s = sourceRef.current
+    if (!v || !s) return
+    const target = Math.max(0, Math.min(total() || t, t))
+    if (s.kind === 'direct') { v.currentTime = target; setCurrent(target); return }
+
+    const local = target - s.offset
+    const seekableEnd = v.seekable.length ? v.seekable.end(v.seekable.length - 1) : 0
+    if (local >= 0 && local <= seekableEnd - 1) {
+      v.currentTime = local
+      setCurrent(target)
+    } else {
+      playConverted(target, !v.paused || resumePlay.current)
+    }
+  }
+
+  // "Recommencer" & co
+  useEffect(() => {
+    if (seekTo) seekAbs(seekTo.time)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [seekTo])
 
-  // Resume position known only after the metadata loaded: seek once, if still at the start
+  // Resume position known only after the source started (direct playback)
   useEffect(() => {
     const v = videoRef.current
-    if (v && initialTime && initialTime > 0 && v.readyState >= 1 && v.currentTime < 1 && initialTime < v.duration) {
-      v.currentTime = initialTime
-    }
+    if (!v || !initialTime || initialTime <= 0 || sourceRef.current?.kind !== 'direct') return
+    if (v.readyState >= 1) { if (v.currentTime < 1 && initialTime < v.duration) v.currentTime = initialTime }
+    else pendingSeek.current = initialTime
   }, [initialTime])
 
   // ── Fullscreen ─────────────────────────────────────
@@ -147,13 +301,13 @@ export default function VideoPlayer({ src, onTimeUpdate, onEnded, initialTime, s
   function togglePlay() {
     const v = videoRef.current
     if (!v) return
-    v.paused ? v.play() : v.pause()
+    if (v.paused) v.play().catch(() => {})
+    else v.pause()
   }
 
   function seek(delta: number) {
-    const v = videoRef.current
-    if (!v || !isFinite(v.duration)) return
-    v.currentTime = Math.max(0, Math.min(v.duration, v.currentTime + delta))
+    if (!total()) return
+    seekAbs(now() + delta)
     revealControls()
   }
 
@@ -193,26 +347,31 @@ export default function VideoPlayer({ src, onTimeUpdate, onEnded, initialTime, s
   }
 
   // ── Scrubber ───────────────────────────────────────
-  function scrubAt(clientX: number) {
+  // While dragging only the position preview moves; the seek happens on release
+  // (each seek outside the converted part restarts ffmpeg on the server).
+  function scrubPosition(clientX: number): number | null {
     const bar = scrubberRef.current
-    const v   = videoRef.current
-    if (!bar || !v || !duration) return
+    if (!bar || !duration) return null
     const rect = bar.getBoundingClientRect()
-    const pct  = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
-    v.currentTime = pct * duration
-    setCurrent(pct * duration)
+    return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width)) * duration
   }
 
-  // Pointer events cover mouse, touch and pen
   function onScrubStart(e: React.PointerEvent) {
     e.stopPropagation()
     setScrubbing(true)
-    scrubAt(e.clientX)
+    const first = scrubPosition(e.clientX)
+    if (first != null) { scrubTarget.current = first; setCurrent(first) }
     if (hideTimer.current) clearTimeout(hideTimer.current)
 
-    function onMove(ev: PointerEvent) { scrubAt(ev.clientX) }
+    function onMove(ev: PointerEvent) {
+      const t = scrubPosition(ev.clientX)
+      if (t != null) { scrubTarget.current = t; setCurrent(t) }
+    }
     function onUp() {
       setScrubbing(false)
+      const t = scrubTarget.current
+      scrubTarget.current = null
+      if (t != null) seekAbs(t)
       scheduleHide()
       window.removeEventListener('pointermove',   onMove)
       window.removeEventListener('pointerup',     onUp)
@@ -249,7 +408,6 @@ export default function VideoPlayer({ src, onTimeUpdate, onEnded, initialTime, s
       {/* Video element */}
       <video
         ref={videoRef}
-        src={src}
         className="w-full h-full"
         style={{ display: 'block' }}
         playsInline
@@ -264,18 +422,42 @@ export default function VideoPlayer({ src, onTimeUpdate, onEnded, initialTime, s
 
       {/* Error */}
       {error && (
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <div style={{ textAlign: 'center', color: 'rgba(255,255,255,0.7)' }}>
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none" role="alert">
+          <div style={{ textAlign: 'center', color: 'rgba(255,255,255,0.75)' }}>
             <div style={{ fontSize: 13 }}>Impossible de lire la vidéo</div>
-            <div style={{ fontSize: 11, marginTop: 4, opacity: 0.6, maxWidth: 320, padding: '0 16px' }}>
-              {unsupportedHint(src) ?? 'Vérifiez le fichier ou rechargez'}
+            <div style={{ fontSize: 11, marginTop: 4, opacity: 0.65, maxWidth: 320, padding: '0 16px' }}>
+              {error} Réessaie, ou vérifie le fichier sur le serveur.
             </div>
           </div>
         </div>
       )}
 
+      {/* Loading spinner (initial load, buffering, conversion starting) */}
+      {loading && !error && (
+        <div
+          className="absolute inset-0 flex flex-col items-center justify-center gap-3 pointer-events-none"
+          style={{ bottom: 72 }}
+          role="status"
+          aria-live="polite"
+        >
+          <div
+            className="rounded-full animate-spin"
+            style={{
+              width: 'clamp(40px, 9vw, 56px)', height: 'clamp(40px, 9vw, 56px)',
+              border: '3px solid rgba(255,255,255,0.2)', borderTopColor: 'white',
+            }}
+          />
+          {converting && (
+            <span className="text-[12px] sm:text-[13px] font-medium px-3 py-1 rounded-full"
+              style={{ color: 'rgba(255,255,255,0.85)', background: 'rgba(0,0,0,0.45)' }}>
+              Préparation de la vidéo…
+            </span>
+          )}
+        </div>
+      )}
+
       {/* Center play icon */}
-      {!playing && !error && (
+      {!playing && !error && !loading && (
         <div
           className="absolute inset-0 flex items-center justify-center pointer-events-none"
           style={{ bottom: 72 }}
