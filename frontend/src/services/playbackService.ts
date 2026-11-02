@@ -36,7 +36,7 @@ export async function getPlayInfo(path: string): Promise<PlayInfo> {
 /** Start an on-the-fly conversion (HLS) at `start` seconds. */
 export async function startTranscode(path: string, start: number): Promise<TranscodeSession> {
   const { data } = await api.post<{ success: boolean; data: TranscodeSession }>(
-    '/files/transcode', null, { params: { path, start: Math.max(0, Math.floor(start)), webm: webmFlag() } },
+    '/files/transcode', {}, { params: { path, start: Math.max(0, Math.floor(start)), webm: webmFlag() } },
   )
   return data.data
 }

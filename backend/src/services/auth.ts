@@ -1,5 +1,6 @@
 import bcrypt from 'bcryptjs'
 import jwt from 'jsonwebtoken'
+import { randomUUID } from 'crypto'
 import { query } from '../config/database'
 import { UnauthorizedError, ConflictError, NotFoundError } from '../utils/errors'
 import { secretFor, verifyToken } from '../middleware/auth'
@@ -20,7 +21,9 @@ export class AuthService {
   // ─── Generate Tokens ──────────────────────────────
   private static sign(payload: JwtPayload, typ: TokenType, expiresIn: string): string {
     const { userId, username, role } = payload
-    return jwt.sign({ userId, username, role, typ }, secretFor(typ), { expiresIn } as jwt.SignOptions)
+    // jwtid: two logins in the same second must not produce the same token
+    // (refresh tokens are stored with a UNIQUE constraint)
+    return jwt.sign({ userId, username, role, typ }, secretFor(typ), { expiresIn, jwtid: randomUUID() } as jwt.SignOptions)
   }
 
   static generateAccessToken(payload: JwtPayload): string {

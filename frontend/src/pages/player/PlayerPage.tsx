@@ -76,6 +76,9 @@ export default function PlayerPage() {
   const isShow    = media?.type === 'serie' || media?.type === 'anime'
   const filePath  = currentEpisode?.filePath || (isShow ? '' : media?.filePath) || ''
   const progressReady = progressFetched || progressError
+  // Computed synchronously (not from state) so the player gets it on its very first render
+  const resumePosition = savedProgress && savedProgress.progress > 30 && !savedProgress.completed
+    ? savedProgress.progress : undefined
   // Mount the player once the saved position is known: a converted stream starts at that position
   const canPlay = !!filePath && !!streamToken && progressReady
 
@@ -170,7 +173,7 @@ export default function PlayerPage() {
             key={filePath}
             filePath={filePath}
             streamToken={streamToken!}
-            initialTime={resumeAt ?? undefined}
+            initialTime={resumePosition}
             seekTo={seekTo}
             onTimeUpdate={handleTimeUpdate}
             onEnded={handleEnded}

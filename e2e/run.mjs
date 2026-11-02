@@ -445,7 +445,6 @@ test('UI: player resumes at the saved position, "Recommencer" goes back to 0', a
 })
 
 // ═════════════════════════ On-the-fly conversion (ffmpeg → HLS) ═════════════════════════
-const ffmpegCount = () => Number(execFileSync('bash', ['-c', `pgrep -f "ffmpeg.*-f hls" | wc -l`]).toString().trim())
 
 test('conversion: play-info picks direct / remux / transcode', async () => {
   admin = await login('admin', 'Admin1234')
@@ -510,14 +509,17 @@ test('conversion: closing the player kills ffmpeg', async () => {
   const id = sql(`SELECT id FROM media_items WHERE file_path LIKE '%Hevc Test%'`)
   const page = await newPage(admin)
   await page.goto(`${B}/media/${id}`, { waitUntil: 'networkidle' })
+  const created = page.waitForResponse((r) => r.url().includes('/api/files/transcode?') && r.request().method() === 'POST', { timeout: 15000 })
   await page.click('button:has-text("Lecture"), button:has-text("Reprendre")')
+  const jobId = (await (await created).json()).data.id
   await page.waitForSelector('video')
   await page.waitForFunction(() => document.querySelector('video').readyState >= 1, null, { timeout: 30000 })
   const stopped = page.waitForRequest((r) => r.url().includes('/api/files/transcode/') && r.method() === 'DELETE', { timeout: 10000 })
   await page.click('text=Retour')
   await stopped
   await sleep(1500)
-  eq(ffmpegCount(), 0, 'ffmpeg processes still running')
+  const left = Number(execFileSync('bash', ['-c', `pgrep -f "nexus-hls/${jobId}" | wc -l`]).toString().trim())
+  eq(left, 0, 'ffmpeg of this player still running')
   await page.context().close()
 })
 
