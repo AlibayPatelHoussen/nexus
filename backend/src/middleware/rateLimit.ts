@@ -26,3 +26,14 @@ export const apiLimiter = rateLimit({
   // Playback (direct streaming, HLS playlists / segments, play info) is never limited
   skip: (req) => /^\/files\/(stream|transcode|play-info|archive-page)(\/|$)/.test(req.path) || req.path.startsWith('/images/'),
 })
+
+/**
+ * Password-forced deletion (sudo): few attempts, wrong passwords only are
+ * counted, so the server password cannot be guessed through Nexus.
+ */
+export const sudoLimiter = rateLimit({
+  ...handler,
+  limit: parseInt(process.env.SUDO_RATE_LIMIT_MAX || '5', 10),
+  skipSuccessfulRequests: true,
+  message: { success: false, error: 'Trop d\'essais de mot de passe : réessaie dans 15 minutes' },
+})

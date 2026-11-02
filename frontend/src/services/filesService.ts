@@ -4,7 +4,7 @@ import type { FileEntry } from '@/types'
 
 export interface DeleteResult {
   deleted: string[]
-  failed:  { path: string; error: string }[]
+  failed:  { path: string; error: string; code?: string }[]
 }
 
 export const filesService = {
@@ -50,6 +50,14 @@ export const filesService = {
   async deleteMany(paths: string[]): Promise<DeleteResult> {
     const { data } = await api.post<{ success: boolean; data: DeleteResult }>(
       '/files/delete', { paths }, { validateStatus: (s) => s === 200 || s === 422 },
+    )
+    return data.data
+  },
+
+  /** Force the deletion with the server account's sudo password (library entries only). */
+  async deleteElevated(paths: string[], password: string): Promise<DeleteResult> {
+    const { data } = await api.post<{ success: boolean; data: DeleteResult }>(
+      '/files/delete-elevated', { paths, password }, { validateStatus: (s) => s === 200 || s === 422 },
     )
     return data.data
   },

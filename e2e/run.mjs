@@ -685,6 +685,55 @@ test('files: multiple delete reports the failure with its reason, deletes the re
   await page.context().close()
 })
 
+test('files: permission refused → password asked, wrong then right password, cancel keeps the chown hint', async () => {
+  const dir = `${cfg.media}/root-owned`
+  fs.mkdirSync(dir, { recursive: true })
+  const page = await newPage(admin, { width: 1280, height: 800 })
+  const reason = `Impossible de supprimer « root-owned » : Nexus (utilisateur houssen) n'a pas le droit d'écrire dans « ${cfg.media} », qui appartient à root. Sur le serveur : sudo chown -R houssen: "${cfg.media}"`
+  const sent = []
+  // The E2E server runs as root (never refused): simulate a non-root server
+  await page.route((u) => u.pathname === '/api/files' && u.searchParams.has('path'), (route) => route.request().method() === 'DELETE'
+    ? route.fulfill({ status: 403, contentType: 'application/json', body: JSON.stringify({ success: false, error: reason, code: 'NEEDS_PASSWORD' }) })
+    : route.fallback())
+  await page.route('**/api/files/delete-elevated', (route) => {
+    const body = JSON.parse(route.request().postData())
+    sent.push(body)
+    if (body.password !== 'bon-mdp') return route.fulfill({ status: 403, contentType: 'application/json', body: JSON.stringify({ success: false, error: 'Mot de passe incorrect', code: 'BAD_PASSWORD' }) })
+    fs.rmSync(dir, { recursive: true, force: true })
+    return route.fulfill({ status: 200, contentType: 'application/json', body: JSON.stringify({ success: true, data: { deleted: body.paths, failed: [] } }) })
+  })
+  await page.goto(`${B}/files?path=${encodeURIComponent(cfg.media)}`, { waitUntil: 'networkidle' })
+  const dlg = '[role="alertdialog"]'
+  const askDelete = async () => {
+    await page.click('button[aria-label="Actions pour root-owned"]')
+    await page.click('button:has-text("Supprimer")')
+    await page.click(`${dlg} button:has-text("Supprimer")`)
+    await page.waitForSelector(`${dlg} >> text=Forcer la suppression de « root-owned » ?`)
+  }
+  // Cancel → explanation + copyable command
+  await askDelete()
+  await page.click(`${dlg} button:has-text("Annuler")`)
+  await page.waitForSelector('text=À lancer sur le serveur')
+  assert(await page.isVisible(`code:has-text('sudo chown -R houssen: "${cfg.media}"')`), 'chown command shown')
+  assert(sent.length === 0, 'nothing sent on cancel')
+  // Wrong password → error in the dialog, stays open, field cleared
+  await askDelete()
+  const btn = `${dlg} button:has-text("Supprimer")`
+  assert(await page.isDisabled(btn), 'button disabled without password')
+  await page.fill('#confirm-password', 'faux')
+  await page.click(btn)
+  await page.waitForSelector(`${dlg} [role="alert"]:has-text("Mot de passe incorrect")`)
+  assert((await page.inputValue('#confirm-password')) === '', 'field cleared after a wrong password')
+  // Right password (Enter submits) → deleted, dialog closed, list refreshed
+  await page.fill('#confirm-password', 'bon-mdp')
+  await page.press('#confirm-password', 'Enter')
+  await page.waitForSelector(dlg, { state: 'detached' })
+  await page.waitForSelector('text=Supprimé')
+  await page.waitForSelector('button[aria-label="Actions pour root-owned"]', { state: 'detached', timeout: 10000 })
+  assert(sent.length === 2 && sent[1].paths[0] === dir, 'elevated request with the path')
+  await page.context().close()
+})
+
 test('UI: logout', async () => {
   const page = await newPage(admin, { width: 1280, height: 800 })
   await page.goto(`${B}/dashboard`, { waitUntil: 'networkidle' })

@@ -1,11 +1,14 @@
 export class AppError extends Error {
   public readonly statusCode: number
   public readonly isOperational: boolean
+  /** Machine-readable reason the UI can react to (e.g. "NEEDS_PASSWORD") */
+  public code?: string
 
-  constructor(message: string, statusCode: number, isOperational = true) {
+  constructor(message: string, statusCode: number, isOperational = true, code?: string) {
     super(message)
     this.statusCode = statusCode
     this.isOperational = isOperational
+    this.code = code
     Error.captureStackTrace(this, this.constructor)
   }
 }
