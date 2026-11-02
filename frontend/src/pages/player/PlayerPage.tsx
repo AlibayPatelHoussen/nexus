@@ -7,6 +7,7 @@ import { getStreamToken } from '@/services/streamToken'
 import { useAuthStore } from '@/stores/authStore'
 import { formatDuration } from '@/utils'
 import VideoPlayer from './VideoPlayer'
+import Artwork from '@/components/media/Artwork'
 import type { Episode } from '@/types'
 
 /** Human-readable reason why the playback authorisation failed. */
@@ -206,11 +207,7 @@ export default function PlayerPage() {
       {media && (
         <div className="px-4 sm:px-6 py-4" style={{ background: 'var(--bg)', paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
           <div className="flex items-start gap-4 mb-4">
-            {media.posterPath && (
-              <img src={media.posterPath} alt=""
-                className="w-16 h-24 rounded-lg object-cover flex-shrink-0"
-                onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }} />
-            )}
+            <Artwork src={media.posterPath} alt={media.title} type={media.type} className="w-16 flex-shrink-0 rounded-lg" />
             <div className="flex-1 min-w-0">
               <h1 className="text-[18px] sm:text-[20px] font-bold tracking-tight mb-1 break-words" style={{ color: 'var(--text)' }}>
                 {media.title}

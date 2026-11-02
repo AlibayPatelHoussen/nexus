@@ -2,6 +2,11 @@ import { api } from './api'
 import { getStreamToken, withStreamToken } from './streamToken'
 import type { FileEntry } from '@/types'
 
+export interface DeleteResult {
+  deleted: string[]
+  failed:  { path: string; error: string }[]
+}
+
 export const filesService = {
   async list(path: string): Promise<FileEntry[]> {
     const { data } = await api.get<{ success: boolean; data: FileEntry[] }>(
@@ -39,6 +44,14 @@ export const filesService = {
 
   async delete(path: string): Promise<void> {
     await api.delete(`/files?path=${encodeURIComponent(path)}`)
+  },
+
+  /** Delete several entries; the server reports each success / failure. */
+  async deleteMany(paths: string[]): Promise<DeleteResult> {
+    const { data } = await api.post<{ success: boolean; data: DeleteResult }>(
+      '/files/delete', { paths }, { validateStatus: (s) => s === 200 || s === 422 },
+    )
+    return data.data
   },
 
   /** Build a media URL from an already-fetched stream token (see getStreamToken). */

@@ -2,6 +2,7 @@ import fs from 'fs/promises'
 import path from 'path'
 import mime from 'mime-types'
 import { AppError } from '../utils/errors'
+import { fsError } from '../utils/fsErrors'
 
 export interface FileEntry {
   name:      string
@@ -15,10 +16,35 @@ export interface FileEntry {
   permissions: string
 }
 
-// Normalize to an absolute path. The file manager is admin-only (see
-// routes/files.ts), so any absolute path is allowed here.
+/**
+ * Root the file manager is confined to (FILES_ROOT, default "/": the file
+ * manager is admin-only). Paths are resolved first, so "../" can never escape it.
+ */
+const FILES_ROOT = path.resolve(process.env.FILES_ROOT || '/')
+
 export function sanitizePath(inputPath: string): string {
-  return path.resolve('/', inputPath)
+  if (typeof inputPath !== 'string' || inputPath.includes('\0')) throw new AppError('Chemin invalide', 400)
+  const resolved = path.resolve('/', inputPath)
+  const rel = path.relative(FILES_ROOT, resolved)
+  if (rel.startsWith('..') || path.isAbsolute(rel)) {
+    throw new AppError(`Accès refusé : en dehors du dossier autorisé (${FILES_ROOT})`, 403)
+  }
+  return resolved
+}
+
+/** System folders that must never be deleted or moved from the web UI. */
+const PROTECTED = new Set([
+  '/', '/bin', '/boot', '/dev', '/etc', '/home', '/lib', '/lib64', '/opt', '/proc', '/root',
+  '/run', '/sbin', '/srv', '/sys', '/tmp', '/usr', '/var', '/media', '/mnt',
+  path.resolve(__dirname, '../../..'),          // the Nexus installation itself
+  FILES_ROOT,
+  // Library roots: delete their content, not the library folders themselves
+  ...['MEDIA_ROOT', 'FILMS_PATH', 'SERIES_PATH', 'ANIMES_PATH', 'MANGA_PATH', 'SCRIPTS_PATH']
+    .map((k) => process.env[k]).filter((v): v is string => !!v).map((v) => path.resolve(v)),
+])
+
+export function assertNotProtected(p: string): void {
+  if (PROTECTED.has(p)) throw new AppError(`« ${p} » est un dossier système protégé`, 403)
 }
 
 /**
@@ -84,6 +110,7 @@ export class FilesService {
 
   static async rename(oldPath: string, newName: string): Promise<void> {
     const safe = sanitizePath(oldPath)
+    assertNotProtected(safe)
     if (!newName || newName !== path.basename(newName) || newName === '.' || newName === '..') {
       throw new AppError('Invalid name', 422)
     }
@@ -93,17 +120,37 @@ export class FilesService {
 
   static async delete(targetPath: string): Promise<void> {
     const safe = sanitizePath(targetPath)
-    const stat = await fs.stat(safe)
-
-    if (stat.isDirectory()) {
-      await fs.rm(safe, { recursive: true, force: true })
-    } else {
-      await fs.unlink(safe)
+    assertNotProtected(safe)
+    try {
+      // lstat: a symlink (even broken) is removed itself, never its target
+      const stat = await fs.lstat(safe)
+      if (stat.isDirectory()) await fs.rm(safe, { recursive: true, force: true, maxRetries: 2 })
+      else await fs.unlink(safe)
+    } catch (err) {
+      throw fsError(err, safe) ?? err
     }
   }
 
+  /** Delete several entries; every failure is reported, none blocks the others. */
+  static async deleteMany(paths: string[]): Promise<{ deleted: string[]; failed: { path: string; error: string }[] }> {
+    const results = await Promise.allSettled(paths.map((p) => FilesService.delete(p)))
+    const deleted: string[] = []
+    const failed: { path: string; error: string }[] = []
+    results.forEach((r, i) => {
+      if (r.status === 'fulfilled') deleted.push(paths[i])
+      else failed.push({ path: paths[i], error: (r.reason as Error)?.message || 'Erreur inconnue' })
+    })
+    return { deleted, failed }
+  }
+
   static async move(srcPath: string, destPath: string): Promise<void> {
-    await fs.rename(sanitizePath(srcPath), sanitizePath(destPath))
+    const src = sanitizePath(srcPath)
+    assertNotProtected(src)
+    try {
+      await fs.rename(src, sanitizePath(destPath))
+    } catch (err) {
+      throw fsError(err, src) ?? err
+    }
   }
 
   static async readFile(filePath: string): Promise<string> {

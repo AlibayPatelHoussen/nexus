@@ -1,4 +1,5 @@
 import { query } from '../config/database'
+import { proxied } from './images'
 
 export interface MediaFilters {
   type?:    string
@@ -23,8 +24,9 @@ function mapMedia(row: Record<string, any>) {
     anilistId:     row['anilist_id'],
     mangadexId:    row['mangadex_id'],
     overview:      row['overview'],
-    posterPath:    row['poster_path'],
-    backdropPath:  row['backdrop_path'],
+    // Remote artwork goes through the backend image proxy / cache
+    posterPath:    proxied('media', row['id'], 'poster', row['poster_path']),
+    backdropPath:  proxied('media', row['id'], 'backdrop', row['backdrop_path']),
     genres:        row['genres'],
     year:          row['year'],
     rating:        row['rating'] != null ? Number(row['rating']) : null,
@@ -50,7 +52,7 @@ function mapEpisode(row: Record<string, any>) {
     filePath:      row['file_path'],
     fileSize:      row['file_size'] != null ? Number(row['file_size']) : null,
     duration:      row['duration'],
-    thumbnailPath: row['thumbnail_path'],
+    thumbnailPath: proxied('episode', row['id'], 'thumb', row['thumbnail_path']),
     airDate:       row['air_date'],
   }
 }

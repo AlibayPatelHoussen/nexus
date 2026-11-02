@@ -2,6 +2,7 @@ import fs from 'fs/promises'
 import path from 'path'
 import { query, withTransaction } from '../config/database'
 import { ConflictError } from '../utils/errors'
+import { findChapters } from './chapters'
 import { logger } from '../utils/logger'
 import axios from 'axios'
 
@@ -10,9 +11,9 @@ const TMDB_BASE     = process.env.TMDB_BASE_URL     || 'https://api.themoviedb.o
 const TMDB_IMG      = process.env.TMDB_IMAGE_BASE_URL || 'https://image.tmdb.org/t/p'
 const ANILIST_URL   = process.env.ANILIST_API_URL   || 'https://graphql.anilist.co'
 const MANGADEX_URL  = process.env.MANGADEX_API_URL  || 'https://api.mangadex.org'
+const MANGADEX_COVERS = process.env.MANGADEX_COVERS_URL || 'https://uploads.mangadex.org/covers'
 
 const VIDEO_EXTS = ['.mp4', '.mkv', '.avi', '.mov', '.webm', '.m4v', '.flv']
-const IMAGE_EXTS = ['.jpg', '.jpeg', '.png', '.webp', '.avif']
 
 interface TmdbResult {
   id?: number
@@ -355,7 +356,7 @@ async function searchMangaDex(title: string): Promise<MangaDexResult | null> {
 
     const cover = best.relationships?.find((r) => r.type === 'cover_art')
     const coverUrl = cover
-      ? `https://uploads.mangadex.org/covers/${best.id}/${cover.attributes?.fileName}`
+      ? `${MANGADEX_COVERS}/${best.id}/${cover.attributes?.fileName}`
       : undefined
 
     return { ...best, coverUrl }
@@ -657,9 +658,11 @@ export class MediaScanner {
     try {
       const entries = await fs.readdir(dir, { withFileTypes: true })
 
-      for (const entry of entries.filter((e) => e.isDirectory())) {
+      for (const entry of entries.filter((e) => e.isDirectory() && !e.name.startsWith('.'))) {
         const mangaPath = path.join(dir, entry.name)
         const { title } = parseFilename(entry.name)
+        // One unreadable manga must not stop the scan of the others
+        try {
 
         const mdx = await searchMangaDex(title)
 
@@ -694,6 +697,9 @@ export class MediaScanner {
         await query('UPDATE media_items SET file_size = $1 WHERE file_path = $2', [totalSize, mangaPath])
 
         count++
+        } catch (err) {
+          logger.error(`Manga scan error for ${mangaPath}: ${err}`)
+        }
       }
     } catch (err) {
       logger.error(`Manga scan error: ${err}`)
@@ -713,40 +719,12 @@ export class MediaScanner {
     }
     const mediaId = rows[0].id
 
-    const chapters: { chapPath: string; isPdf: boolean }[] = []
-
-    const firstLevel = await fs.readdir(mangaPath, { withFileTypes: true })
-    for (const entry of firstLevel.filter((e) => e.isDirectory())) {
-      const entryPath = path.join(mangaPath, entry.name)
-      const contents  = await fs.readdir(entryPath)
-      const hasImages = contents.some((f) => IMAGE_EXTS.includes(path.extname(f).toLowerCase()))
-      const hasPdfs   = contents.some((f) => path.extname(f).toLowerCase() === '.pdf')
-
-      if (hasImages) {
-        chapters.push({ chapPath: entryPath, isPdf: false })
-      } else if (hasPdfs) {
-        for (const f of contents.filter((f) => path.extname(f).toLowerCase() === '.pdf')) {
-          chapters.push({ chapPath: path.join(entryPath, f), isPdf: true })
-        }
-      } else {
-        const inner = await fs.readdir(entryPath, { withFileTypes: true })
-        for (const sub of inner.filter((e) => e.isDirectory())) {
-          chapters.push({ chapPath: path.join(entryPath, sub.name), isPdf: false })
-        }
-      }
-    }
-
-    const chapterRows: { chapPath: string; chapNum: number; pageCount: number | null }[] = []
-    for (const { chapPath, isPdf } of chapters) {
-      const name = isPdf ? path.basename(chapPath, '.pdf') : path.basename(chapPath)
-
-      let pageCount: number | null = null
-      if (!isPdf) {
-        const files = await fs.readdir(chapPath)
-        pageCount = files.filter((f) => IMAGE_EXTS.includes(path.extname(f).toLowerCase())).length || null
-      }
-      chapterRows.push({ chapPath, chapNum: parseChapterNumber(name), pageCount })
-    }
+    const found = await findChapters(mangaPath)
+    const chapterRows = found.map((c, i) => {
+      const n = parseChapterNumber(c.name)
+      // No number in the name ("Prologue", "Oneshot"…): keep the folder order
+      return { chapPath: c.path, chapNum: n > 0 || /\b0+\b/.test(c.name) ? n : i + 1, pageCount: c.pageCount }
+    })
 
     // Upsert on folder_path so existing chapters keep their id (and therefore
     // users' read_history), then drop chapters whose folder disappeared.
@@ -769,7 +747,7 @@ export class MediaScanner {
       )
     })
 
-    logger.info(`scanChapters: ${chapters.length} chapters for ${mangaPath}`)
+    logger.info(`scanChapters: ${chapterRows.length} chapters for ${mangaPath}`)
   }
 
   static async pruneDeleted(type?: string): Promise<number> {

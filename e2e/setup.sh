@@ -94,6 +94,32 @@ for manga, chapters in [('Solo Leveling', ['Chapter 1', 'Chapter 2'])]:
         for i in range(1, 4):
             im = Image.new('RGB', (400, 600), (40 * i, 60, 120)); ImageDraw.Draw(im).text((20, 20), f'{ch} p{i}', fill='white')
             im.save(os.path.join(d, f'{i:02d}.png'))
+import zipfile, io
+def page(text, colour):
+    im = Image.new('RGB', (400, 600), colour); ImageDraw.Draw(im).text((20, 20), text, fill='white')
+    b = io.BytesIO(); im.save(b, 'PNG'); return b.getvalue()
+# CBZ archives directly in the manga folder
+d = os.path.join(root, 'scans', 'Vinland Saga'); os.makedirs(d, exist_ok=True)
+for n in (1, 2, 10):
+    with zipfile.ZipFile(os.path.join(d, f'Vinland Saga - Chapter {n:03d}.cbz'), 'w') as z:
+        for i in range(1, 4): z.writestr(f'{i:02d}.png', page(f'CBZ ch{n} p{i}', (30, 90, 40 * i)))
+        z.writestr('__MACOSX/._01.png', b'junk')
+# PDFs directly in the manga folder
+d = os.path.join(root, 'scans', 'Vagabond'); os.makedirs(d, exist_ok=True)
+for n in (1, 2):
+    imgs = [Image.new('RGB', (400, 600), (90, 40 * n, 160)) for _ in range(2)]
+    imgs[0].save(os.path.join(d, f'Vagabond {n:02d}.pdf'), save_all=True, append_images=imgs[1:])
+# Volume / chapter / images (nested)
+for vol, chs in (('Volume 1', (1, 2)), ('Volume 2', (3,))):
+    for c in chs:
+        d = os.path.join(root, 'scans', 'Nested Manga', vol, f'Chapitre {c}'); os.makedirs(d, exist_ok=True)
+        for i in range(1, 3): open(os.path.join(d, f'{i}.png'), 'wb').write(page(f'v{vol} c{c} p{i}', (120, 60, 30)))
+# One-shot: images directly in the manga folder
+d = os.path.join(root, 'scans', 'Oneshot Manga'); os.makedirs(d, exist_ok=True)
+for i in range(1, 4): open(os.path.join(d, f'{i:02d}.png'), 'wb').write(page(f'oneshot p{i}', (60, 60, 60)))
+# No chapter at all
+d = os.path.join(root, 'scans', 'Empty Manga'); os.makedirs(d, exist_ok=True)
+open(os.path.join(d, 'readme.txt'), 'w').write('nothing here')
 d = os.path.join(root, 'scans', 'Berserk', 'Volume 1'); os.makedirs(d, exist_ok=True)
 pages = [Image.new('RGB', (400, 600), (200, 50 * i, 50)) for i in range(1, 3)]
 pages[0].save(os.path.join(d, 'Chapitre 1.pdf'), save_all=True, append_images=pages[1:])
@@ -127,6 +153,10 @@ MANGA_PATH=$MEDIA/scans
 SCRIPTS_PATH=$MEDIA/scripts
 TMDB_API_KEY=e2e-test-key
 TMDB_BASE_URL=http://localhost:$MOCK_PORT/3
+TMDB_IMAGE_BASE_URL=http://localhost:$MOCK_PORT/img
+MANGADEX_COVERS_URL=http://localhost:$MOCK_PORT/covers
+IMAGE_PROXY_HOSTS=localhost
+IMAGE_CACHE_DIR=$E2E/image-cache
 ANILIST_API_URL=http://localhost:$MOCK_PORT/anilist
 MANGADEX_API_URL=http://localhost:$MOCK_PORT/mangadex
 RATE_LIMIT_MAX=100000

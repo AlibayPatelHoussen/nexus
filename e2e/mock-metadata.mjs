@@ -1,8 +1,26 @@
 // Fake TMDB / AniList / MangaDex used by the end-to-end tests (no Internet needed).
 // Every request is recorded so tests can check what the scanner searched for.
 import http from 'node:http'
+import zlib from 'node:zlib'
+
+// ── Tiny PNG encoder (solid colour) so the image proxy gets real images ──
+const CRC = Array.from({ length: 256 }, (_, n) => { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; return c >>> 0 })
+const crc32 = (buf) => { let c = 0xffffffff; for (const b of buf) c = CRC[(c ^ b) & 0xff] ^ (c >>> 8); return (c ^ 0xffffffff) >>> 0 }
+function chunk(type, data) {
+  const len = Buffer.alloc(4); len.writeUInt32BE(data.length)
+  const td = Buffer.concat([Buffer.from(type), data]); const crc = Buffer.alloc(4); crc.writeUInt32BE(crc32(td))
+  return Buffer.concat([len, td, crc])
+}
+function png(w, h, [r, g, b]) {
+  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4); ihdr[8] = 8; ihdr[9] = 2
+  const row = Buffer.alloc(1 + w * 3); for (let x = 0; x < w; x++) { row[1 + x * 3] = r; row[2 + x * 3] = g; row[3 + x * 3] = b }
+  const raw = Buffer.concat(Array.from({ length: h }, () => row))
+  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(raw)), chunk('IEND', Buffer.alloc(0))])
+}
+const colour = (s) => { const h = [...s].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7); return [h & 255, (h >> 8) & 255, (h >> 16) & 255] }
 
 const port = Number(process.env.MOCK_PORT || 4010)
+const IMG = `http://localhost:${port}/img`
 export const requests = []
 
 const hash = (s) => [...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % 90000 + 1000
@@ -22,6 +40,20 @@ http.createServer((req, res) => {
     const p = url.pathname
 
     if (p === '/__requests') return json(res, requests)
+
+    // ── Images (TMDB / AniList style) ──
+    if (p.startsWith('/img/')) {
+      if (/missing/.test(p)) { res.writeHead(404); return res.end() }
+      const wide = /backdrop|still|banner/.test(p)
+      res.writeHead(200, { 'Content-Type': 'image/png' })
+      return res.end(png(wide ? 320 : 200, wide ? 180 : 300, colour(p)))
+    }
+    // ── MangaDex covers: hotlinking (a foreign Referer) is refused, like the real CDN ──
+    if (p.startsWith('/covers/')) {
+      if (req.headers.referer) { res.writeHead(403, { 'Content-Type': 'text/plain' }); return res.end('hotlinking not allowed') }
+      res.writeHead(200, { 'Content-Type': 'image/png' })
+      return res.end(png(210, 300, colour(p)))   // not exactly 2:3, like many covers
+    }
 
     // ── TMDB ──
     if (p === '/3/search/movie' || p === '/3/search/tv') {
@@ -59,8 +91,10 @@ http.createServer((req, res) => {
       const search = (JSON.parse(body || '{}').variables || {}).search || ''
       return json(res, { data: { Media: {
         id: hash(search), title: { romaji: title(search), english: title(search), native: '日本' },
-        description: `<b>Anime</b> ${search}`, coverImage: { large: 'https://img.anilist.co/c.jpg', extraLarge: 'https://img.anilist.co/c.jpg' },
-        bannerImage: 'https://img.anilist.co/b.jpg', genres: ['Action', 'Aventure'], averageScore: 85, status: 'FINISHED', startDate: { year: 1999 },
+        description: `<b>Anime</b> ${search}`,
+        // Like AniList: covers on a different host than the API (s4.anilist.co)
+        coverImage: { large: `${IMG}/anilist/cover_${hash(search)}.png`, extraLarge: `${IMG}/anilist/cover_${hash(search)}.png` },
+        bannerImage: `${IMG}/anilist/banner_${hash(search)}.png`, genres: ['Action', 'Aventure'], averageScore: 85, status: 'FINISHED', startDate: { year: 1999 },
       } } })
     }
 

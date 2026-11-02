@@ -151,7 +151,7 @@ export default function FilesPage() {
     currentPath, entries, isLoading, breadcrumbs,
     selected, navigate, goUp,
     toggleSelect, selectAll, clearSelect,
-    deleteEntry, renameEntry, createDir, createFile,
+    deleteEntry, deleteEntries, deleting, renameEntry, createDir, createFile,
   } = useFiles(urlPath)
 
   // Keep the current folder in the URL (?path=…): reload, share and Back work
@@ -242,9 +242,9 @@ export default function FilesPage() {
         <button className="btn-ghost text-[12px] px-2.5 sm:px-4" onClick={() => { setCreating('file'); setNewItem('') }} aria-label="Nouveau fichier" title="Nouveau fichier"><FilePlus size={13} strokeWidth={2} /> <span className="hidden sm:inline">Fichier</span></button>
         <button className="btn-ghost text-[12px] px-2.5 sm:px-4" onClick={() => uploadRef.current?.click()} aria-label="Upload" title="Upload"><Upload size={13} strokeWidth={2} /> <span className="hidden sm:inline">Upload</span></button>
         {selected.size > 0 && (
-          <button className="btn-danger text-[12px]" onClick={() => {
+          <button className="btn-danger text-[12px]" disabled={deleting} onClick={() => {
             if (confirm(`Supprimer ${selected.size} élément(s) ?`)) {
-              selected.forEach((p) => deleteEntry(p)); clearSelect()
+              deleteEntries([...selected]); clearSelect()
             }
           }} aria-label="Supprimer la sélection"><Trash2 size={13} strokeWidth={2} /> ({selected.size})</button>
         )}

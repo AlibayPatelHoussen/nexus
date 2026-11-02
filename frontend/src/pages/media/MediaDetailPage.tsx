@@ -2,10 +2,12 @@ import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  ArrowLeft, Play, Star, BookOpen,
-  Calendar, Globe, Clock, Layers, ChevronRight, RefreshCw, Tv, Plus, Check,
+  ArrowLeft, Play, Star,
+  Calendar, Globe, Clock, Layers, RefreshCw, Tv, Plus, Check,
 } from 'lucide-react'
 import MediaRow from '@/components/media/MediaRow'
+import Artwork from '@/components/media/Artwork'
+import ChaptersSection from '@/components/media/ChaptersSection'
 import { mediaService } from '@/services/mediaService'
 import { formatDuration, formatBytes } from '@/utils'
 import EpisodesSection from '@/components/media/EpisodesSection'
@@ -21,7 +23,7 @@ export default function MediaDetailPage() {
   const [activeSeason, setActiveSeason] = useState<number | null>(null)
   const [scanning, setScanning] = useState(false)
 
-  const { data: media, isLoading } = useQuery({
+  const { data: media, isLoading, isError, refetch } = useQuery({
     queryKey: ['media', id],
     queryFn:  () => mediaService.getById(id!),
     enabled:  !!id,
@@ -89,7 +91,22 @@ export default function MediaDetailPage() {
     )
   }
 
-  if (!media) return null
+  if (!media) {
+    return (
+      <div className="flex flex-col items-center justify-center gap-3 min-h-screen px-6 text-center" style={{ background: 'var(--bg)' }}>
+        <p className="text-[15px] font-semibold" style={{ color: 'var(--text)' }}>
+          {isError ? 'Impossible de charger ce titre' : 'Titre introuvable'}
+        </p>
+        <p className="text-[12.5px]" style={{ color: 'var(--text3)' }}>
+          {isError ? 'Le serveur n\'a pas répondu correctement. Réessaie dans un instant.' : 'Il a peut-être été supprimé de la bibliothèque.'}
+        </p>
+        <div className="flex gap-2">
+          <button className="btn-ghost text-[12.5px]" onClick={() => navigate(-1)}><ArrowLeft size={13} /> Retour</button>
+          {isError && <button className="btn-primary text-[12.5px]" onClick={() => refetch()}>Réessayer</button>}
+        </div>
+      </div>
+    )
+  }
 
   const episodes: Episode[] = media.episodes || []
   const chapters: Chapter[] = media.chapters  || []
@@ -147,109 +164,121 @@ export default function MediaDetailPage() {
     !isShow && media.duration ? formatDuration(media.duration) : null,
     isReading && chapters.length ? `${chapters.length} chapitre${chapters.length > 1 ? 's' : ''}` : null,
   ].filter(Boolean) as string[]
-  const art = !imgErr ? (media.backdropPath || media.posterPath) : null
+  // Decorative blurred background (cropping is fine here, it is only ambience)
+  const bgArt = !imgErr ? (media.backdropPath || media.posterPath) : null
 
   return (
     <div className="min-h-full" style={{ background: 'var(--bg)' }}>
 
-      {/* ── BILLBOARD ── */}
-      <section className="relative">
-        <div className="relative h-[62vh] min-h-[360px] max-h-[640px] sm:h-[520px] lg:h-[600px] overflow-hidden">
-          {art ? (
-            <img
-              src={art}
-              alt=""
-              className={`absolute inset-0 w-full h-full object-cover ${media.backdropPath ? 'object-center' : 'object-top'}`}
-              onError={() => setImgErr(true)}
-            />
-          ) : (
-            <div className="absolute inset-0" style={{ background: 'linear-gradient(135deg, #2a2a3d, #0a0a0f)' }} />
-          )}
-          <div className="absolute inset-0" style={{ background: 'linear-gradient(to top, rgba(0,0,0,0.92) 0%, rgba(0,0,0,0.45) 50%, rgba(0,0,0,0.25) 100%)' }} />
-          <div className="absolute inset-0 hidden sm:block" style={{ background: 'linear-gradient(to right, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.3) 55%, transparent 80%)' }} />
+      {/* ── HEADER: blurred backdrop + whole poster (never cropped) + title ── */}
+      <section className="relative overflow-hidden">
+        {bgArt && (
+          <img
+            src={bgArt}
+            alt=""
+            aria-hidden="true"
+            className="absolute inset-0 w-full h-full object-cover scale-110 blur-2xl opacity-50"
+            onError={() => setImgErr(true)}
+          />
+        )}
+        <div className="absolute inset-0" style={{ background: 'linear-gradient(to bottom, color-mix(in srgb, var(--bg) 35%, transparent) 0%, color-mix(in srgb, var(--bg) 75%, transparent) 55%, var(--bg) 100%)' }} />
 
-          {/* Top bar */}
-          <div className="absolute inset-x-0 top-0 flex items-center justify-between px-4 sm:px-6 lg:px-7 pt-4 sm:pt-5"
-            style={{ paddingTop: 'max(1rem, env(safe-area-inset-top))' }}>
+        {/* Top bar */}
+        <div className="relative flex items-center justify-between px-4 sm:px-6 lg:px-7 pt-4 sm:pt-5"
+          style={{ paddingTop: 'max(1rem, env(safe-area-inset-top))' }}>
+          <button
+            className="flex items-center gap-1.5 text-[13px] font-medium transition-colors px-3 py-1.5 rounded-full"
+            style={{ background: 'color-mix(in srgb, var(--surface) 70%, transparent)', color: 'var(--text)' }}
+            onClick={() => navigate(-1)}
+          >
+            <ArrowLeft size={16} strokeWidth={2} /> Retour
+          </button>
+          {(isReading || isShow) && (
             <button
-              className="flex items-center gap-1.5 text-[13px] font-medium text-white/80 hover:text-white transition-colors px-3 py-1.5 rounded-full"
-              style={{ background: 'rgba(0,0,0,0.35)' }}
-              onClick={() => navigate(-1)}
+              className="flex items-center gap-1.5 text-[12px] font-medium transition-colors px-3 py-1.5 rounded-full"
+              style={{ background: 'color-mix(in srgb, var(--surface) 70%, transparent)', color: 'var(--text)' }}
+              onClick={scan}
+              disabled={scanning}
             >
-              <ArrowLeft size={16} strokeWidth={2} /> Retour
+              <RefreshCw size={13} strokeWidth={2} className={scanning ? 'animate-spin' : ''} />
+              Scanner
             </button>
-            {(isReading || isShow) && (
-              <button
-                className="flex items-center gap-1.5 text-[12px] font-medium text-white/80 hover:text-white transition-colors px-3 py-1.5 rounded-full"
-                style={{ background: 'rgba(0,0,0,0.35)' }}
-                onClick={scan}
-                disabled={scanning}
-              >
-                <RefreshCw size={13} strokeWidth={2} className={scanning ? 'animate-spin' : ''} />
-                Scanner
-              </button>
-            )}
-          </div>
+          )}
+        </div>
 
-          {/* Title block */}
-          <div className="absolute inset-x-0 bottom-0 px-4 sm:px-6 lg:px-7 pb-6 sm:pb-10 flex items-end gap-6">
-            {!media.backdropPath && media.posterPath && !imgErr && (
-              <img src={media.posterPath} alt="" className="hidden md:block w-[170px] aspect-[2/3] rounded-lg object-cover flex-shrink-0 shadow-2xl" />
+        <div className="relative px-4 sm:px-6 lg:px-7 pt-5 sm:pt-8 pb-6 sm:pb-8 flex flex-col sm:flex-row items-center sm:items-end gap-5 sm:gap-8">
+          {/* Artwork: poster in 2:3, or the backdrop in 16:9 when there is no poster */}
+          <Artwork
+            src={media.posterPath || media.backdropPath}
+            alt={media.title}
+            ratio={media.posterPath || !media.backdropPath ? '2 / 3' : '16 / 9'}
+            type={media.type}
+            title={media.title}
+            subtitle={media.year}
+            loading="eager"
+            className={`flex-shrink-0 rounded-xl shadow-2xl ${media.posterPath || !media.backdropPath
+              ? 'w-[52vw] max-w-[220px] sm:w-[200px] lg:w-[240px] sm:max-w-none'
+              : 'w-full max-w-[420px] sm:w-[340px] lg:w-[420px]'}`}
+          />
+
+          {/* Title, meta and actions: next to the artwork, never over it */}
+          <div className="min-w-0 w-full sm:flex-1 max-w-3xl text-center sm:text-left">
+            <span className="text-[11px] font-bold uppercase tracking-[0.2em]" style={{ color: typeColor[media.type] }}>
+              {typeLabel[media.type]}
+            </span>
+            <h1 className="mt-1.5 text-[26px] sm:text-[36px] lg:text-[46px] font-extrabold tracking-tight leading-[1.08] break-words"
+              style={{ color: 'var(--text)' }}>
+              {media.title}
+            </h1>
+            {media.originalTitle && media.originalTitle !== media.title && (
+              <p className="text-[13px] mt-1" style={{ color: 'var(--text3)' }}>{media.originalTitle}</p>
             )}
-            <div className="min-w-0 max-w-3xl">
-              <span className="text-[11px] font-bold uppercase tracking-[0.2em]" style={{ color: typeColor[media.type] }}>
-                {typeLabel[media.type]}
-              </span>
-              <h1 className="mt-1.5 text-[28px] sm:text-[40px] lg:text-[52px] font-extrabold tracking-tight leading-[1.05] text-white break-words drop-shadow-lg">
-                {media.title}
-              </h1>
-              {media.originalTitle && media.originalTitle !== media.title && (
-                <p className="text-[13px] mt-1 text-white/60">{media.originalTitle}</p>
+
+            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-x-3 gap-y-1 mt-3 text-[13px] sm:text-[14px]"
+              style={{ color: 'var(--text2)' }}>
+              {media.rating != null && Number(media.rating) > 0 && (
+                <span className="flex items-center gap-1 font-semibold" style={{ color: 'var(--green)' }}>
+                  <Star size={13} fill="currentColor" /> {Number(media.rating).toFixed(1)}
+                  {media.voteCount ? <span className="font-normal" style={{ color: 'var(--text3)' }}>({media.voteCount.toLocaleString('fr-FR')})</span> : null}
+                </span>
               )}
+              {metaBits.map((b) => <span key={b}>{b}</span>)}
+              {media.language && (
+                <span className="px-1.5 py-px rounded border text-[11px] font-semibold" style={{ borderColor: 'var(--border2)' }}>{media.language.toUpperCase()}</span>
+              )}
+              {media.fileSize ? (
+                <span className="flex items-center gap-1 font-mono text-[12px]" style={{ color: 'var(--text3)' }}><Layers size={12} /> {formatBytes(media.fileSize)}</span>
+              ) : null}
+            </div>
 
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1 mt-3 text-[13px] sm:text-[14px] text-white/85">
-                {media.rating != null && Number(media.rating) > 0 && (
-                  <span className="flex items-center gap-1 font-semibold" style={{ color: 'var(--green)' }}>
-                    <Star size={13} fill="currentColor" /> {Number(media.rating).toFixed(1)}
-                    {media.voteCount ? <span className="font-normal text-white/50">({media.voteCount.toLocaleString('fr-FR')})</span> : null}
-                  </span>
-                )}
-                {metaBits.map((b) => <span key={b}>{b}</span>)}
-                {media.language && (
-                  <span className="px-1.5 py-px rounded border border-white/40 text-[11px] font-semibold">{media.language.toUpperCase()}</span>
-                )}
-                {media.fileSize ? (
-                  <span className="flex items-center gap-1 text-white/60 font-mono text-[12px]"><Layers size={12} /> {formatBytes(media.fileSize)}</span>
-                ) : null}
-              </div>
-
-              {/* Actions */}
-              <div className="flex flex-wrap items-center gap-2.5 mt-5">
-                <button
-                  className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-7 py-3 rounded-md text-[15px] font-bold bg-white text-black hover:bg-white/85 transition-colors disabled:opacity-50"
-                  onClick={() => play()}
-                  disabled={isShow && episodes.length === 0}
-                >
-                  <Play size={18} fill="black" strokeWidth={0} />
-                  {isShow
-                    ? episodes.length === 0
-                      ? 'Aucun épisode'
-                      : `${nextResumes ? 'Reprendre' : 'Lecture'} · S${nextEpisode?.season ?? 1} É${nextEpisode?.episodeNumber}`
+            {/* Actions */}
+            <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2.5 mt-5">
+              <button
+                className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-7 py-3 rounded-md text-[15px] font-bold bg-white text-black hover:bg-white/85 transition-colors disabled:opacity-50 shadow"
+                onClick={() => play()}
+                disabled={(isShow && episodes.length === 0) || (isReading && chapters.length === 0)}
+              >
+                <Play size={18} fill="black" strokeWidth={0} />
+                {isShow
+                  ? episodes.length === 0
+                    ? 'Aucun épisode'
+                    : `${nextResumes ? 'Reprendre' : 'Lecture'} · S${nextEpisode?.season ?? 1} É${nextEpisode?.episodeNumber}`
+                  : isReading
+                    ? chapters.length === 0 ? 'Aucun chapitre' : 'Lire'
                     : progress && progressPct > 0 && progressPct < 95
                       ? `Reprendre · ${progressPct}%`
-                      : isReading ? 'Lire' : 'Lecture'}
-                </button>
-                <button
-                  className="flex items-center justify-center gap-2 px-5 py-3 rounded-md text-[15px] font-bold text-white transition-colors hover:bg-white/30"
-                  style={{ background: 'rgba(109,109,110,0.7)' }}
-                  onClick={() => favMut.mutate()}
-                  disabled={favMut.isPending}
-                  aria-pressed={isFav === true}
-                >
-                  {isFav === true ? <Check size={18} strokeWidth={2.5} /> : <Plus size={18} strokeWidth={2.5} />}
-                  Ma liste
-                </button>
-              </div>
+                      : 'Lecture'}
+              </button>
+              <button
+                className="flex items-center justify-center gap-2 px-5 py-3 rounded-md text-[15px] font-bold text-white transition-colors hover:brightness-110"
+                style={{ background: 'rgba(109,109,110,0.75)' }}
+                onClick={() => favMut.mutate()}
+                disabled={favMut.isPending}
+                aria-pressed={isFav === true}
+              >
+                {isFav === true ? <Check size={18} strokeWidth={2.5} /> : <Plus size={18} strokeWidth={2.5} />}
+                Ma liste
+              </button>
             </div>
           </div>
         </div>
@@ -318,40 +347,14 @@ export default function MediaDetailPage() {
           </div>
         )}
 
-        {/* Chapters */}
-        {chapters.length > 0 && (
-          <div className="card overflow-hidden animate-fade-up" style={{ animationDelay: '60ms' }}>
-            <div className="flex flex-wrap items-center justify-between gap-2 px-4 sm:px-5 pt-4 sm:pt-5 pb-3">
-              <h2 className="text-[14px] font-semibold" style={{ color: 'var(--text)' }}>
-                Chapitres ({chapters.length})
-              </h2>
-              <button className="btn-primary text-[12px]" onClick={() => play(undefined, chapters[0]?.id)}>
-                <BookOpen size={12} strokeWidth={2} /> <span className="hidden min-[400px]:inline">Commencer la lecture</span><span className="min-[400px]:hidden">Lire</span>
-              </button>
-            </div>
-            <div className="pb-2">
-              {chapters.map((chap) => (
-                <div
-                  key={chap.id}
-                  className="flex items-center gap-3 px-4 sm:px-5 py-3 sm:py-2.5 cursor-pointer transition-colors border-b"
-                  style={{ borderColor: 'var(--border)', background: 'transparent' }}
-                  onMouseEnter={(e) => { e.currentTarget.style.background = 'var(--surface2)' }}
-                  onMouseLeave={(e) => { e.currentTarget.style.background = 'transparent' }}
-                  onClick={() => play(undefined, chap.id)}
-                >
-                  <span className="flex-1 text-[13px]" style={{ color: 'var(--text)' }}>
-                    Chapitre {chap.chapterNumber}
-                  </span>
-                  {chap.pageCount ? (
-                    <span className="text-[11px] font-mono" style={{ color: 'var(--text3)' }}>
-                      {chap.pageCount}p
-                    </span>
-                  ) : null}
-                  <ChevronRight size={13} strokeWidth={2} style={{ color: 'var(--text3)' }} />
-                </div>
-              ))}
-            </div>
-          </div>
+        {/* Chapters (manga / webtoon) */}
+        {isReading && (
+          <ChaptersSection
+            chapters={chapters}
+            onRead={(chapterId) => play(undefined, chapterId)}
+            onScan={scan}
+            scanning={scanning}
+          />
         )}
 
         {/* More like this */}
