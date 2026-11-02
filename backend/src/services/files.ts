@@ -2,7 +2,7 @@ import fs from 'fs/promises'
 import path from 'path'
 import mime from 'mime-types'
 import { AppError } from '../utils/errors'
-import { fsError } from '../utils/fsErrors'
+import { deletePermissionError, fsError } from '../utils/fsErrors'
 
 export interface FileEntry {
   name:      string
@@ -127,6 +127,8 @@ export class FilesService {
       if (stat.isDirectory()) await fs.rm(safe, { recursive: true, force: true, maxRetries: 2 })
       else await fs.unlink(safe)
     } catch (err) {
+      const code = (err as NodeJS.ErrnoException).code
+      if (code === 'EACCES' || code === 'EPERM') throw deletePermissionError(safe, err as NodeJS.ErrnoException)
       throw fsError(err, safe) ?? err
     }
   }

@@ -4,6 +4,11 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Changed — confirmations and permission errors
+- Confirmations (delete files, remove a title from the library, restart the server) use an in-app dialog instead of the browser's `confirm()`: clear title, what will happen, list of items, red "Supprimer" button, Escape / "Annuler" cancel
+- "Permission denied" on deletion now names the folder that actually blocks it (deleting needs write access to the parent folder) and its owner; the error toast shows the `sudo chown` command with a "Copier" button
+- `deploy.sh` warns when library folders do not belong to the Nexus user and prints the one-time fix
+
 ### Fixed — artwork, manga chapters, file deletion
 - Anime covers never displayed: AniList serves them from `s4.anilist.co`, blocked by the CSP; MangaDex refuses hotlinked covers. All remote artwork now goes through a backend proxy with a disk cache (`/api/images/…`), with a clean placeholder when an image is missing
 - Manga chapters: recursive discovery (image folders at any depth, PDF and CBZ/ZIP anywhere, one-shots), CBZ reader support, one broken manga no longer stops the scan; chapter list sorted by number with empty / error states
