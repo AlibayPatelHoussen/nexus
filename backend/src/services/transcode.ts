@@ -17,7 +17,9 @@ export const SEGMENT_SECONDS = 6
 const IDLE_MS = parseInt(process.env.TRANSCODE_IDLE_MS || '30000', 10)
 /** Old CPUs cannot run many encodes at once */
 const MAX_JOBS = parseInt(process.env.TRANSCODE_MAX_JOBS || '3', 10)
-const ROOT = process.env.TRANSCODE_DIR || path.join(os.tmpdir(), 'nexus-hls')
+const BASE = process.env.TRANSCODE_DIR || path.join(os.tmpdir(), 'nexus-hls')
+/** One directory per backend process, so a restart never deletes a running conversion of another process */
+const ROOT = path.join(BASE, String(process.pid))
 
 // ─── Probing ──────────────────────────────────────────
 export interface ProbeStream {
@@ -263,8 +265,15 @@ function reap() {
 const reaper = setInterval(reap, Math.min(10_000, Math.max(1000, IDLE_MS / 3)))
 reaper.unref()
 
-// Leftovers from a previous run, and never leave ffmpeg orphans behind
-fs.promises.rm(ROOT, { recursive: true, force: true }).catch(() => {})
+// Leftovers of backend processes that are gone (synchronous: runs before any job starts)
+try {
+  for (const name of fs.readdirSync(BASE)) {
+    const pid = Number(name)
+    let alive = false
+    if (Number.isInteger(pid) && pid > 0) { try { process.kill(pid, 0); alive = true } catch { /* not running */ } }
+    if (!alive || pid === process.pid) fs.rmSync(path.join(BASE, name), { recursive: true, force: true })
+  }
+} catch { /* BASE does not exist yet */ }
 for (const sig of ['SIGINT', 'SIGTERM'] as const) {
   process.once(sig, () => { for (const id of [...jobs.keys()]) stopJob(id, 'shutdown'); process.exit(0) })
 }
