@@ -38,11 +38,12 @@ interface MangaDexRelationship {
   attributes?: { fileName?: string }
 }
 
-interface MangaDexResult {
+export interface MangaDexResult {
   id?: string
   coverUrl?: string
   attributes?: {
     title?: Record<string, string>
+    altTitles?: Record<string, string>[]
     description?: Record<string, string>
     status?: string
     tags?: { attributes?: { name?: Record<string, string> } }[]
@@ -322,37 +323,63 @@ async function searchAniList(title: string, type: 'ANIME' | 'MANGA' = 'ANIME'): 
 }
 
 // ─── MangaDex search ─────────────────────────────────
-function scoreMangaTitle(query: string, titles: Record<string, string>): number {
-  const q = query.toLowerCase().trim()
-  const candidates = Object.values(titles).map((t) => t.toLowerCase().trim())
+/** "One Piece: Ace's Story—The Manga" → "one piece aces story the manga" */
+const normTitle = (t: string) => t.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/['’`]/g, '')
+  .replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
+
+/**
+ * How well a MangaDex entry matches the folder name (0–100), using its
+ * main and alternative titles. An exact title always wins; otherwise the
+ * closer the length, the better ("One Piece" must not pick a spin-off
+ * like "One Piece: Ace's Story" just because it starts the same way).
+ */
+export function scoreMangaTitle(query: string, manga: Pick<MangaDexResult, 'attributes'>): number {
+  const q = normTitle(query)
+  if (!q) return 0
+  const main = Object.values(manga.attributes?.title ?? {})
+  const alt  = (manga.attributes?.altTitles ?? []).flatMap((a) => Object.values(a))
   let best = 0
-  for (const t of candidates) {
-    if (t === q)              { best = Math.max(best, 100); break }
-    if (t.startsWith(q + ' ') || t.startsWith(q + ':')) best = Math.max(best, 80)
-    else if (t.startsWith(q)) best = Math.max(best, 70)
-    else if (t.includes(q))   best = Math.max(best, 40)
-    // penalise titles that have extra words beyond the query
-    else if (q.includes(t))   best = Math.max(best, 30)
+  for (const [list, bonus] of [[main, 0], [alt, -2]] as const) {
+    for (const raw of list) {
+      const t = normTitle(raw)
+      if (!t) continue
+      const closeness = Math.min(q.length, t.length) / Math.max(q.length, t.length)   // 1 = same length
+      let score = 0
+      if (t === q)                       score = 100
+      else if (t.startsWith(q + ' '))    score = 50 + 30 * closeness
+      else if (q.startsWith(t + ' '))    score = 40 + 30 * closeness
+      else if (t.includes(q))            score = 20 + 20 * closeness
+      else if (q.includes(t))            score = 10 + 20 * closeness
+      best = Math.max(best, score ? score + bonus : 0)
+    }
   }
   return best
+}
+
+/** Best entry for a folder name; on a tie, MangaDex's own relevance order wins. */
+export function pickManga(query: string, results: MangaDexResult[]): MangaDexResult | null {
+  let best: MangaDexResult | null = null
+  let bestScore = 0
+  for (const manga of results) {
+    const score = scoreMangaTitle(query, manga)
+    if (score > bestScore) { bestScore = score; best = manga }
+  }
+  return best ?? results[0] ?? null
 }
 
 async function searchMangaDex(title: string): Promise<MangaDexResult | null> {
   try {
     const { data } = await axios.get(`${MANGADEX_URL}/manga`, {
-      params: { title, limit: 25, 'includes[]': ['cover_art'] },
+      params: {
+        title, limit: 25, 'includes[]': ['cover_art'],
+        // Without it MangaDex sorts by latest upload: licensed series with no
+        // chapter on the site (One Piece…) fall behind their spin-offs
+        'order[relevance]': 'desc',
+        'contentRating[]': ['safe', 'suggestive', 'erotica'],
+      },
     })
-    const results = (data.data ?? []) as MangaDexResult[]
-    if (!results.length) return null
-
-    // Pick the result whose titles best match the query
-    let best: MangaDexResult = results[0]
-    let bestScore = -1
-    for (const manga of results) {
-      const titles = manga.attributes?.title ?? {}
-      const score  = scoreMangaTitle(title, titles)
-      if (score > bestScore) { bestScore = score; best = manga }
-    }
+    const best = pickManga(title, (data.data ?? []) as MangaDexResult[])
+    if (!best) return null
 
     const cover = best.relationships?.find((r) => r.type === 'cover_art')
     const coverUrl = cover
@@ -672,12 +699,19 @@ export class MediaScanner {
             overview, poster_path, genres, status, last_scanned)
            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW())
            ON CONFLICT (file_path) DO UPDATE SET
-             mangadex_id  = COALESCE(media_items.mangadex_id, EXCLUDED.mangadex_id),
-             overview     = COALESCE(media_items.overview,    EXCLUDED.overview),
-             poster_path  = COALESCE(media_items.poster_path, EXCLUDED.poster_path),
-             genres       = CASE WHEN cardinality(media_items.genres) > 0 THEN media_items.genres ELSE EXCLUDED.genres END,
-             status       = COALESCE(media_items.status, EXCLUDED.status),
-             last_scanned = NOW()`,
+             -- A new match (better search) replaces a wrong one; when MangaDex
+             -- does not answer ($5 null) the stored data is kept
+             title          = CASE WHEN $5::text IS NULL THEN media_items.title ELSE EXCLUDED.title END,
+             original_title = CASE WHEN $5::text IS NULL THEN media_items.original_title ELSE EXCLUDED.original_title END,
+             overview       = CASE WHEN $5::text IS NULL OR media_items.mangadex_id IS NOT DISTINCT FROM $5::text
+                                THEN COALESCE(media_items.overview, EXCLUDED.overview) ELSE EXCLUDED.overview END,
+             poster_path    = CASE WHEN $5::text IS NULL OR media_items.mangadex_id IS NOT DISTINCT FROM $5::text
+                                THEN COALESCE(media_items.poster_path, EXCLUDED.poster_path) ELSE EXCLUDED.poster_path END,
+             genres         = CASE WHEN $5::text IS NOT NULL AND media_items.mangadex_id IS DISTINCT FROM $5::text THEN EXCLUDED.genres
+                                WHEN cardinality(media_items.genres) > 0 THEN media_items.genres ELSE EXCLUDED.genres END,
+             status         = CASE WHEN $5::text IS NULL THEN media_items.status ELSE COALESCE(EXCLUDED.status, media_items.status) END,
+             mangadex_id    = COALESCE($5::text, media_items.mangadex_id),
+             last_scanned   = NOW()`,
           [
             'manga',
             mdx?.attributes?.title?.en || mdx?.attributes?.title?.['ja-ro'] || title,
