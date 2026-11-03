@@ -1,5 +1,5 @@
 import {
-  Activity, BookOpen, Film, Folder, Gauge, Settings, SquareTerminal, Tv, Wifi, Zap,
+  Activity, BookOpen, Film, Folder, Gauge, Settings, SquareTerminal, Tv, Wifi,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -19,7 +19,6 @@ export const NAV: NavItem[] = [
   { to: '/files',     label: 'Fichiers',       icon: Folder,         section: 'server', adminOnly: true, keywords: 'dossiers explorateur' },
   { to: '/terminal',  label: 'Terminal',       icon: SquareTerminal, section: 'server', adminOnly: true, keywords: 'shell console bash ssh' },
   { to: '/services',  label: 'Services',       icon: Activity,       section: 'server', keywords: 'systemd démarrer arrêter' },
-  { to: '/scripts',   label: 'Scripts',        icon: Zap,            section: 'server', adminOnly: true, keywords: 'automatisation' },
   { to: '/network',   label: 'Réseau',         icon: Wifi,           section: 'server', keywords: 'ip interface' },
   { to: '/cinema',    label: 'Films et séries', icon: Film,          section: 'media',  keywords: 'cinéma vidéo' },
   { to: '/animes',    label: 'Animes',         icon: Tv,             section: 'media' },
@@ -41,9 +40,9 @@ export interface Tab {
   adminOnly?: boolean
 }
 
-/** Tab Bar (phone). Files, services, scripts and network open from "Aperçu". */
+/** Tab Bar (phone). Files, services and network open from "Aperçu". */
 export const TABS: Tab[] = [
-  { to: '/dashboard', label: 'Aperçu',   icon: Gauge,          match: ['/dashboard', '/files', '/services', '/scripts', '/network'] },
+  { to: '/dashboard', label: 'Aperçu',   icon: Gauge,          match: ['/dashboard', '/files', '/services', '/network'] },
   { to: '/cinema',    label: 'Médias',   icon: Film,           match: ['/cinema', '/animes'] },
   { to: '/manga',     label: 'Manga',    icon: BookOpen,       match: ['/manga'] },
   { to: '/terminal',  label: 'Terminal', icon: SquareTerminal, match: ['/terminal'], adminOnly: true },
@@ -54,7 +53,6 @@ export const TABS: Tab[] = [
 export const PHONE_PARENT: Record<string, { to: string; label: string }> = {
   '/files':    { to: '/dashboard', label: 'Aperçu' },
   '/services': { to: '/dashboard', label: 'Aperçu' },
-  '/scripts':  { to: '/dashboard', label: 'Aperçu' },
   '/network':  { to: '/dashboard', label: 'Aperçu' },
 }
 

@@ -124,7 +124,6 @@ d = os.path.join(root, 'scans', 'Berserk', 'Volume 1'); os.makedirs(d, exist_ok=
 pages = [Image.new('RGB', (400, 600), (200, 50 * i, 50)) for i in range(1, 3)]
 pages[0].save(os.path.join(d, 'Chapitre 1.pdf'), save_all=True, append_images=pages[1:])
 PY
-mkdir -p "$MEDIA/scripts"; printf '# Script de test E2E\necho "hello from e2e"\n' > "$MEDIA/scripts/hello.sh"
 
 # ── 4. Fake metadata APIs ───────────────────────────
 echo "▶ mock metadata"
@@ -150,7 +149,6 @@ FILMS_PATH=$MEDIA/films
 SERIES_PATH=$MEDIA/series
 ANIMES_PATH=$MEDIA/animes
 MANGA_PATH=$MEDIA/scans
-SCRIPTS_PATH=$MEDIA/scripts
 TMDB_API_KEY=e2e-test-key
 TMDB_BASE_URL=http://localhost:$MOCK_PORT/3
 TMDB_IMAGE_BASE_URL=http://localhost:$MOCK_PORT/img

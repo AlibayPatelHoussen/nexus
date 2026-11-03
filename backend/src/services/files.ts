@@ -40,7 +40,7 @@ const PROTECTED = new Set([
   path.resolve(__dirname, '../../..'),          // the Nexus installation itself
   FILES_ROOT,
   // Library roots: delete their content, not the library folders themselves
-  ...['MEDIA_ROOT', 'FILMS_PATH', 'SERIES_PATH', 'ANIMES_PATH', 'MANGA_PATH', 'SCRIPTS_PATH']
+  ...['MEDIA_ROOT', 'FILMS_PATH', 'SERIES_PATH', 'ANIMES_PATH', 'MANGA_PATH']
     .map((k) => process.env[k]).filter((v): v is string => !!v).map((v) => path.resolve(v)),
 ])
 

@@ -4,6 +4,9 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Removed
+- The Scripts page (running `.py` / `.sh` files from `/media/scripts`) and its `/api/scripts` routes: it did not work and the space will be used for something else
+
 ### Changed — manga pages served like manga sites
 - New `GET /api/media/chapters/:id/page/:n?w=` (stream token): every page (image folder, CBZ or PDF) is converted once by the server to a light WebP at the screen's width (sharp; PDFs via poppler `pdftoppm`), kept in `backend/cache/pages` and sent with an immutable cache header. A 2 MB scan becomes a few hundred KB; PDFs are no longer downloaded and drawn by the phone
 - The server prepares the next 3 pages while one is read, and the reader downloads the next 4 in the background: turning the page is instant
