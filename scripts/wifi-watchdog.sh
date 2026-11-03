@@ -92,7 +92,7 @@ no_power_save() {
   return 0
 }
 
-check() {
+do_check() {
   need_root check
   mkdir -p "$STATE_DIR"
   local ifc dev fails
@@ -120,7 +120,7 @@ check() {
   esac
 }
 
-install() {
+do_install() {
   need_root install
   local src ifc dev
   src=$(readlink -f "$0")
@@ -172,7 +172,7 @@ EOF
   echo "   Last repairs    : sudo bash scripts/wifi-watchdog.sh status"
 }
 
-status() {
+do_status() {
   echo "Interface : $(iface || true)    USB : $(usb_dev "$(iface)" 2>/dev/null | xargs -r basename)"
   if online; then echo "Internet  : ✅ OK"; else echo "Internet  : ❌ unreachable"; fi
   systemctl list-timers $NAME.timer --no-pager 2>/dev/null | head -3
@@ -180,7 +180,7 @@ status() {
   journalctl -t $NAME -n 15 --no-pager 2>/dev/null || echo "(no journal)"
 }
 
-uninstall() {
+do_uninstall() {
   need_root uninstall
   systemctl disable --now $NAME.timer 2>/dev/null
   rm -f /etc/systemd/system/$NAME.service /etc/systemd/system/$NAME.timer "$BIN" \
@@ -191,9 +191,9 @@ uninstall() {
 }
 
 case "${1:-}" in
-  install)   install ;;
-  uninstall) uninstall ;;
-  check)     check ;;
-  status)    status ;;
+  install)   do_install ;;
+  uninstall) do_uninstall ;;
+  check)     do_check ;;
+  status)    do_status ;;
   *) sed -n '3,21p' "$0" | sed 's/^# \{0,2\}//'; exit 1 ;;
 esac
