@@ -4,6 +4,10 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Added — automatic deployment
+- `scripts/auto-deploy.sh install`: the server checks `main` every 2 minutes and runs `deploy.sh` by itself once the commit's CI is green (red CI → skipped; failing deployment retried 3 times; one run at a time; no CI result after 15 min → deployed anyway). Pull-based: no inbound SSH or GitHub secret. `status` shows the running version vs GitHub and the last deployments
+- The disabled SSH "Deploy to Server" CI job is removed
+
 ### Fixed
 - `wifi-watchdog.sh install` crashed with "Segmentation fault": its `install` function called itself instead of the `install` command
 

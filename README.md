@@ -164,6 +164,24 @@ answering on the port is the new build**. It must end with
 `✅ Deployment complete! Backend <commit> is running…`; otherwise it prints why
 (old process still holding the port, migration error…) and what to run.
 
+### Automatic deployment (recommended)
+
+```bash
+cd /opt/nexus && sudo bash scripts/auto-deploy.sh install
+```
+
+Every 2 minutes the server checks GitHub: when `main` has a new commit **and its
+CI is green**, it runs `deploy.sh` by itself (as your user, logs in
+`logs/auto-deploy.log`). Red CI → not deployed; a failing deployment is retried
+3 times then left alone (the running version keeps working). Nothing to open on
+the router, no secret on GitHub. `bash scripts/auto-deploy.sh status` shows the
+running version, what GitHub has and the last deployments.
+
+### Wi-Fi watchdog (USB dongle)
+
+`sudo bash scripts/wifi-watchdog.sh install` repairs a USB Wi-Fi dongle that
+stops working (service restart → interface down/up → USB replug).
+
 The UI also shows a warning banner when the backend does not run the same build
 as the interface, and *Paramètres → Version* displays both versions.
 
