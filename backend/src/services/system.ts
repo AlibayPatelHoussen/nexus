@@ -116,6 +116,11 @@ export class SystemService {
       : null
 
     const netStat = netStats[0]
+    // Memory really used by programs: Linux fills free RAM with the disk cache,
+    // which is given back at once when needed (what Activity Monitor / htop show)
+    const memUsed = mem.available > 0 ? mem.total - mem.available : mem.active || mem.used
+    // Free space you can actually write (without the blocks reserved for root)
+    const diskFree = mainDisk?.available ?? Math.max(0, (mainDisk?.size || 0) - (mainDisk?.used || 0))
 
     return {
       cpu: {
@@ -126,14 +131,14 @@ export class SystemService {
       },
       memory: {
         total:       mem.total,
-        used:        mem.used,
-        free:        mem.free,
-        usedPercent: Math.round((mem.used / mem.total) * 100),
+        used:        memUsed,
+        free:        mem.total - memUsed,
+        usedPercent: Math.round((memUsed / mem.total) * 100),
       },
       disk: {
         total:       mainDisk?.size || 0,
         used:        mainDisk?.used || 0,
-        free:        (mainDisk?.size || 0) - (mainDisk?.used || 0),
+        free:        diskFree,
         usedPercent: Math.round(mainDisk?.use || 0),
       },
       mediaStorage: { ..._mediaCache },

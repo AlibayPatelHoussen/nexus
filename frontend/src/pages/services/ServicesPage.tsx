@@ -13,13 +13,15 @@ import EmptyState from '@/components/ui/EmptyState'
 import { SkeletonRows } from '@/components/ui/Skeleton'
 import Spinner from '@/components/ui/Spinner'
 import { useConfirm } from '@/components/ui/useConfirm'
-import { cn } from '@/utils'
+import { cn, formatBytes, formatUptime } from '@/utils'
+import { SERVICE_STATE as STATE, isInstalled, isRunning, isStopped } from '@/services/serviceState'
 
-const STATE: Record<ServiceInfo['status'], { label: string; dot: 'ok' | 'error' | 'off' }> = {
-  active:   { label: 'Actif',        dot: 'ok' },
-  failed:   { label: 'En échec',     dot: 'error' },
-  inactive: { label: 'Arrêté',       dot: 'off' },
-  unknown:  { label: 'État inconnu', dot: 'off' },
+const summary = (list: ServiceInfo[]) => {
+  const on = list.filter(isRunning).length
+  const off = list.filter(isStopped).length
+  const missing = list.filter((s) => !isInstalled(s)).length
+  return [`${on} actif${on > 1 ? 's' : ''}`, `${off} arrêté${off > 1 ? 's' : ''}`, missing ? `${missing} non installé${missing > 1 ? 's' : ''}` : '']
+    .filter(Boolean).join(' · ')
 }
 
 export default function ServicesPage() {
@@ -38,8 +40,8 @@ export default function ServicesPage() {
     if (!phone && !selected && services.length) setSelected(services[0].name)
   }, [phone, selected, services])
 
-  const active = services.filter((s) => s.status === 'active').length
-  const stopped = services.length - active
+  // Installed services first, the missing ones at the end
+  const sorted = [...services].sort((a, b) => Number(!isInstalled(a)) - Number(!isInstalled(b)))
   const current = services.find((s) => s.name === selected)
   const refresh = (
     <button type="button" className={phone ? 'w-11 h-11 grid place-items-center text-accent-text active:opacity-50' : 'w-8 h-8 grid place-items-center rounded-[6px] text-label2 hoverable'}
@@ -49,12 +51,12 @@ export default function ServicesPage() {
   )
 
   const list = isLoading ? <SkeletonRows rows={5} /> : (
-    <Group footer={services.length ? `${active} actif${active > 1 ? 's' : ''}, ${stopped} arrêté${stopped > 1 ? 's' : ''}` : undefined}>
-      {services.map((s) => (
+    <Group footer={services.length ? summary(services) : undefined}>
+      {sorted.map((s) => (
         <ListRow
           key={s.name}
           status={STATE[s.status].dot}
-          title={s.displayName}
+          title={<span className={isInstalled(s) ? undefined : 'text-label2'}>{s.displayName}</span>}
           subtitle={!phone ? undefined : s.description}
           detail={<span className={s.status === 'failed' ? 'text-danger-text' : undefined}>{STATE[s.status].label}</span>}
           selected={!phone && s.name === selected}
@@ -66,7 +68,7 @@ export default function ServicesPage() {
   )
 
   return (
-    <Page title="Services" subtitle={services.length ? `${active} actif${active > 1 ? 's' : ''} · ${stopped} arrêté${stopped > 1 ? 's' : ''}` : undefined} actions={refresh}>
+    <Page title="Services" subtitle={services.length ? summary(services) : undefined} actions={refresh}>
       {isError ? (
         <EmptyState tone="error" icon={<Activity strokeWidth={1.25} />} title="Services indisponibles" message="Le serveur n’a pas répondu. Réessaie dans un instant." />
       ) : !isLoading && services.length === 0 ? (
@@ -93,7 +95,9 @@ export default function ServicesPage() {
 function ServiceDetail({ service, showTitle }: { service: ServiceInfo; showTitle?: boolean }) {
   const qc = useQueryClient()
   const confirm = useConfirm()
-  const isOn = service.status === 'active'
+  const isOn = isRunning(service)
+  const installed = isInstalled(service)
+  const since = service.since ? Math.max(0, (Date.now() - Date.parse(service.since)) / 1000) : null
   const { data: logs, isLoading: loadingLogs, refetch } = useQuery({
     queryKey: ['service-logs', service.name],
     queryFn:  () => servicesService.getLogs(service.name, 80),
@@ -133,16 +137,27 @@ function ServiceDetail({ service, showTitle }: { service: ServiceInfo; showTitle
       )}
       <Group>
         <ListRow title="État" status={STATE[service.status].dot} detail={STATE[service.status].label} />
+        {installed && since != null && <ListRow title={isOn ? 'Actif depuis' : 'Depuis'} detail={formatUptime(since)} />}
+        {service.memory != null && <ListRow title="Mémoire" detail={formatBytes(service.memory)} />}
+        {installed && service.enabled != null && <ListRow title="Au démarrage du serveur" detail={service.enabled ? 'Lancé' : 'Non lancé'} />}
         {service.description && <ListRow title="Description" detail={service.description} />}
+        {service.units?.length > 0 && <ListRow title={service.units.length > 1 ? 'Unités' : 'Unité'} detail={<span className="font-mono text-[12px]">{service.units.join(', ')}</span>} />}
         {service.url && (
           <ListRow title="Adresse" detail={<a className="text-accent-text hover:underline inline-flex items-center gap-1" href={service.url} target="_blank" rel="noopener noreferrer">Ouvrir <ExternalLink size={12} strokeWidth={1.75} /></a>} />
         )}
       </Group>
-      <div className="flex flex-wrap gap-2 max-md:grid max-md:grid-cols-3">
-        <Button variant={isOn ? 'secondary' : 'primary'} disabled={isOn || mut.isPending} onClick={() => run('start')} className="max-md:min-h-[44px]">Démarrer</Button>
-        <Button disabled={!isOn || mut.isPending} onClick={() => run('stop')} className="max-md:min-h-[44px]">Arrêter</Button>
-        <Button disabled={mut.isPending} onClick={() => run('restart')} className="max-md:min-h-[44px]">Redémarrer</Button>
-      </div>
+      {service.status === 'waiting' && (
+        <p className="text-caption text-label2 px-1 -mt-2">Le service se lance tout seul dès qu’on l’utilise, puis s’arrête quand plus personne ne s’en sert.</p>
+      )}
+      {installed ? (
+        <div className="flex flex-wrap gap-2 max-md:grid max-md:grid-cols-3">
+          <Button variant={isOn ? 'secondary' : 'primary'} disabled={isOn || mut.isPending} onClick={() => run('start')} className="max-md:min-h-[44px]">Démarrer</Button>
+          <Button disabled={!isOn || mut.isPending} onClick={() => run('stop')} className="max-md:min-h-[44px]">Arrêter</Button>
+          <Button disabled={mut.isPending} onClick={() => run('restart')} className="max-md:min-h-[44px]">Redémarrer</Button>
+        </div>
+      ) : (
+        <p className="text-subhead text-label2 px-1">Aucune unité systemd « {service.units?.join(' », « ') || service.name} » n’existe sur le serveur.</p>
+      )}
       <section aria-label="Journal">
         <div className="flex items-center justify-between mb-1.5 px-1">
           <h3 className="text-subhead text-label2">Journal</h3>
