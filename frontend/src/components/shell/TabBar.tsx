@@ -1,3 +1,4 @@
+import { useRef } from 'react'
 import { Link, useLocation } from 'react-router-dom'
 import { useAuthStore } from '@/stores/authStore'
 import { cn } from '@/utils'
@@ -7,7 +8,11 @@ import { TABS, tabFor } from './nav'
 export default function TabBar() {
   const { pathname } = useLocation()
   const isAdmin = useAuthStore((s) => s.user?.role === 'admin')
-  const current = tabFor(pathname)
+  // Title pages (/media/…) stay under the tab they were opened from
+  const last = useRef(tabFor(pathname))
+  const found = tabFor(pathname)
+  if (found) last.current = found
+  const current = found ?? last.current
   const tabs = TABS.filter((t) => isAdmin || !t.adminOnly)
 
   return (

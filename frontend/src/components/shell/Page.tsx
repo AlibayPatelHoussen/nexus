@@ -122,7 +122,7 @@ function PhonePage({ title, actions, accessory, back, bleed, largeTitle = true, 
       )}
       {!largeTitle && <h1 className="sr-only">{title}</h1>}
       {accessory && <div className="gutter safe-x pb-3">{accessory}</div>}
-      <div className={cn('flex-1 min-h-0', !bleed && 'gutter safe-x pb-6', className)}>{children}</div>
+      <div className={cn('flex-1 min-h-0', !bleed && 'gutter safe-x pb-6', !bleed && !largeTitle && !accessory && 'pt-4', className)}>{children}</div>
     </div>
   )
 }

@@ -56,10 +56,10 @@ export default function App() {
           <Route path="scripts"   element={<S><ScriptsPage  /></S>} />
           <Route path="network"   element={<S><NetworkPage  /></S>} />
           <Route path="settings"  element={<S><SettingsPage /></S>} />
+          <Route path="media/:id" element={<S><MediaDetail  /></S>} />
         </Route>
 
         {/* Full-screen — no sidebar */}
-        <Route path="/media/:id"  element={<Guard><S><MediaDetail /></S></Guard>} />
         <Route path="/player/:id" element={<Guard><S><PlayerPage  /></S></Guard>} />
         <Route path="/reader/:id" element={<Guard><S><MangaReader /></S></Guard>} />
 
