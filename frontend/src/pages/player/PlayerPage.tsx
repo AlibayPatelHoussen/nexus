@@ -1,24 +1,28 @@
 import { useRef, useState, useEffect } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
-import { ArrowLeft, Star, ChevronRight } from 'lucide-react'
+import { ChevronLeft } from 'lucide-react'
 import { mediaService } from '@/services/mediaService'
 import { getStreamToken } from '@/services/streamToken'
 import { useAuthStore } from '@/stores/authStore'
 import { formatDuration } from '@/utils'
 import VideoPlayer from './VideoPlayer'
 import Artwork from '@/components/media/Artwork'
+import Button from '@/components/ui/Button'
+import Spinner from '@/components/ui/Spinner'
+import { Group, ListRow } from '@/components/ui/GroupedList'
+import { rating } from '@/components/media/mediaActions'
 import type { Episode } from '@/types'
 
 /** Human-readable reason why the playback authorisation failed. */
 function describeTokenError(err: unknown): string {
   const status = (err as { response?: { status?: number } })?.response?.status
-  if (status === 404) return 'Le serveur ne connaît pas l\'autorisation de lecture (erreur 404) : le backend n\'est pas à jour, relance le déploiement.'
+  if (status === 404) return 'Le serveur ne connaît pas l’autorisation de lecture (erreur 404) : il n’est pas à jour, relance le déploiement.'
   if (status === 401) return 'Session expirée (erreur 401) : reconnecte-toi.'
   if (status === 429) return 'Trop de requêtes (erreur 429) : attends quelques minutes ou augmente RATE_LIMIT_MAX dans backend/.env.'
   if (status) return `Le serveur a refusé la lecture (erreur ${status}).`
   if (err instanceof Error && err.message) return err.message
-  return 'Le serveur n\'a pas autorisé la lecture.'
+  return 'Le serveur n’a pas autorisé la lecture.'
 }
 
 export default function PlayerPage() {
@@ -126,158 +130,107 @@ export default function PlayerPage() {
   const episodes: Episode[] = media?.episodes || []
   const seasons = [...new Set(episodes.map((e) => e.season || 1))].sort()
 
+  const frame = 'flex flex-col items-center justify-center gap-2 text-center px-6 w-full'
+  const frameStyle = { aspectRatio: '16/9', maxHeight: '75vh' } as const
+  const r = rating(media?.rating)
+
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: '#000' }}>
+    <div className="min-h-[100dvh] flex flex-col bg-bg">
+      {/* Player area: always dark */}
+      <div className="bg-black">
+        <div className="flex items-center gap-2 min-h-[44px] px-2 text-white" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
+          <button type="button" className="flex items-center min-h-[44px] pr-2 text-[17px] md:text-body text-white/90 hover:text-white active:opacity-60" onClick={() => navigate(-1)}>
+            <ChevronLeft size={26} strokeWidth={2} className="md:w-5 md:h-5" aria-hidden="true" /> Retour
+          </button>
+          {media && (
+            <span className="flex-1 min-w-0 text-center text-subhead text-white/70 truncate pr-16">
+              {media.title}{currentEpisode && ` · S${currentEpisode.season ?? 1}, É${currentEpisode.episodeNumber}`}
+            </span>
+          )}
+        </div>
 
-      {/* Top bar */}
-      <div
-        className="flex items-center gap-3 px-4 py-3 min-w-0"
-        style={{ background: 'rgba(0,0,0,0.6)', paddingTop: 'max(0.75rem, env(safe-area-inset-top))' }}
-      >
-        <button
-          className="flex items-center gap-1.5 text-[13px] font-medium text-white/70 hover:text-white transition-colors flex-shrink-0"
-          onClick={() => navigate(-1)}
-        >
-          <ArrowLeft size={16} strokeWidth={2} /> Retour
-        </button>
-        {media && (
-          <span className="text-white/50 text-[13px] truncate min-w-0">
-            {media.title}
-            {currentEpisode && ` · S${currentEpisode.season}E${currentEpisode.episodeNumber}`}
-          </span>
-        )}
-      </div>
-
-      {/* Player */}
-      <div className="relative">
-        {media && isShow && !media.episodes?.length && (
-          <div className="flex flex-col items-center justify-center gap-2 text-center px-6" style={{ aspectRatio: '16/9', maxHeight: '75vh' }}>
-            <p className="text-[14px] font-semibold text-white/80">Aucun épisode trouvé pour cette série</p>
-            <p className="text-[12px] text-white/50">Lance un scan depuis la page de la série.</p>
-          </div>
-        )}
-        {/* Could not get a playback authorisation: say so instead of a blank page */}
-        {streamTokenError && (
-          <div className="flex flex-col items-center justify-center gap-2 text-center px-6" style={{ aspectRatio: '16/9', maxHeight: '75vh' }}>
-            <p className="text-[14px] font-semibold text-white/85">Lecture impossible</p>
-            <p className="text-[12px] text-white/55 max-w-sm">{describeTokenError(streamTokenError)}</p>
-            <button className="btn-ghost text-[12px] mt-1" onClick={() => retryToken()}>Réessayer</button>
-          </div>
-        )}
-        {!streamTokenError && filePath && !streamToken && (
-          <div className="flex items-center justify-center" style={{ aspectRatio: '16/9', maxHeight: '75vh' }}>
-            <div className="w-6 h-6 border-2 rounded-full animate-spin" style={{ borderColor: 'rgba(255,255,255,0.2)', borderTopColor: 'white' }} />
-          </div>
-        )}
-        {canPlay && (
-          <VideoPlayer
-            key={filePath}
-            filePath={filePath}
-            streamToken={streamToken!}
-            initialTime={resumePosition}
-            seekTo={seekTo}
-            onTimeUpdate={handleTimeUpdate}
-            onEnded={handleEnded}
-          />
-        )}
-
-        {/* Resume prompt */}
-        {showResume && resumeAt && (
-          // Below the video on phones (never over the controls), floating on larger screens
-          <div
-            className="relative mx-3 mt-3 sm:m-0 sm:absolute sm:bottom-20 sm:right-6 card p-3 sm:p-4 flex flex-wrap items-center gap-3 sm:min-w-[280px]"
-            style={{ boxShadow: 'var(--shadow-lg)', zIndex: 30 }}
-          >
-            <div className="min-w-0">
-              <p className="text-[13px] font-semibold" style={{ color: 'var(--text)' }}>Reprise à {formatDuration(resumeAt)}</p>
-              <p className="text-[11px]" style={{ color: 'var(--text3)' }}>La lecture reprend là où tu t'étais arrêté.</p>
+        <div className="relative">
+          {media && isShow && !media.episodes?.length && (
+            <div className={frame} style={frameStyle}>
+              <p className="text-[15px] font-semibold text-white/85">Aucun épisode trouvé pour cette série</p>
+              <p className="text-[13px] text-white/55">Lance une analyse depuis la page de la série.</p>
             </div>
-            <div className="flex gap-2 ml-auto">
-              <button className="btn-ghost text-[12px]"
-                onClick={() => { setSeekTo({ time: 0, key: Date.now() }); setShowResume(false) }}>
-                Recommencer
-              </button>
-              <button className="btn-primary text-[12px]" onClick={() => setShowResume(false)}>OK</button>
+          )}
+          {/* Could not get a playback authorisation: say so instead of a blank page */}
+          {streamTokenError && (
+            <div className={frame} style={frameStyle} role="alert">
+              <p className="text-[15px] font-semibold text-white/90">Lecture impossible</p>
+              <p className="text-[13px] text-white/60 max-w-sm">{describeTokenError(streamTokenError)}</p>
+              <button type="button" className="mt-2 px-4 min-h-[32px] rounded-full bg-white/15 text-white text-[13px] font-medium hover:bg-white/25" onClick={() => retryToken()}>Réessayer</button>
             </div>
-          </div>
-        )}
+          )}
+          {!streamTokenError && filePath && !streamToken && (
+            <div className={frame} style={frameStyle}><Spinner size={32} color="rgba(255,255,255,.9)" /></div>
+          )}
+          {canPlay && (
+            <VideoPlayer
+              key={filePath}
+              filePath={filePath}
+              streamToken={streamToken!}
+              initialTime={resumePosition}
+              seekTo={seekTo}
+              onTimeUpdate={handleTimeUpdate}
+              onEnded={handleEnded}
+            />
+          )}
+
+          {/* Resume prompt: under the video on phones, floating top-right on larger screens */}
+          {showResume && resumeAt && (
+            <div
+              role="status"
+              className="relative mx-3 my-3 sm:m-0 sm:absolute sm:top-4 sm:right-4 z-30 flex flex-wrap items-center gap-3 rounded-[14px] px-4 py-3 text-white"
+              style={{ background: 'rgba(30,30,30,.6)', backdropFilter: 'saturate(180%) blur(24px)', WebkitBackdropFilter: 'saturate(180%) blur(24px)', boxShadow: '0 0 0 .5px rgba(255,255,255,.12)' }}
+            >
+              <div className="min-w-0">
+                <p className="text-[13px] font-semibold">Reprise à {formatDuration(resumeAt)}</p>
+                <p className="text-[12px] text-white/65">La lecture reprend là où tu t’étais arrêté.</p>
+              </div>
+              <div className="flex gap-2 ml-auto">
+                <button type="button" className="px-3 min-h-[30px] rounded-full bg-white/15 text-[13px] font-medium hover:bg-white/25"
+                  onClick={() => { setSeekTo({ time: 0, key: Date.now() }); setShowResume(false) }}>
+                  Recommencer
+                </button>
+                <button type="button" className="px-3 min-h-[30px] rounded-full bg-white text-black text-[13px] font-medium" onClick={() => setShowResume(false)}>OK</button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* Media info + episodes */}
       {media && (
-        <div className="px-4 sm:px-6 py-4" style={{ background: 'var(--bg)', paddingBottom: 'max(1rem, env(safe-area-inset-bottom))' }}>
-          <div className="flex items-start gap-4 mb-4">
-            <Artwork src={media.posterPath} alt={media.title} type={media.type} className="w-16 flex-shrink-0 rounded-lg" />
+        <div className="w-full max-w-[1100px] mx-auto gutter safe-x py-6 flex flex-col gap-8" style={{ paddingBottom: 'max(24px, env(safe-area-inset-bottom))' }}>
+          <div className="flex items-start gap-4">
+            <Artwork src={media.posterPath} alt="" type={media.type} className="w-16 flex-shrink-0 rounded-[6px]" />
             <div className="flex-1 min-w-0">
-              <h1 className="text-[18px] sm:text-[20px] font-bold tracking-tight mb-1 break-words" style={{ color: 'var(--text)' }}>
-                {media.title}
-              </h1>
-              <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5 mb-2">
-                {media.year && <span className="text-[12px] font-mono" style={{ color: 'var(--text3)' }}>{media.year}</span>}
-                {media.rating && (
-                  <span className="flex items-center gap-1 text-[12px] font-mono" style={{ color: 'var(--yellow)' }}>
-                    <Star size={11} fill="var(--yellow)" color="var(--yellow)" /> {Number(media.rating).toFixed(1)}
-                  </span>
-                )}
-                {media.genres?.slice(0, 3).map((g) => (
-                  <span key={g} className="badge text-[10px]"
-                    style={{ background: 'var(--surface2)', color: 'var(--text3)' }}>{g}</span>
-                ))}
-              </div>
-              {media.overview && (
-                <p className="text-[12.5px] leading-relaxed line-clamp-3" style={{ color: 'var(--text2)' }}>
-                  {media.overview}
-                </p>
-              )}
+              <h1 className="text-title text-label break-words">{media.title}</h1>
+              <p className="text-subhead text-label2 mt-0.5 tabular">
+                {[media.year, r && `${r} / 10`, ...(media.genres?.slice(0, 3) ?? [])].filter(Boolean).join(' · ')}
+              </p>
+              {media.overview && <p className="text-callout text-label2 mt-2 line-clamp-3 max-w-[70ch]">{media.overview}</p>}
             </div>
           </div>
 
-          {/* Episodes */}
-          {episodes.length > 0 && (
-            <div>
-              <h2 className="text-[14px] font-semibold mb-3" style={{ color: 'var(--text)' }}>Épisodes</h2>
-              {seasons.map((season) => (
-                <div key={season} className="mb-4">
-                  <div className="text-[11px] font-semibold uppercase tracking-wide mb-2"
-                    style={{ color: 'var(--text3)' }}>
-                    Saison {season}
-                  </div>
-                  <div className="flex flex-col gap-1">
-                    {episodes
-                      .filter((e) => (e.season || 1) === season)
-                      .map((ep) => (
-                        <button
-                          key={ep.id}
-                          className="flex items-center gap-3 px-3 py-2.5 rounded-lg text-left transition-colors"
-                          style={{
-                            background: ep.id === episodeId ? 'var(--blue-dim)' : 'transparent',
-                            border:     `1px solid ${ep.id === episodeId ? 'var(--blue)' : 'transparent'}`,
-                          }}
-                          onMouseEnter={(e) => { if (ep.id !== episodeId) e.currentTarget.style.background = 'var(--surface2)' }}
-                          onMouseLeave={(e) => { if (ep.id !== episodeId) e.currentTarget.style.background = 'transparent' }}
-                          onClick={() => navigate(`/player/${id}?ep=${ep.id}`)}
-                        >
-                          <span className="text-[11px] font-mono w-6 flex-shrink-0" style={{ color: 'var(--text3)' }}>
-                            {ep.episodeNumber}
-                          </span>
-                          <span className="text-[13px] flex-1 truncate"
-                            style={{ color: ep.id === episodeId ? 'var(--blue)' : 'var(--text)' }}>
-                            {ep.title || `Épisode ${ep.episodeNumber}`}
-                          </span>
-                          {ep.duration && (
-                            <span className="text-[11px] font-mono flex-shrink-0" style={{ color: 'var(--text3)' }}>
-                              {formatDuration(ep.duration)}
-                            </span>
-                          )}
-                          <ChevronRight size={13} strokeWidth={2} style={{ color: 'var(--text3)' }} />
-                        </button>
-                      ))
-                    }
-                  </div>
-                </div>
+          {episodes.length > 0 && seasons.map((season) => (
+            <Group key={season} header={season === 0 ? 'Spéciaux' : `Saison ${season}`}>
+              {episodes.filter((e) => (e.season || 1) === season).map((ep) => (
+                <ListRow
+                  key={ep.id}
+                  onClick={() => navigate(`/player/${id}?ep=${ep.id}`)}
+                  selected={ep.id === episodeId}
+                  title={<><span className="text-label2 tabular mr-2">{ep.episodeNumber}</span>{ep.title || `Épisode ${ep.episodeNumber}`}</>}
+                  detail={ep.id === episodeId ? 'En lecture' : ep.duration ? formatDuration(ep.duration) : undefined}
+                  accessory={ep.id === episodeId ? undefined : 'chevron'}
+                />
               ))}
-            </div>
-          )}
+            </Group>
+          ))}
+          {media.type !== 'film' && <Button variant="plain" className="self-start" onClick={() => navigate(`/media/${media.id}`)}>Voir la fiche complète</Button>}
         </div>
       )}
     </div>

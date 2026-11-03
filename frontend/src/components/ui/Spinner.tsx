@@ -1,9 +1,9 @@
 /** Activity indicator (the spoked iOS / macOS spinner). */
-export default function Spinner({ size = 20, label = 'Chargement' }: { size?: number; label?: string }) {
+export default function Spinner({ size = 20, label = 'Chargement', color = 'var(--label-2)' }: { size?: number; label?: string; color?: string }) {
   return (
     <svg
       width={size} height={size} viewBox="0 0 24 24" role="progressbar" aria-label={label}
-      style={{ animation: 'nx-spin 0.9s steps(8) infinite', color: 'var(--label-2)', flexShrink: 0 }}
+      style={{ animation: 'nx-spin 0.9s steps(8) infinite', color, flexShrink: 0 }}
     >
       {Array.from({ length: 8 }, (_, i) => (
         <rect
