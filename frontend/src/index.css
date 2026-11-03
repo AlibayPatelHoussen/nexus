@@ -65,6 +65,7 @@
   .material-sidebar { background: var(--material-sidebar); backdrop-filter: var(--material-blur); -webkit-backdrop-filter: var(--material-blur); }
   .hairline-b { box-shadow: inset 0 -0.5px 0 var(--separator); }
   .hairline-t { box-shadow: inset 0 0.5px 0 var(--separator); }
+  .hairline-r { box-shadow: inset -0.5px 0 0 var(--separator); }
   .scrollbar-none { scrollbar-width: none; }
   .scrollbar-none::-webkit-scrollbar { display: none; }
   .safe-b { padding-bottom: env(safe-area-inset-bottom, 0px); }
