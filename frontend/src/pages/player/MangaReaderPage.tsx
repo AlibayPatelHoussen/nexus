@@ -15,7 +15,6 @@ import { api } from '@/services/api'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
 import { getStreamToken, withStreamToken } from '@/services/streamToken'
 import type { Chapter } from '@/types'
-import { usePdfPages } from '@/hooks/usePdfPages'
 
 type ReadMode = 'vertical' | 'page' | 'page-rtl'
 
@@ -30,6 +29,9 @@ interface ChapterPagesResponse {
   pdfUrl?: string
   data:    PageData[]
 }
+
+/** iPhone / iPad (iPadOS presents itself as a Mac with a touch screen) */
+const IS_IOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1)
 
 async function getChapterPages(chapterId: string): Promise<{ pages: PageData[]; pdfUrl: string | null }> {
   const { data } = await api.get<ChapterPagesResponse>(`/media/chapters/${chapterId}/pages`)
@@ -76,9 +78,7 @@ export default function MangaReaderPage() {
     enabled:  !!chapterId,
   })
   const pdfUrl = chapterData?.pdfUrl ?? null
-  // PDF chapters are rendered to images (Safari cannot show a PDF in a page)
-  const pdf = usePdfPages(pdfUrl)
-  const pages = pdfUrl ? pdf.pages : (chapterData?.pages ?? [])
+  const pages  = chapterData?.pages ?? []
 
   const chapters: Chapter[] = media?.chapters || []
   const langs = [...new Set(chapters.map((c) => c.language).filter(Boolean))] as string[]
@@ -163,7 +163,7 @@ export default function MangaReaderPage() {
 
   const chapterList = (
     <>
-      {(
+      {!pdfUrl && (
         <Group header="Mode de lecture" className="mb-6">
           {([['vertical', 'Défilement vertical'], ['page', 'Page par page'], ['page-rtl', 'Page par page, de droite à gauche']] as const).map(([m, label]) => (
             <ListRow key={m} title={label} onClick={() => setMode(m)} accessory={mode === m ? <span className="text-accent font-semibold" aria-label="Sélectionné">✓</span> : undefined} />
@@ -208,7 +208,7 @@ export default function MangaReaderPage() {
         </button>
         <span className="flex-1 min-w-0 text-center text-subhead text-white/70 truncate max-md:text-right max-md:pr-1">{current ? chapterLabel(current) : ''}</span>
         <div className="flex items-center gap-1 flex-shrink-0 [&_[role=radiogroup]]:bg-white/10 [--seg-on:rgba(255,255,255,.28)] [&_[role=radio]]:text-white">
-          {isDesktop && (
+          {isDesktop && !pdfUrl && (
             <SegmentedControl
               label="Mode de lecture"
               value={mode}
@@ -221,7 +221,7 @@ export default function MangaReaderPage() {
               className="max-sm:[&_[role=radio]]:px-2"
             />
           )}
-          {isDesktop && (
+          {isDesktop && !pdfUrl && (
             <>
               <button type="button" className={barBtn} onClick={() => setZoom((z) => Math.max(50, z - 10))} aria-label="Zoom arrière"><ZoomOut size={16} strokeWidth={1.5} /></button>
               <button type="button" className="text-caption text-white/70 tabular w-12 whitespace-nowrap text-center hover:text-white" onClick={() => setZoom(100)} title="Taille réelle">{zoom} %</button>
@@ -238,16 +238,26 @@ export default function MangaReaderPage() {
       </div>
 
       {/* Content */}
-      {isLoading || (pdfUrl && !pdf.error && pages.length === 0) ? (
-        <div className="flex-1 flex flex-col items-center justify-center gap-3 min-h-[100dvh] text-white/80" role="status">
-          <Spinner size={32} color="rgba(255,255,255,.85)" />
-          {pdfUrl && <span className="text-[13px]">Préparation du PDF…</span>}
+      {isLoading ? (
+        <div className="flex-1 grid place-items-center min-h-[100dvh]" role="status"><Spinner size={32} color="rgba(255,255,255,.85)" /></div>
+      ) : pdfUrl && IS_IOS ? (
+        /* iPhone / iPad: Safari cannot show a PDF inside a page → the system PDF reader */
+        <div className="flex-1 flex flex-col items-center justify-center gap-5 min-h-[100dvh] px-8 text-center text-white" onClick={(e) => e.stopPropagation()}>
+          <div>
+            <p className="text-[20px] font-semibold">{current ? chapterLabel(current) : 'Chapitre'}</p>
+            <p className="text-[15px] text-white/60 mt-1">Ce chapitre est un PDF : il s’ouvre dans le lecteur PDF de l’iPhone (toutes les pages, zoom).</p>
+          </div>
+          <a className="inline-flex items-center justify-center w-full max-w-[320px] min-h-[50px] rounded-[12px] bg-accent-fill text-white text-[17px] font-semibold active:opacity-80" href={pdfUrl} target="_blank" rel="noopener noreferrer">
+            Ouvrir le PDF
+          </a>
+          <div className="flex gap-3">
+            {prevChapter && <button type="button" className={`${pill} bg-white/15 text-white`} onClick={() => changeChapter(prevChapter)}>Chapitre précédent</button>}
+            {nextChapter && <button type="button" className={`${pill} bg-white/15 text-white`} onClick={() => changeChapter(nextChapter)}>Chapitre suivant</button>}
+          </div>
         </div>
-      ) : pdfUrl && pdf.error ? (
-        <div className="flex-1 grid place-items-center min-h-[100dvh] text-white [--label:#f5f5f7] [--label-2:#98989d] [--label-3:#636366]">
-          <EmptyState tone="error" title="Ce PDF ne peut pas être affiché" message={`${pdf.error}. Tu peux l’ouvrir directement.`}
-            action={<a className="inline-flex items-center px-4 min-h-[32px] rounded-full bg-white text-black text-[13px] font-medium" href={pdfUrl} target="_blank" rel="noopener noreferrer">Ouvrir le PDF</a>} />
-        </div>
+      ) : pdfUrl ? (
+        /* Computer: the browser's own PDF reader, under the reader's bar */
+        <iframe src={pdfUrl} className="flex-1 w-full border-0" style={{ minHeight: '100dvh', paddingTop: 48 }} title={`${media?.title ?? 'Manga'} · ${current ? chapterLabel(current) : 'PDF'}`} />
       ) : pages.length === 0 ? (
         <div className="flex-1 grid place-items-center min-h-[100dvh] text-white [--label:#f5f5f7] [--label-2:#98989d] [--label-3:#636366]">
           <EmptyState title="Ce chapitre est vide" message="Aucune page n’a été trouvée. Lance une analyse depuis la page du manga." action={<Button onClick={() => navigate(`/media/${id}`)}>Retour à la fiche</Button>} />
@@ -264,9 +274,6 @@ export default function MangaReaderPage() {
               onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
             />
           ))}
-          {pdfUrl && pages.length < pdf.total && (
-            <p className="flex items-center gap-2 py-6 text-[13px] text-white/70" role="status"><Spinner size={16} color="rgba(255,255,255,.8)" /> Page {pages.length + 1} sur {pdf.total}…</p>
-          )}
           <div className="flex flex-wrap justify-center gap-3 mt-10 px-4" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }} onClick={(e) => e.stopPropagation()}>
             {prevChapter && <button type="button" className={`${pill} bg-white/15 text-white hover:bg-white/25`} onClick={() => changeChapter(prevChapter)}>Chapitre précédent</button>}
             {nextChapter && <button type="button" className={`${pill} bg-white text-black`} onClick={() => changeChapter(nextChapter)}>Chapitre suivant</button>}
@@ -298,7 +305,7 @@ export default function MangaReaderPage() {
       )}
 
       {/* Bottom bar (page modes): position, page count, chapters */}
-      {mode !== 'vertical' && pages.length > 0 && (
+      {mode !== 'vertical' && !pdfUrl && pages.length > 0 && (
         <div
           className="fixed bottom-0 inset-x-0 z-30 text-white transition-opacity duration"
           style={{ ...glass, opacity: showUI ? 1 : 0, pointerEvents: showUI ? 'auto' : 'none', padding: '10px 16px max(10px, env(safe-area-inset-bottom))', boxShadow: 'inset 0 0.5px 0 rgba(255,255,255,.12)' }}

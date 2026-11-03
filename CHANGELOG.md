@@ -5,7 +5,7 @@ All notable changes to Nexus will be documented here.
 ## [Unreleased]
 
 ### Fixed
-- Manga PDF chapters were blank on iPhone (Safari cannot show a PDF inside a page): pages are now rendered to images with pdf.js and read like the other chapters (vertical scroll, page by page, swipe)
+- Manga PDF chapters were blank on iPhone (Safari cannot show a PDF inside a page): on iPhone / iPad an "Ouvrir le PDF" button opens the chapter in the system PDF reader; on computers the browser's PDF reader is shown in the reader page (the pdf.js attempt kept loading on a real iPhone and was removed)
 - Notifications were unreadable in dark mode (white text on the toast library's white background)
 
 ### Changed — interface redesigned like a native Apple app
