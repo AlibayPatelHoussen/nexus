@@ -167,7 +167,11 @@ EOF
   systemctl enable --now $NAME.timer >/dev/null
   echo "✅ Wi-Fi watchdog installed (checks every minute)"
   echo "   Wi-Fi interface : ${ifc:-not found — set WIFI_IFACE in $CONF}"
-  echo "   USB dongle      : ${dev:+$(basename "$dev") ($(cat "$dev/idVendor" 2>/dev/null):$(cat "$dev/idProduct" 2>/dev/null))}${dev:-not found}"
+  if [ -n "$dev" ]; then
+    echo "   USB dongle      : $(basename "$dev") ($(cat "$dev/idVendor" 2>/dev/null):$(cat "$dev/idProduct" 2>/dev/null))"
+  else
+    echo "   USB dongle      : not found (software replug unavailable)"
+  fi
   echo "   Power saving / USB autosuspend: off"
   echo "   Last repairs    : sudo bash scripts/wifi-watchdog.sh status"
 }
