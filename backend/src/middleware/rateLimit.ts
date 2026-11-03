@@ -24,7 +24,8 @@ export const apiLimiter = rateLimit({
   ...handler,
   limit: parseInt(process.env.RATE_LIMIT_MAX || '1000', 10),
   // Playback (direct streaming, HLS playlists / segments, play info) is never limited
-  skip: (req) => /^\/files\/(stream|transcode|play-info|archive-page)(\/|$)/.test(req.path) || req.path.startsWith('/images/'),
+  skip: (req) => /^\/files\/(stream|transcode|play-info|archive-page)(\/|$)/.test(req.path) || req.path.startsWith('/images/')
+    || /^\/media\/chapters\/[^/]+\/page\//.test(req.path),
 })
 
 /**
