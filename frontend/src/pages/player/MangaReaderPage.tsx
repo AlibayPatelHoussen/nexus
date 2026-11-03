@@ -16,7 +16,8 @@ import { useMediaQuery } from '@/hooks/useMediaQuery'
 import { getStreamToken, withStreamToken } from '@/services/streamToken'
 import type { Chapter } from '@/types'
 import { usePdfDocument } from '@/hooks/usePdfDocument'
-import PdfPage from '@/components/media/PdfPage'
+import ReaderPage from '@/components/media/ReaderPage'
+import { loadImagePage } from '@/services/readerCache'
 
 type ReadMode = 'vertical' | 'page' | 'page-rtl'
 
@@ -78,7 +79,7 @@ export default function MangaReaderPage() {
   })
   const pdfUrl = chapterData?.pdfUrl ?? null
   // PDF chapters: PDF.js renders the pages; placeholders keep page count / navigation identical
-  const pdf = usePdfDocument(pdfUrl)
+  const pdf = usePdfDocument(pdfUrl, chapterId)
   const pdfPlaceholders = Array.from({ length: pdf.numPages }, (_, i) => ({ url: '', name: `page-${i + 1}` }))
   const pages = pdfUrl ? pdfPlaceholders : (chapterData?.pages ?? [])
 
@@ -156,6 +157,10 @@ export default function MangaReaderPage() {
   }
 
   const pageImg = pages[currentPage]
+
+  /** Page image: device cache first; PDF pages drawn by PDF.js, image pages downloaded once */
+  const loadPage = (n: number, url: string) => () =>
+    pdfUrl ? pdf.render(n) : loadImagePage(chapterId ?? '', n, url).then((b) => URL.createObjectURL(b))
 
   const glass = { background: 'rgba(28,28,30,.72)', backdropFilter: 'saturate(180%) blur(24px)', WebkitBackdropFilter: 'saturate(180%) blur(24px)' } as const
   const barBtn = 'w-9 h-9 grid place-items-center rounded-[8px] text-white/80 hover:text-white hover:bg-white/10 active:bg-white/20'
@@ -243,16 +248,7 @@ export default function MangaReaderPage() {
       {isLoading || (pdfUrl && !pdf.error && pdf.numPages === 0) ? (
         <div className="flex-1 flex flex-col items-center justify-center gap-3 min-h-[100dvh] text-white/80" role="status">
           <Spinner size={32} color="rgba(255,255,255,.85)" />
-          {pdfUrl && (
-            <>
-              <span className="text-[13px] tabular">Téléchargement du chapitre{pdf.progress != null ? ` · ${Math.round(pdf.progress * 100)} %` : '…'}</span>
-              {pdf.progress != null && (
-                <span className="w-48 h-1 rounded-full bg-white/15 overflow-hidden" aria-hidden="true">
-                  <span className="block h-full bg-white rounded-full transition-[width] duration-fast" style={{ width: `${pdf.progress * 100}%` }} />
-                </span>
-              )}
-            </>
-          )}
+          {pdfUrl && <span className="text-[13px]">Ouverture du chapitre…</span>}
         </div>
       ) : pdfUrl && pdf.error ? (
         <div className="flex-1 grid place-items-center min-h-[100dvh] text-white [--label:#f5f5f7] [--label-2:#98989d] [--label-3:#636366]">
@@ -265,16 +261,16 @@ export default function MangaReaderPage() {
         </div>
       ) : mode === 'vertical' ? (
         <div className="flex flex-col items-center pt-14 pb-8 gap-0.5" style={{ minHeight: '100dvh' }}>
-          {pages.map((page, i) => pdfUrl ? (
-            <PdfPage key={i} pdf={pdf} n={i + 1} className="block" style={{ width: isDesktop ? `${zoom}%` : '100%', maxWidth: '900px' }} />
-          ) : (
-            <img
-              key={i}
-              src={page.url}
-              alt={`Page ${i + 1}`}
+          {pages.map((page, i) => (
+            <ReaderPage
+              key={`${chapterId}-${i}`}
+              n={i + 1}
+              load={loadPage(i + 1, page.url)}
+              ratio={pdfUrl ? pdf.ratio(i + 1) : undefined}
+              revoke={!pdfUrl}
+              eager={i < 2}
               className="block"
               style={{ width: isDesktop ? `${zoom}%` : '100%', maxWidth: '900px' }}
-              onError={(e) => { (e.target as HTMLImageElement).style.display = 'none' }}
             />
           ))}
           <div className="flex flex-wrap justify-center gap-3 mt-10 px-4" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }} onClick={(e) => e.stopPropagation()}>
@@ -284,20 +280,14 @@ export default function MangaReaderPage() {
         </div>
       ) : (
         <div className="flex-1 flex items-center justify-center relative" style={{ minHeight: '100dvh', touchAction: 'pan-y pinch-zoom' }} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
-          {pdfUrl && pages.length > 0 && (
-            <PdfPage
-              key={currentPage}
-              pdf={pdf}
+          {pageImg && (
+            <ReaderPage
+              key={`${chapterId}-${currentPage}`}
               n={currentPage + 1}
+              load={loadPage(currentPage + 1, pageImg.url)}
+              ratio={pdfUrl ? pdf.ratio(currentPage + 1) : undefined}
+              revoke={!pdfUrl}
               eager
-              className="object-contain"
-              style={{ maxHeight: '100dvh', maxWidth: '100%', width: isDesktop ? `${zoom}%` : '100%', transform: mode === 'page-rtl' ? 'scaleX(-1)' : 'none' }}
-            />
-          )}
-          {!pdfUrl && pageImg && (
-            <img
-              src={pageImg.url}
-              alt={`Page ${currentPage + 1}`}
               className="object-contain"
               style={{ maxHeight: '100dvh', maxWidth: '100%', width: isDesktop ? `${zoom}%` : '100%', transform: mode === 'page-rtl' ? 'scaleX(-1)' : 'none' }}
             />
