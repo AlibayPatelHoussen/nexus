@@ -4,6 +4,9 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Fixed
+- `wifi-watchdog.sh install` crashed with "Segmentation fault": its `install` function called itself instead of the `install` command
+
 ### Added — Wi-Fi watchdog for USB dongles
 - `scripts/wifi-watchdog.sh install`: checks the Internet every minute (systemd timer, independent of Nexus) and repairs step by step — Wi-Fi service restart, interface down/up, then software USB replug of the dongle; turns off Wi-Fi power saving and USB autosuspend for the dongle. `status` shows the last repairs
 - `deploy.sh` says clearly when the server has no Internet instead of a raw git error
