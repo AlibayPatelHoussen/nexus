@@ -11,8 +11,11 @@ export default function AppToaster() {
       gutter={8}
       toastOptions={{
         duration: 3000,
-        className: 'material-bar',
         style: {
+          // Inline: react-hot-toast sets a white background inline otherwise
+          background: 'var(--material-bar)',
+          backdropFilter: 'var(--material-blur)',
+          WebkitBackdropFilter: 'var(--material-blur)',
           color: 'var(--label)',
           borderRadius: 12,
           fontSize: 'var(--text-body)',

@@ -266,6 +266,9 @@ test('UI: manga reader loads image pages and PDF chapters', async () => {
   await page.goto(`${B}/reader/${ber}?ch=${pch}`)
   const res = await pdf
   eq(res.status(), 200, 'pdf status'); eq(res.headers()['content-type'], 'application/pdf', 'pdf type')
+  // The PDF pages are really displayed (rendered to images: Safari cannot show a PDF inside a page)
+  await page.waitForFunction(() => [...document.images].filter((i) => i.alt.startsWith('Page') && i.naturalWidth > 0).length >= 1, null, { timeout: 30000 })
+  assert(!(await page.$('iframe')), 'no PDF iframe (blank on iPhone)')
   await page.context().close()
 })
 
