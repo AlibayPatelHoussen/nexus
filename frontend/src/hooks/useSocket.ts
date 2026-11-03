@@ -46,37 +46,71 @@ export function useSystemStats() {
   return { stats, connected }
 }
 
+export interface TerminalInfo { sessionId: string; resumed: boolean; user: string; host: string; shell: string }
+
+export interface TerminalHandlers {
+  /** Session id to resume (read on every (re)connection) */
+  sessionId: () => string
+  /** Current terminal size, sent when the shell starts / is resumed */
+  size:      () => { cols: number; rows: number }
+  onReady:   (info: TerminalInfo) => void
+  onOutput:  (data: string) => void
+  /** Recent output of a resumed session: the screen is rebuilt from it */
+  onReplay:  (data: string) => void
+  onExit:    (code: number) => void
+  onStatus:  (status: 'connecting' | 'connected' | 'disconnected' | 'detached') => void
+}
+
+/**
+ * Socket of the server terminal. The shell lives on the server: leaving the
+ * page or losing the network only detaches it, the same session id resumes it.
+ */
 export function useTerminalSocket() {
   const socketRef = useRef<Socket | null>(null)
 
-  function connect(
-    onOutput: (data: string) => void,
-    onExit:   (code: number) => void,
-  ) {
-    if (socketRef.current?.connected) return
-
+  function connect(h: TerminalHandlers) {
+    if (socketRef.current) return
+    h.onStatus('connecting')
     const socket = io('/terminal', {
-      auth: socketAuth,
+      auth: (cb) => {
+        getFreshAccessToken()
+          .catch(() => '')
+          .then((token) => cb({ token, sessionId: h.sessionId(), ...h.size() }))
+      },
       transports: ['websocket'],
     })
-
     socketRef.current = socket
-    socket.on('output', onOutput)
-    socket.on('exit',   onExit)
+    let detached = false
+    socket.on('connect',    () => h.onStatus('connected'))
+    socket.on('disconnect', () => h.onStatus(detached ? 'detached' : 'disconnected'))
+    socket.on('connect_error', () => {
+      h.onStatus('disconnected')
+      // Auth rejections are not retried automatically by socket.io
+      setTimeout(() => { if (socketRef.current === socket && !socket.active) socket.connect() }, 3000)
+    })
+    socket.on('ready',    h.onReady)
+    socket.on('output',   h.onOutput)
+    socket.on('replay',   h.onReplay)
+    socket.on('exit',     h.onExit)
+    socket.on('detached', () => { detached = true })
   }
 
-  function send(input: string) {
-    socketRef.current?.emit('input', input)
+  /** Reconnect (e.g. with a new session id after "Nouvelle session") */
+  function reconnect() {
+    const s = socketRef.current
+    if (!s) return
+    s.disconnect()
+    s.connect()
   }
 
-  function resize(cols: number, rows: number) {
-    socketRef.current?.emit('resize', { cols, rows })
-  }
+  function send(input: string)              { socketRef.current?.emit('input', input) }
+  function resize(cols: number, rows: number) { socketRef.current?.emit('resize', { cols, rows }) }
+  function closeSession()                   { socketRef.current?.emit('close-session') }
 
   function disconnect() {
     socketRef.current?.disconnect()
     socketRef.current = null
   }
 
-  return { connect, send, resize, disconnect }
+  return { connect, reconnect, send, resize, closeSession, disconnect }
 }

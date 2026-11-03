@@ -2,6 +2,12 @@ import toast from 'react-hot-toast'
 import { XCircle, X } from 'lucide-react'
 import CopyButton from '@/components/ui/CopyButton'
 
+/** Error message sent by the server (falls back to a generic text). */
+export function serverError(err: unknown): string {
+  const e = err as { response?: { data?: { error?: string } }; message?: string }
+  return e?.response?.data?.error || e?.message || 'erreur inconnue'
+}
+
 /** Splits "… Sur le serveur : sudo chown …" into the explanation and the command. */
 export function splitCommand(message: string): { text: string; command: string | null } {
   const m = message.match(/^(.*?)\s*Sur le serveur\s*:\s*(sudo .+)$/s)

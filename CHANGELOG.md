@@ -4,6 +4,15 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Added — full server access from Nexus
+- File manager administrator mode: when an action is refused for lack of rights and the Nexus account has passwordless sudo, it is done with sudo — create folder/file, edit, rename, move (also between disks), delete, upload, list/read protected folders. What Nexus creates belongs to its account; an edited system file keeps its owner. `FILES_SUDO=off` disables it
+- Terminal like Cockpit: real login shell of the account with a clean environment (Nexus' secrets are no longer inherited), `xterm-256color`, session kept on the server when leaving the page / losing the network (output replayed on return, closed after `TERMINAL_IDLE_MINUTES`, default 60), font size, copy / paste (Ctrl+Shift+C / V), clickable links, Unicode, "Réinitialiser", "Nouvelle session" after `exit`, "Reprendre ici" when opened elsewhere
+- `deploy.sh` gives the library folders back to the Nexus account automatically when sudo needs no password
+- Clear error messages for create / rename / upload / edit in the file manager
+
+### Fixed
+- Uploaded file names with accents were garbled ("Ã‰pisode")
+
 ### Security — forced deletion accepted any password
 - With passwordless sudo (`NOPASSWD`, common on cloud servers), sudo checked nothing, so any password deleted the item. The password is now checked by the system (`unix_chkpwd`, the helper used for logins) before sudo runs, whatever the sudo configuration; if it cannot be checked, the forced deletion is refused
 
