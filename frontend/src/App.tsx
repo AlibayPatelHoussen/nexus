@@ -13,7 +13,6 @@ const CinemaPage   = lazy(() => import('@/pages/cinema/CinemaPage'))
 const AnimesPage   = lazy(() => import('@/pages/animes/AnimesPage'))
 const MangaPage    = lazy(() => import('@/pages/manga/MangaPage'))
 const ServicesPage = lazy(() => import('@/pages/services/ServicesPage'))
-const ScriptsPage  = lazy(() => import('@/pages/scripts/ScriptsPage'))
 const NetworkPage  = lazy(() => import('@/pages/network/NetworkPage'))
 const SettingsPage = lazy(() => import('@/pages/settings/SettingsPage'))
 const PlayerPage   = lazy(() => import('@/pages/player/PlayerPage'))
@@ -53,7 +52,6 @@ export default function App() {
           <Route path="animes"    element={<S><AnimesPage   /></S>} />
           <Route path="manga"     element={<S><MangaPage    /></S>} />
           <Route path="services"  element={<S><ServicesPage /></S>} />
-          <Route path="scripts"   element={<S><ScriptsPage  /></S>} />
           <Route path="network"   element={<S><NetworkPage  /></S>} />
           <Route path="settings"  element={<S><SettingsPage /></S>} />
           <Route path="media/:id" element={<S><MediaDetail  /></S>} />

@@ -16,7 +16,7 @@
 - **Real-time stats** — CPU, RAM, disk, temperature via WebSocket
 - **Dark/Light theme**
 - **JWT authentication** with bcrypt hashing
-- **Role-based access control** — file manager, terminal, scripts and service control are admin-only
+- **Role-based access control** — file manager, terminal and service control are admin-only
 - **Rate limiting** on login and API
 
 ## Stack
@@ -144,7 +144,6 @@ GET    /api/services
 PATCH  /api/services/:name/toggle
 GET    /api/services/:name/logs
 
-POST   /api/scripts/:name/run
 GET    /api/terminal (WebSocket)
 ```
 

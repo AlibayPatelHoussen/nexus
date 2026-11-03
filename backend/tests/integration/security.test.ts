@@ -5,13 +5,11 @@ import { app } from '../../src/index'
 import { makeToken } from '../helpers'
 
 const MEDIA_ROOT   = process.env.MEDIA_ROOT!
-const SCRIPTS_PATH = process.env.SCRIPTS_PATH!
 const mediaFile    = path.join(MEDIA_ROOT, 'sample.mp4')
 const bearer = (t: string) => ({ Authorization: `Bearer ${t}` })
 
 beforeAll(() => {
   fs.writeFileSync(mediaFile, Buffer.alloc(1000, 1))
-  fs.writeFileSync(path.join(SCRIPTS_PATH, 'hello.sh'), '# Say hello\necho hello-from-sh\n')
 })
 
 describe('File manager is admin-only', () => {
@@ -138,28 +136,3 @@ describe('Token types', () => {
   })
 })
 
-describe('Scripts', () => {
-  const admin = makeToken('admin')
-
-  it('rejects path traversal in the script name', async () => {
-    const res = await request(app).post(`/api/scripts/${encodeURIComponent('../../tmp/evil')}/run`).set(bearer(admin))
-    expect(res.status).toBe(404)
-  })
-
-  it('rejects unknown scripts', async () => {
-    const res = await request(app).post('/api/scripts/does-not-exist/run').set(bearer(admin))
-    expect(res.status).toBe(404)
-  })
-
-  it('runs .sh scripts', async () => {
-    const res = await request(app).post('/api/scripts/hello.sh/run').set(bearer(admin))
-    expect(res.status).toBe(200)
-    expect(res.text).toContain('hello-from-sh')
-    expect(res.text).toContain('event: exit')
-  })
-
-  it('is admin-only', async () => {
-    const res = await request(app).post('/api/scripts/hello.sh/run').set(bearer(makeToken('user')))
-    expect(res.status).toBe(403)
-  })
-})

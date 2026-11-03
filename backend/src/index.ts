@@ -20,7 +20,6 @@ import filesRoutes    from './routes/files'
 import mediaRoutes    from './routes/media'
 import chaptersRoutes from './routes/chapters'
 import servicesRoutes from './routes/services'
-import scriptsRoutes  from './routes/scripts'
 import terminalRoutes from './routes/terminal'
 import imagesRoutes   from './routes/images'
 import { registerSocketHandlers } from './socket'
@@ -82,7 +81,6 @@ app.use('/api/files',    filesRoutes)
 app.use('/api/media',    chaptersRoutes)
 app.use('/api/media',    mediaRoutes)
 app.use('/api/services', servicesRoutes)
-app.use('/api/scripts',  scriptsRoutes)
 app.use('/api/terminal', terminalRoutes)
 app.get('/api/health',   (_req, res) => res.json({
   status:    'ok',

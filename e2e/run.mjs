@@ -280,7 +280,7 @@ test('UI: manga reader loads image pages and PDF chapters', async () => {
   await page.context().close()
 })
 
-test('UI: admin pages (files, services, scripts, network, settings)', async () => {
+test('UI: admin pages (files, services, network, settings)', async () => {
   const page = await newPage(admin, { width: 1280, height: 800 })
   await page.goto(`${B}/files?path=${encodeURIComponent(cfg.media)}`, { waitUntil: 'networkidle' })
   await page.goto(`${B}/files`, { waitUntil: 'networkidle' })
@@ -289,9 +289,6 @@ test('UI: admin pages (files, services, scripts, network, settings)', async () =
     await page.goto(`${B}/${p}`, { waitUntil: 'networkidle' })
     await page.screenshot({ path: `${SHOTS}/${p}.png` })
   }
-  await page.goto(`${B}/scripts`, { waitUntil: 'networkidle' })
-  await page.click('button:has-text("Exécuter")')
-  await page.waitForSelector('text=hello from e2e', { timeout: 10000 })
   await page.context().close()
 })
 
@@ -448,7 +445,7 @@ test('UI: change password (and back)', async () => {
 test('UI: theme toggle and no horizontal overflow on phones', async () => {
   const page = await newPage(admin, { width: 375, height: 812 })
   const show = sql(`SELECT id FROM media_items WHERE file_path LIKE '%Georgie%'`)
-  for (const p of ['/dashboard', '/cinema', '/animes', '/manga', '/files', '/services', '/scripts', '/network', '/settings', `/media/${show}`, `/player/${show}`]) {
+  for (const p of ['/dashboard', '/cinema', '/animes', '/manga', '/files', '/services', '/network', '/settings', `/media/${show}`, `/player/${show}`]) {
     await page.goto(B + p, { waitUntil: 'networkidle' })
     await page.waitForTimeout(400)
     const w = await page.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth])
