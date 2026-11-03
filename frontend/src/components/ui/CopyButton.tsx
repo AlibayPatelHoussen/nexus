@@ -15,8 +15,8 @@ export default function CopyButton({ command }: { command: string }) {
     setDone(true); setTimeout(() => setDone(false), 2000)
   }
   return (
-    <button className="btn-ghost text-[11.5px] px-2.5 py-1 flex-shrink-0" onClick={copy}>
-      {done ? <><Check size={12} /> Copié</> : <><Copy size={12} /> Copier</>}
+    <button type="button" className="inline-flex items-center gap-1 px-2 min-h-[24px] rounded-[6px] bg-fill text-subhead text-label hoverable flex-shrink-0" onClick={copy}>
+      {done ? <><Check size={12} strokeWidth={1.75} /> Copié</> : <><Copy size={12} strokeWidth={1.75} /> Copier</>}
     </button>
   )
 }

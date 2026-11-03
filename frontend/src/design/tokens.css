@@ -1,0 +1,169 @@
+/*
+ * Nexus design tokens — the only place where colours, radii, spacing,
+ * typography and motion are defined. Components read these variables
+ * (directly or through the Tailwind theme), never literal values.
+ *
+ * Appearance: <html data-theme="light|dark"> forces a mode; without the
+ * attribute ("Auto") the system preference applies.
+ */
+
+:root {
+  /* ── Colour: backgrounds ───────────────────────────── */
+  --bg:          #f5f5f7;               /* window (desktop) */
+  --bg-grouped:  #f2f2f7;               /* grouped lists (phone) */
+  --surface:     #ffffff;               /* groups, cells, sheets */
+  --surface-2:   #fafafa;               /* nested surface, inputs on grouped bg */
+  --fill:        rgba(120, 120, 128, 0.12);  /* controls, selected sidebar row */
+  --fill-2:      rgba(120, 120, 128, 0.08);  /* hover */
+  --separator:   rgba(60, 60, 67, 0.18);
+  --overlay:     rgba(0, 0, 0, 0.25);
+  --seg-on:      #ffffff;               /* selected segment */
+
+  /* ── Colour: text (grey, never coloured) ───────────── */
+  --label:       #1d1d1f;
+  --label-2:     #6e6e73;               /* secondary — 5.1:1 on white */
+  --label-3:     #aeaeb2;               /* placeholders, disabled, decoration only */
+  --on-accent:   #ffffff;
+
+  /* ── Colour: the one accent ─────────────────────────── */
+  --accent:      #007aff;               /* shapes: icons, selection, toggles, charts, focus */
+  --accent-text: #0066cc;               /* links / text buttons (AA 5.6:1) */
+  --accent-fill: #0071e3;               /* filled buttons with white text (AA 4.7:1) */
+  --accent-soft: rgba(0, 122, 255, 0.12);
+
+  /* ── Colour: states only ────────────────────────────── */
+  --green:       #34c759;  --green-text:  #1e7b34;  --green-soft:  rgba(52, 199, 89, 0.14);
+  --orange:      #ff9500;  --orange-text: #c93400;  --orange-soft: rgba(255, 149, 0, 0.14);
+  --red:         #ff3b30;  --red-text:    #d70015;  --red-soft:    rgba(255, 59, 48, 0.12);
+
+  /* ── Materials (blur only on sidebar, toolbar, tab bar) ── */
+  --material-sidebar: rgba(236, 236, 238, 0.78);
+  --material-bar:     rgba(255, 255, 255, 0.8);
+  --material-blur:    saturate(180%) blur(24px);
+
+  /* ── Elevation: sheets and menus only ───────────────── */
+  --shadow-sheet:   0 0 0 0.5px rgba(0, 0, 0, 0.12), 0 12px 40px rgba(0, 0, 0, 0.16);
+  --shadow-popover: 0 0 0 0.5px rgba(0, 0, 0, 0.1), 0 6px 20px rgba(0, 0, 0, 0.12);
+  --shadow-thumb:   0 2px 6px rgba(0, 0, 0, 0.2), 0 0 0 0.5px rgba(0, 0, 0, 0.04);
+
+  /* ── Terminal (Terminal.app "Basic") ─────────────────── */
+  --term-bg:     #ffffff;
+  --term-fg:     #1d1d1f;
+  --term-cursor: #1d1d1f;
+  --term-select: rgba(0, 122, 255, 0.22);
+
+  /* ── Typography ─────────────────────────────────────── */
+  --font: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Segoe UI", Inter, "Helvetica Neue", Arial, sans-serif;
+  --font-mono: ui-monospace, "SF Mono", SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace;
+
+  --text-largetitle: 26px;   --track-largetitle: -0.022em;
+  --text-title:      20px;   --track-title:      -0.018em;
+  --text-headline:   15px;
+  --text-body:       13px;
+  --text-callout:    14px;   /* reading text (synopsis…) */
+  --text-subhead:    12px;
+  --text-caption:    11px;
+
+  /* ── Shape ──────────────────────────────────────────── */
+  --r-card:    12px;
+  --r-group:   10px;
+  --r-control: 7px;
+  --r-sheet:   12px;
+  --r-pill:    999px;
+
+  /* ── Spacing (4 / 8 grid) ───────────────────────────── */
+  --s-1: 4px;  --s-2: 8px;  --s-3: 12px; --s-4: 16px;
+  --s-5: 20px; --s-6: 24px; --s-8: 32px; --s-12: 48px;
+
+  /* ── Sizes ──────────────────────────────────────────── */
+  --row-h:      32px;     /* list row */
+  --control-h:  28px;     /* button, field, segmented */
+  --toolbar-h:  52px;
+  --sidebar-w:  232px;
+  --tabbar-h:   49px;     /* + safe area */
+  --navbar-h:   44px;
+  --hit:        28px;     /* minimum pointer target (44px on touch) */
+
+  /* ── Motion ─────────────────────────────────────────── */
+  --dur-fast: 150ms;
+  --dur:      200ms;
+  --dur-slow: 250ms;
+  --ease-out:   cubic-bezier(0.2, 0.8, 0.2, 1);
+  --ease-sheet: cubic-bezier(0.32, 0.72, 0, 1);   /* iOS sheet / navigation */
+
+  color-scheme: light;
+}
+
+/* ── Dark ────────────────────────────────────────────────── */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #1c1c1e; --bg-grouped: #000000; --surface: #2c2c2e; --surface-2: #232325;
+    --fill: rgba(120, 120, 128, 0.24); --fill-2: rgba(120, 120, 128, 0.16);
+    --separator: rgba(84, 84, 88, 0.6); --overlay: rgba(0, 0, 0, 0.45); --seg-on: #636366;
+    --label: #f5f5f7; --label-2: #98989d; --label-3: #636366;
+    --accent: #0a84ff; --accent-text: #0a84ff; --accent-fill: #0071e3; --accent-soft: rgba(10, 132, 255, 0.2);
+    --green: #30d158; --green-text: #30d158; --green-soft: rgba(48, 209, 88, 0.18);
+    --orange: #ff9f0a; --orange-text: #ff9f0a; --orange-soft: rgba(255, 159, 10, 0.18);
+    --red: #ff453a; --red-text: #ff453a; --red-soft: rgba(255, 69, 58, 0.18);
+    --material-sidebar: rgba(40, 40, 42, 0.72); --material-bar: rgba(30, 30, 32, 0.8);
+    --shadow-sheet: 0 0 0 0.5px rgba(255, 255, 255, 0.12), 0 12px 40px rgba(0, 0, 0, 0.55);
+    --shadow-popover: 0 0 0 0.5px rgba(255, 255, 255, 0.14), 0 6px 20px rgba(0, 0, 0, 0.45);
+    --term-bg: #1e1e1e; --term-fg: #e5e5e7; --term-cursor: #e5e5e7; --term-select: rgba(10, 132, 255, 0.35);
+    color-scheme: dark;
+  }
+}
+:root[data-theme="dark"] {
+  --bg: #1c1c1e; --bg-grouped: #000000; --surface: #2c2c2e; --surface-2: #232325;
+  --fill: rgba(120, 120, 128, 0.24); --fill-2: rgba(120, 120, 128, 0.16);
+  --separator: rgba(84, 84, 88, 0.6); --overlay: rgba(0, 0, 0, 0.45); --seg-on: #636366;
+  --label: #f5f5f7; --label-2: #98989d; --label-3: #636366;
+  --accent: #0a84ff; --accent-text: #0a84ff; --accent-fill: #0071e3; --accent-soft: rgba(10, 132, 255, 0.2);
+  --green: #30d158; --green-text: #30d158; --green-soft: rgba(48, 209, 88, 0.18);
+  --orange: #ff9f0a; --orange-text: #ff9f0a; --orange-soft: rgba(255, 159, 10, 0.18);
+  --red: #ff453a; --red-text: #ff453a; --red-soft: rgba(255, 69, 58, 0.18);
+  --material-sidebar: rgba(40, 40, 42, 0.72); --material-bar: rgba(30, 30, 32, 0.8);
+  --shadow-sheet: 0 0 0 0.5px rgba(255, 255, 255, 0.12), 0 12px 40px rgba(0, 0, 0, 0.55);
+  --shadow-popover: 0 0 0 0.5px rgba(255, 255, 255, 0.14), 0 6px 20px rgba(0, 0, 0, 0.45);
+  --term-bg: #1e1e1e; --term-fg: #e5e5e7; --term-cursor: #e5e5e7; --term-select: rgba(10, 132, 255, 0.35);
+  color-scheme: dark;
+}
+
+/* ── iPad: larger text and targets ───────────────────────── */
+@media (max-width: 1023px) {
+  :root {
+    --text-largetitle: 30px;
+    --text-body: 15px;
+    --text-callout: 15px;
+    --text-subhead: 13px;
+    --text-caption: 12px;
+    --row-h: 44px;
+    --control-h: 34px;
+  }
+}
+
+/* ── iPhone: grouped background, larger text, 44 px rows ──── */
+@media (max-width: 767px) {
+  :root {
+    --text-largetitle: 34px;
+    --text-title: 22px;
+    --text-headline: 17px;
+    --text-body: 17px;
+    --text-callout: 16px;
+    --text-subhead: 15px;
+    --text-caption: 13px;
+    --row-h: 44px;
+    --control-h: 36px;
+    --bg: #f2f2f7;
+  }
+}
+@media (max-width: 767px) and (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) { --bg: #000000; --surface: #1c1c1e; --surface-2: #2c2c2e; }
+}
+@media (max-width: 767px) {
+  :root[data-theme="dark"] { --bg: #000000; --surface: #1c1c1e; --surface-2: #2c2c2e; }
+}
+
+/* Touch screens: 44 px targets whatever the width */
+@media (pointer: coarse) {
+  :root { --hit: 44px; }
+}

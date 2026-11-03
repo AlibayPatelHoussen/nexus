@@ -1,6 +1,6 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useEffect, lazy, Suspense } from 'react'
-import { useAuthStore } from '@/stores/authStore'
+import { applyAppearance, useAuthStore } from '@/stores/authStore'
 import Layout        from '@/components/layout/Layout'
 import LoginPage     from '@/pages/login/LoginPage'
 import DashboardPage from '@/pages/dashboard/DashboardPage'
@@ -38,11 +38,9 @@ function S({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
-  const theme = useAuthStore((s) => s.theme)
+  const appearance = useAuthStore((s) => s.appearance)
 
-  useEffect(() => {
-    document.documentElement.className = theme
-  }, [theme])
+  useEffect(() => { applyAppearance(appearance) }, [appearance])
 
   return (
     <BrowserRouter>

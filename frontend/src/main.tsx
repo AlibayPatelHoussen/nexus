@@ -1,8 +1,8 @@
 import React from 'react'
 import ReactDOM from 'react-dom/client'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
-import { Toaster } from 'react-hot-toast'
 import { ConfirmProvider } from '@/components/ui/ConfirmDialog'
+import AppToaster from '@/components/ui/AppToaster'
 import App from './App'
 import './index.css'
 
@@ -22,20 +22,7 @@ ReactDOM.createRoot(document.getElementById('root')!).render(
       <ConfirmProvider>
         <App />
       </ConfirmProvider>
-      <Toaster
-        position="bottom-right"
-        toastOptions={{
-          duration: 3000,
-          style: {
-            background: 'var(--surface2)',
-            color: 'var(--text)',
-            border: '1px solid var(--border2)',
-            borderRadius: '10px',
-            fontSize: '13px',
-            fontFamily: 'Geist, sans-serif',
-          },
-        }}
-      />
+      <AppToaster />
     </QueryClientProvider>
   </React.StrictMode>,
 )

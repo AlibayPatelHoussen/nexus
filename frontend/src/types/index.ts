@@ -153,3 +153,5 @@ export interface ApiResponse<T> {
 
 // ── Theme ────────────────────────────────────────────
 export type Theme = 'dark' | 'light'
+/** What the user chose: Auto follows the system (kept in this browser only) */
+export type Appearance = 'auto' | Theme
