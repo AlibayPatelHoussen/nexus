@@ -4,6 +4,10 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Fixed
+- MangaDex matched the wrong title (a "One Piece" folder got "One Piece: Ace's Story—The Manga"): MangaDex sorted its results by latest upload, so licensed series without chapters on the site fell behind their spin-offs. The search now asks for relevance order, also compares alternative titles, ignores punctuation / accents, and prefers the closest title over one that only starts the same way
+- A rescan now replaces a wrong MangaDex match already stored (title, cover, synopsis, genres); when MangaDex does not answer, the stored data is kept
+
 ### Removed
 - The Scripts page (running `.py` / `.sh` files from `/media/scripts`) and its `/api/scripts` routes: it did not work and the space will be used for something else
 
