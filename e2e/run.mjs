@@ -266,10 +266,25 @@ test('UI: manga reader loads image pages and PDF chapters', async () => {
   await page.goto(`${B}/reader/${ber}?ch=${pch}`)
   const res = await pdf
   eq(res.status(), 200, 'pdf status'); eq(res.headers()['content-type'], 'application/pdf', 'pdf type')
-  // The PDF pages are really displayed (rendered to images: Safari cannot show a PDF inside a page)
-  await page.waitForFunction(() => [...document.images].filter((i) => i.alt.startsWith('Page') && i.naturalWidth > 0).length >= 1, null, { timeout: 30000 })
-  assert(!(await page.$('iframe')), 'no PDF iframe (blank on iPhone)')
+  // Computer: the browser's own PDF reader
+  assert(/\/api\/files\/stream/.test(await page.getAttribute('iframe', 'src')), 'PDF shown in the browser reader')
   await page.context().close()
+  // iPhone: Safari cannot show a PDF inside a page → button to the system PDF reader
+  const ios = await browser.newContext({
+    viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true,
+    userAgent: 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.0 Mobile/15E148 Safari/604.1',
+  })
+  await ios.addInitScript(([rt, u]) => {
+    localStorage.setItem('nexus_refresh_token', rt)
+    localStorage.setItem('nexus-auth', JSON.stringify({ state: { user: u, theme: 'dark', isAuth: true }, version: 0 }))
+  }, [admin.refreshToken, admin.user])
+  const p2 = await ios.newPage()
+  await p2.goto(`${B}/reader/${ber}?ch=${pch}`, { waitUntil: 'networkidle' })
+  const href = await p2.getAttribute('a:has-text("Ouvrir le PDF")', 'href', { timeout: 10000 })
+  assert(!(await p2.$('iframe')), 'no iframe on iPhone (it stays blank)')
+  const pdfRes = await fetch(new URL(href, B))
+  eq(pdfRes.status, 200, 'pdf link status'); eq(pdfRes.headers.get('content-type'), 'application/pdf', 'pdf link type')
+  await ios.close()
 })
 
 test('UI: admin pages (files, services, scripts, network, settings)', async () => {
