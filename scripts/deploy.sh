@@ -27,6 +27,12 @@ if ! git diff --quiet || ! git diff --cached --quiet; then
   echo "   Keep them with 'git stash', or discard them with 'git checkout -- <file>', then re-run."
   exit 1
 fi
+if ! getent hosts github.com >/dev/null 2>&1; then
+  echo "❌ The server cannot reach github.com: no Internet (Wi-Fi dongle down?) or DNS problem."
+  echo "   Wi-Fi watchdog (repairs the USB dongle by itself): sudo bash scripts/wifi-watchdog.sh install"
+  echo "   Its state / last repairs:                          sudo bash scripts/wifi-watchdog.sh status"
+  exit 1
+fi
 git pull --ff-only origin main
 
 # ── ffmpeg is needed to convert videos the browser cannot read ──

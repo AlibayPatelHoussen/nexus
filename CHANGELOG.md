@@ -4,6 +4,10 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Added — Wi-Fi watchdog for USB dongles
+- `scripts/wifi-watchdog.sh install`: checks the Internet every minute (systemd timer, independent of Nexus) and repairs step by step — Wi-Fi service restart, interface down/up, then software USB replug of the dongle; turns off Wi-Fi power saving and USB autosuspend for the dongle. `status` shows the last repairs
+- `deploy.sh` says clearly when the server has no Internet instead of a raw git error
+
 ### Added — full server access from Nexus
 - File manager administrator mode: when an action is refused for lack of rights and the Nexus account has passwordless sudo, it is done with sudo — create folder/file, edit, rename, move (also between disks), delete, upload, list/read protected folders. What Nexus creates belongs to its account; an edited system file keeps its owner. `FILES_SUDO=off` disables it
 - Terminal like Cockpit: real login shell of the account with a clean environment (Nexus' secrets are no longer inherited), `xterm-256color`, session kept on the server when leaving the page / losing the network (output replayed on return, closed after `TERMINAL_IDLE_MINUTES`, default 60), font size, copy / paste (Ctrl+Shift+C / V), clickable links, Unicode, "Réinitialiser", "Nouvelle session" after `exit`, "Reprendre ici" when opened elsewhere
