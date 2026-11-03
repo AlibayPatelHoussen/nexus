@@ -46,6 +46,11 @@ if ! command -v ffmpeg &> /dev/null || ! command -v ffprobe &> /dev/null; then
 fi
 echo "ffmpeg: $(ffmpeg -version | head -1)"
 
+# ── poppler-utils (PDF manga pages converted to images on the server) ──
+if ! command -v pdftoppm &> /dev/null; then
+  sudo apt-get install -y poppler-utils
+fi
+
 # ── Setup PostgreSQL DB ──────────────────────────────
 echo "🗄️  Setting up database..."
 DB_NAME="nexus"

@@ -68,13 +68,30 @@ export async function putMeta(chapterId: string, meta: ChapterMeta): Promise<voi
   void touch(chapterId)
 }
 
-/** Image page: from the cache, or downloaded once then cached. */
-export async function loadImagePage(chapterId: string, n: number, url: string): Promise<Blob> {
-  const hit = await getPage(chapterId, n)
-  if (hit) return hit
-  const res = await fetch(url)
-  if (!res.ok) throw new Error(`page ${n} : erreur ${res.status}`)
-  const blob = await res.blob()
-  void putPage(chapterId, n, blob)
-  return blob
+const inflight = new Map<string, Promise<Blob>>()
+
+/** Image page: from the cache, or downloaded once then cached (a page is never fetched twice at once). */
+export function loadImagePage(chapterId: string, n: number, url: string): Promise<Blob> {
+  const key = `${chapterId}/${n}`
+  const running = inflight.get(key)
+  if (running) return running
+  const job = (async () => {
+    const hit = await getPage(chapterId, n)
+    if (hit) return hit
+    const res = await fetch(url)
+    if (!res.ok) throw new Error(`page ${n} : erreur ${res.status}`)
+    const blob = await res.blob()
+    await putPage(chapterId, n, blob)
+    return blob
+  })()
+  inflight.set(key, job)
+  job.finally(() => inflight.delete(key)).catch(() => {})
+  return job
+}
+
+/** Downloads the next pages in the background (one after the other). */
+export async function prefetchPages(chapterId: string, pages: { n: number; url: string }[]): Promise<void> {
+  for (const p of pages) {
+    try { await loadImagePage(chapterId, p.n, p.url) } catch { /* shown later with its own error */ }
+  }
 }

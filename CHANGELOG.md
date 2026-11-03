@@ -4,6 +4,11 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Changed — manga pages served like manga sites
+- New `GET /api/media/chapters/:id/page/:n?w=` (stream token): every page (image folder, CBZ or PDF) is converted once by the server to a light WebP at the screen's width (sharp; PDFs via poppler `pdftoppm`), kept in `backend/cache/pages` and sent with an immutable cache header. A 2 MB scan becomes a few hundred KB; PDFs are no longer downloaded and drawn by the phone
+- The server prepares the next 3 pages while one is read, and the reader downloads the next 4 in the background: turning the page is instant
+- `deploy.sh` / `setup-server.sh` install `poppler-utils`; without it, PDF chapters fall back to PDF.js on the phone
+
 ### Changed — manga: first pages first, chapters kept on the device
 - The server now answers Range requests for PDFs too (206): PDF.js only downloads what the page being read needs (first page of a 71 MB volume: ~2 MB instead of the whole file)
 - Pages already read (PDF and images) are kept on the device (Cache Storage, last 40 chapters): coming back to a chapter shows them without downloading anything again. Needs HTTPS (or localhost); without it, reading works without the cache

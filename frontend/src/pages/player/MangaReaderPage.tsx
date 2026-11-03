@@ -17,7 +17,7 @@ import { getStreamToken, withStreamToken } from '@/services/streamToken'
 import type { Chapter } from '@/types'
 import { usePdfDocument } from '@/hooks/usePdfDocument'
 import ReaderPage from '@/components/media/ReaderPage'
-import { loadImagePage } from '@/services/readerCache'
+import { loadImagePage, prefetchPages } from '@/services/readerCache'
 
 type ReadMode = 'vertical' | 'page' | 'page-rtl'
 
@@ -33,6 +33,9 @@ interface ChapterPagesResponse {
   data:    PageData[]
 }
 
+/** Page width asked to the server: the screen's, in 160 px steps (shared cache) */
+const PAGE_WIDTH = Math.min(1600, Math.max(480, Math.round(Math.min(window.innerWidth, 900) * Math.min(window.devicePixelRatio || 1, 3) / 160) * 160))
+
 async function getChapterPages(chapterId: string): Promise<{ pages: PageData[]; pdfUrl: string | null }> {
   const { data } = await api.get<ChapterPagesResponse>(`/media/chapters/${chapterId}/pages`)
   const token    = await getStreamToken()
@@ -42,7 +45,8 @@ async function getChapterPages(chapterId: string): Promise<{ pages: PageData[]; 
   }
 
   return {
-    pages: data.data.map((p) => ({ ...p, url: withStreamToken(p.url, token) })),
+    // Pages prepared by the server (light WebP at the screen's width)
+    pages: data.data.map((p) => ({ ...p, url: withStreamToken(`${p.url}${p.url.includes('?') ? '&' : '?'}w=${PAGE_WIDTH}`, token) })),
     pdfUrl: null,
   }
 }
@@ -160,7 +164,11 @@ export default function MangaReaderPage() {
 
   /** Page image: device cache first; PDF pages drawn by PDF.js, image pages downloaded once */
   const loadPage = (n: number, url: string) => () =>
-    pdfUrl ? pdf.render(n) : loadImagePage(chapterId ?? '', n, url).then((b) => URL.createObjectURL(b))
+    pdfUrl ? pdf.render(n) : loadImagePage(chapterId ?? '', n, url).then((b) => {
+      // Like manga sites: the next pages are already coming while this one is read
+      void prefetchPages(chapterId ?? '', pages.slice(n, n + 4).map((p, i) => ({ n: n + 1 + i, url: p.url })))
+      return URL.createObjectURL(b)
+    })
 
   const glass = { background: 'rgba(28,28,30,.72)', backdropFilter: 'saturate(180%) blur(24px)', WebkitBackdropFilter: 'saturate(180%) blur(24px)' } as const
   const barBtn = 'w-9 h-9 grid place-items-center rounded-[8px] text-white/80 hover:text-white hover:bg-white/10 active:bg-white/20'

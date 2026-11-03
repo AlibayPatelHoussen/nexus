@@ -41,6 +41,15 @@ if ! command -v ffmpeg &> /dev/null || ! command -v ffprobe &> /dev/null; then
   echo "   Install it with: sudo apt-get install -y ffmpeg   (then re-run this script)"
 fi
 
+# ── poppler-utils turns PDF manga pages into light images on the server ──
+if ! command -v pdftoppm &> /dev/null; then
+  echo "📦 Installing poppler-utils (fast PDF manga pages)..."
+  if ! sudo -n apt-get install -y poppler-utils; then
+    echo "⚠️  poppler-utils could not be installed: PDF chapters will be drawn by the phone (slower)."
+    echo "   Install it with: sudo apt-get install -y poppler-utils"
+  fi
+fi
+
 # ── Install dependencies (including devDeps for build) ─
 echo "📦 Installing dependencies..."
 npm ci --include=dev

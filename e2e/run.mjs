@@ -262,16 +262,16 @@ test('UI: manga reader loads image pages and PDF chapters', async () => {
   await page.screenshot({ path: `${SHOTS}/reader.png` })
   const ber = sql(`SELECT id FROM media_items WHERE title LIKE '%Berserk%'`)
   const pch = sql(`SELECT id FROM chapters WHERE media_item_id='${ber}' LIMIT 1`)
-  const pdf = page.waitForResponse((r) => r.url().includes('/api/files/stream') && r.url().includes('.pdf'), { timeout: 15000 })
+  // PDF pages are prepared by the server as light WebP images (poppler + sharp)
+  const pdf = page.waitForResponse((r) => r.url().includes(`/api/media/chapters/${pch}/page/1`), { timeout: 15000 })
   await page.goto(`${B}/reader/${ber}?ch=${pch}`)
   const res = await pdf
-  eq(res.status(), 200, 'pdf status'); eq(res.headers()['content-type'], 'application/pdf', 'pdf type')
-  // PDF.js shows the pages (Safari cannot show a PDF in an iframe)
+  eq(res.status(), 200, 'pdf page status'); eq(res.headers()['content-type'], 'image/webp', 'pdf page type')
   await page.waitForFunction(() => [...document.images].some((i) => i.alt === 'Page 1' && i.naturalWidth > 0), null, { timeout: 30000 })
   assert(!(await page.$('iframe')), 'no PDF iframe (blank on iPhone)')
   // Coming back to chapters already read: pages come from the device, nothing is downloaded again
   const streams = []
-  page.on('request', (r) => { if (r.url().includes('/api/files/stream')) streams.push(r.url()) })
+  page.on('request', (r) => { if (/\/api\/files\/stream|\/chapters\/[^/]+\/page\//.test(r.url())) streams.push(r.url()) })
   const shown = () => page.waitForFunction(() => [...document.images].some((i) => i.alt === 'Page 1' && i.naturalWidth > 0), null, { timeout: 30000 })
   await page.goto(`${B}/dashboard`, { waitUntil: 'networkidle' })
   await page.goto(`${B}/reader/${ber}?ch=${pch}`, { waitUntil: 'networkidle' }); await shown()
