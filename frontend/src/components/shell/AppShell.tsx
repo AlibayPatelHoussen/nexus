@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { useAuthStore } from '@/stores/authStore'
 import { useDevice } from '@/hooks/useDevice'
@@ -8,6 +8,7 @@ import TabBar from './TabBar'
 import CommandPalette from './CommandPalette'
 import VersionBanner from './VersionBanner'
 import { ShellContext, type ShellState } from './shellContext'
+import { useRouteMotion } from './useRouteMotion'
 
 const HIDDEN_KEY = 'nexus-sidebar-hidden'
 const readHidden = () => { try { return localStorage.getItem(HIDDEN_KEY) === '1' } catch { return false } }
@@ -28,6 +29,11 @@ export default function AppShell() {
   const [search, setSearch] = useState(false)
 
   const sidebarOpen = device === 'desktop' ? !desktopHidden : panelOpen
+  const phoneRef = useRef<HTMLDivElement>(null)
+  const mainRef = useRef<HTMLElement>(null)
+  const frame = useCallback(() => (device === 'phone' ? phoneRef.current : mainRef.current), [device])
+  const scroller = useCallback(() => (device === 'phone' ? window : mainRef.current), [device])
+  useRouteMotion(frame, device, scroller)
   const toggleSidebar = useCallback(() => {
     if (device === 'desktop') {
       setDesktopHidden((h) => {
@@ -61,7 +67,8 @@ export default function AppShell() {
   if (device === 'phone') {
     return (
       <ShellContext.Provider value={shell}>
-        <div className="min-h-[100dvh] bg-bg" style={{ paddingBottom: 'calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px))' }}>
+        {/* clip: a sliding page must not make the document scroll sideways */}
+        <div ref={phoneRef} className="min-h-[100dvh] bg-bg overflow-x-clip" style={{ paddingBottom: 'calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px))' }}>
           <VersionBanner />
           <Outlet />
         </div>
@@ -94,7 +101,7 @@ export default function AppShell() {
             </div>
           </>
         )}
-        <main className="flex-1 min-w-0 h-full overflow-y-auto overflow-x-hidden" id="main">
+        <main ref={mainRef} className="flex-1 min-w-0 h-full overflow-y-auto overflow-x-hidden" id="main">
           <VersionBanner />
           <Outlet />
         </main>

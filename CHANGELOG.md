@@ -4,6 +4,12 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Changed — Apple-like motion
+- Buttons, links and cards shrink slightly under the finger / click and spring back when released (cards press more softly); list rows highlight at once and fade out on release, like iOS lists
+- Pages slide in like iOS navigation on phones (push from the right, back from the left, fade between tabs) and fade in on Mac / iPad; each page keeps its own scroll position (a new page opens at the top, "back" returns where you were)
+- Segmented controls: the selected thumb slides to the new choice; switches: the knob stretches while pressed; tab bar icons bounce when chosen; context menus pop open from where they were asked; artwork fades in once loaded
+- Everything follows "Reduce motion"
+
 ### Fixed
 - MangaDex matched the wrong title (a "One Piece" folder got "One Piece: Ace's Story—The Manga"): MangaDex sorted its results by latest upload, so licensed series without chapters on the site fell behind their spin-offs. The search now asks for relevance order, also compares alternative titles, ignores punctuation / accents, and prefers the closest title over one that only starts the same way
 - A rescan now replaces a wrong MangaDex match already stored (title, cover, synopsis, genres); when MangaDex does not answer, the stored data is kept

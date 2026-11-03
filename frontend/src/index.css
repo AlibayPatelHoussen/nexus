@@ -72,10 +72,27 @@
   /* Side gutter that also clears the notch in landscape */
   .safe-x { padding-left: max(var(--gutter, 0px), env(safe-area-inset-left, 0px)); padding-right: max(var(--gutter, 0px), env(safe-area-inset-right, 0px)); }
   .gutter { --gutter: 16px; }
-  /* Touch feedback instead of hover on phones */
-  .pressable { transition: background-color var(--dur-fast) var(--ease-out), opacity var(--dur-fast) var(--ease-out); }
+  /* Touch feedback instead of hover on phones: the highlight appears at once
+     and fades out when the finger lifts (UITableView) */
+  .pressable { transition: background-color 350ms var(--ease-out), opacity var(--dur-fast) var(--ease-out); }
   @media (hover: hover) { .hoverable:hover { background: var(--fill-2); } }
-  @media (hover: none) { .pressable:active { background: var(--fill); } }
+  @media (hover: none) { .pressable:active { background: var(--fill); transition-duration: 0s; } }
+  /* Cards: lighter press than buttons (big surfaces) */
+  .press-soft { --press-scale: 0.975; }
+}
+
+/* ── Press: controls shrink a little under the finger / click and spring back
+   (UIKit / SwiftUI buttons). "scale" composes with any transform the element
+   already has. Rows (.nx-row) only highlight, like iOS lists; .no-press opts out. */
+:is(button, a[href], [role="button"], summary):not(.nx-row, .no-press, [role="radio"], [role="slider"]) {
+  transition-property: scale, transform, background-color, color, opacity, box-shadow, border-color;
+  transition-duration: 450ms, var(--dur), var(--dur-fast), var(--dur-fast), var(--dur-fast), var(--dur-fast), var(--dur-fast);
+  transition-timing-function: var(--ease-spring), var(--ease-out), var(--ease-out), var(--ease-out), var(--ease-out), var(--ease-out), var(--ease-out);
+}
+:is(button, a[href], [role="button"], summary):not(.nx-row, .no-press, [role="radio"], [role="slider"], :disabled, [aria-disabled="true"]):active {
+  scale: var(--press-scale);
+  transition-duration: 90ms, var(--dur), 0s, var(--dur-fast), 0s, var(--dur-fast), var(--dur-fast);
+  transition-timing-function: var(--ease-out);
 }
 
 @keyframes nx-fade-in  { from { opacity: 0; } to { opacity: 1; } }
@@ -84,6 +101,13 @@
 @keyframes nx-pop { from { transform: scale(0.97); opacity: 0; } to { transform: none; opacity: 1; } }
 @keyframes nx-pulse { 50% { opacity: 0.55; } }
 @keyframes nx-spin { to { transform: rotate(360deg); } }
+/* Context menus open from where they were asked (macOS / iOS) */
+@keyframes nx-menu-in { from { transform: scale(0.9); opacity: 0; } to { transform: none; opacity: 1; } }
+/* Tab bar icon when its tab is chosen */
+@keyframes nx-tab-bounce { 0% { transform: scale(1); } 35% { transform: scale(0.82); } 70% { transform: scale(1.08); } 100% { transform: scale(1); } }
+/* Images fade in once loaded instead of popping */
+.nx-img { transition: opacity 300ms var(--ease-out); }
+.nx-img[data-loaded="false"] { opacity: 0; }
 
 /* Grouped list separators: hairline between rows, inset after the icon (iOS) */
 [role="list"] > :not(:first-child).nx-row::before,

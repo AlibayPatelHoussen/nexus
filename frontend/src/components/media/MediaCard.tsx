@@ -29,7 +29,7 @@ export default function MediaCard({ item, progress, duration, subtitle, variant 
     <div className={cn(variant === 'grid' ? 'w-full min-w-0' : `${ROW_CARD_WIDTH} flex-shrink-0 snap-start`)}>
       <button
         type="button"
-        className="group block w-full text-left rounded-[10px] focus-visible:outline-offset-4"
+        className="group block w-full text-left rounded-[10px] focus-visible:outline-offset-4 press-soft"
         onClick={() => navigate(`/media/${item.id}`)}
         aria-label={item.title}
         {...menu.bind(actions(item), item.title)}

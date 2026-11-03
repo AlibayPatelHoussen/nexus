@@ -35,7 +35,10 @@ export default function Artwork({
   loading = 'lazy', cover = false, children,
 }: ArtworkProps) {
   const [failed, setFailed] = useState(false)
-  useEffect(() => { setFailed(false) }, [src])
+  const [loaded, setLoaded] = useState(false)
+  useEffect(() => { setFailed(false); setLoaded(false) }, [src])
+  // Already in the browser cache: no fade
+  const seen = (img: HTMLImageElement | null) => { if (img?.complete && img.naturalWidth > 0) setLoaded(true) }
   const showImage = !!src && !failed
   const Icon  = TYPE_ICONS[type ?? ''] ?? Film
 
@@ -53,14 +56,18 @@ export default function Artwork({
               alt=""
               aria-hidden="true"
               loading={loading}
-              className="absolute inset-0 w-full h-full object-cover scale-110 blur-xl opacity-60"
+              className="absolute inset-0 w-full h-full object-cover scale-110 blur-xl opacity-60 nx-img"
+              data-loaded={loaded}
             />
           )}
           <img
             src={src!}
             alt={alt}
             loading={loading}
-            className={`relative w-full h-full ${cover ? 'object-cover' : 'object-contain'} ${imgClassName}`}
+            ref={seen}
+            className={`relative w-full h-full nx-img ${cover ? 'object-cover' : 'object-contain'} ${imgClassName}`}
+            data-loaded={loaded}
+            onLoad={() => setLoaded(true)}
             onError={() => setFailed(true)}
           />
         </>
