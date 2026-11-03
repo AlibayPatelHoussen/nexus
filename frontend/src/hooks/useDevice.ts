@@ -17,4 +17,3 @@ export function useDevice(): Device {
 /** Finger instead of mouse: 44 px targets, long-press menus, no hover effects */
 export const useCoarsePointer = () => useMediaQuery('(pointer: coarse)')
 
-export const useReducedMotion = () => useMediaQuery('(prefers-reduced-motion: reduce)')

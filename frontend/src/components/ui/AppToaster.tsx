@@ -1,13 +1,13 @@
 import { Toaster } from 'react-hot-toast'
 import { useDevice } from '@/hooks/useDevice'
 
-/** Notifications: banners at the top right (macOS) or top centre (iOS). */
+/** Notifications: bottom right on desktop (never over the toolbar or the first rows), top centre on iOS. */
 export default function AppToaster() {
   const phone = useDevice() === 'phone'
   return (
     <Toaster
-      position={phone ? 'top-center' : 'top-right'}
-      containerStyle={{ top: phone ? 'calc(env(safe-area-inset-top, 0px) + 8px)' : 12, right: 12 }}
+      position={phone ? 'top-center' : 'bottom-right'}
+      containerStyle={phone ? { top: 'calc(env(safe-area-inset-top, 0px) + 8px)' } : { bottom: 16, right: 16 }}
       gutter={8}
       toastOptions={{
         duration: 3000,

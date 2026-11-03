@@ -1,248 +1,189 @@
 import { useState } from 'react'
-import { Sun, Moon, Lock, User, Save, ScanLine, Trash2, Info } from 'lucide-react'
+import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
+import toast from 'react-hot-toast'
 import { FRONTEND_COMMIT, getServerHealth, isBackendOutdated } from '@/services/versionService'
 import { useAuthStore } from '@/stores/authStore'
 import { authService } from '@/services/authService'
 import { mediaService } from '@/services/mediaService'
-import toast from 'react-hot-toast'
+import Page from '@/components/shell/Page'
+import { useShell } from '@/components/shell/shellContext'
+import { Group, ListRow } from '@/components/ui/GroupedList'
+import SegmentedControl from '@/components/ui/SegmentedControl'
+import Button from '@/components/ui/Button'
+import { useConfirm } from '@/components/ui/useConfirm'
+import type { Appearance } from '@/types'
 
 export default function SettingsPage() {
-  const user     = useAuthStore((s) => s.user)
-  const theme    = useAuthStore((s) => s.theme)
-  const setTheme = useAuthStore((s) => s.setTheme)
-
-  const [currentPwd, setCurrentPwd] = useState('')
-  const [newPwd,     setNewPwd]     = useState('')
-  const [confirmPwd, setConfirmPwd] = useState('')
-  const [saving,     setSaving]     = useState(false)
-  const [scanning,   setScanning]   = useState(false)
-  const [pruning,    setPruning]    = useState(false)
+  const user = useAuthStore((s) => s.user)
+  const appearance = useAuthStore((s) => s.appearance)
+  const setAppearance = useAuthStore((s) => s.setAppearance)
+  const logout = useAuthStore((s) => s.logout)
+  const navigate = useNavigate()
+  const confirm = useConfirm()
+  const { device } = useShell()
+  const phone = device === 'phone'
+  const [scanning, setScanning] = useState(false)
+  const [pruning, setPruning] = useState(false)
 
   async function handleScan() {
     setScanning(true)
     try {
       await mediaService.scan()
-      toast.success('Scan lancé en arrière-plan')
-    } catch { toast.error('Erreur lors du scan') }
+      toast.success('Analyse lancée : les nouveaux titres apparaissent dans quelques instants.')
+    } catch { toast.error('L’analyse n’a pas pu démarrer.') }
     finally { setScanning(false) }
   }
 
   async function handlePrune() {
+    const ok = await confirm({
+      title: 'Nettoyer la bibliothèque ?',
+      message: 'Les films, séries, animes et mangas dont le fichier n’existe plus sur le disque sont retirés de Nexus. Les fichiers ne sont pas touchés.',
+      confirmLabel: 'Nettoyer',
+      danger: true,
+    })
+    if (!ok) return
     setPruning(true)
     try {
       const removed = await mediaService.prune()
-      if (removed === 0) toast.success('Aucun fichier manquant détecté')
-      else toast.success(`${removed} entrée(s) supprimée(s) de la base`)
-    } catch { toast.error('Erreur lors du nettoyage') }
+      toast.success(removed === 0 ? 'Aucun fichier manquant : rien à retirer.' : `${removed} titre${removed > 1 ? 's' : ''} retiré${removed > 1 ? 's' : ''} de la bibliothèque.`)
+    } catch { toast.error('Le nettoyage a échoué.') }
     finally { setPruning(false) }
   }
 
-  async function handlePasswordChange(e: React.FormEvent) {
-    e.preventDefault()
-    if (newPwd !== confirmPwd) { toast.error('Les mots de passe ne correspondent pas'); return }
-    if (newPwd.length < 8)     { toast.error('Minimum 8 caractères'); return }
-    setSaving(true)
-    try {
-      await authService.changePassword(currentPwd, newPwd)
-      toast.success('Mot de passe mis à jour')
-      setCurrentPwd(''); setNewPwd(''); setConfirmPwd('')
-    } catch { toast.error('Mot de passe actuel incorrect') }
-    finally { setSaving(false) }
+  async function handleLogout() {
+    const ok = await confirm({ title: 'Se déconnecter ?', message: 'Tu devras saisir à nouveau ton mot de passe sur cet appareil.', confirmLabel: 'Se déconnecter', danger: true })
+    if (!ok) return
+    logout()
+    navigate('/login', { replace: true })
   }
 
   return (
-    <div className="min-h-full" style={{ background: 'var(--bg)' }}>
-      <div className="md:sticky top-0 z-30 px-4 sm:px-6 lg:px-7 pt-5 sm:pt-6 pb-1" style={{ background: 'var(--bg)' }}>
-        <h1 className="text-[22px] sm:text-[26px] font-bold tracking-tight" style={{ color: 'var(--text)' }}>Paramètres</h1>
-        <p className="text-[12.5px] mt-0.5" style={{ color: 'var(--text3)' }}>Préférences et sécurité</p>
-      </div>
-
-      <div className="px-4 sm:px-6 lg:px-7 py-5 flex flex-col gap-4 max-w-2xl">
-
-        {/* Profile */}
-        <div className="card p-4 sm:p-5 animate-fade-up">
-          <div className="flex items-center gap-2 mb-4">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'var(--blue-dim)' }}>
-              <User size={15} strokeWidth={2} style={{ color: 'var(--blue)' }} />
-            </div>
-            <h2 className="text-[14px] font-semibold" style={{ color: 'var(--text)' }}>Profil</h2>
+    <Page title="Réglages" narrow>
+      <div className="flex flex-col gap-8 max-w-[680px] mx-auto">
+        {/* Account */}
+        <Group>
+          <div role="listitem" className="nx-row relative flex items-center gap-3.5 px-4 py-3">
+            <span className="w-12 h-12 rounded-full bg-fill grid place-items-center text-[20px] font-semibold text-label2 flex-shrink-0" aria-hidden="true">
+              {user?.username?.[0]?.toUpperCase() ?? '?'}
+            </span>
+            <span className="min-w-0">
+              <span className="block text-headline text-label truncate">{user?.username}</span>
+              <span className="block text-subhead text-label2 truncate">{user?.email} · {user?.role === 'admin' ? 'Administrateur' : 'Utilisateur'}</span>
+            </span>
           </div>
-          <div className="grid grid-cols-1 min-[420px]:grid-cols-2 gap-3">
-            {[
-              { label: 'Identifiant', value: user?.username },
-              { label: 'Email',       value: user?.email    },
-              { label: 'Rôle',        value: user?.role     },
-              { label: 'ID',          value: user?.id?.slice(0, 8) + '…' },
-            ].map((item) => (
-              <div key={item.label}>
-                <div className="text-[10.5px] mb-1" style={{ color: 'var(--text3)' }}>{item.label}</div>
-                <div className="text-[13px] font-semibold font-mono break-all" style={{ color: 'var(--text)' }}>
-                  {item.value || '—'}
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
+        </Group>
 
-        {/* Theme */}
-        <div className="card p-4 sm:p-5 animate-fade-up" style={{ animationDelay: '60ms' }}>
-          <div className="flex items-center gap-2 mb-4">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'var(--yellow-dim)' }}>
-              {theme === 'dark'
-                ? <Moon size={15} strokeWidth={2} style={{ color: 'var(--yellow)' }} />
-                : <Sun  size={15} strokeWidth={2} style={{ color: 'var(--yellow)' }} />
-              }
-            </div>
-            <h2 className="text-[14px] font-semibold" style={{ color: 'var(--text)' }}>Apparence</h2>
+        <Group header="Apparence" footer="Auto suit le réglage clair ou sombre de l’appareil. Ce choix est propre à cet appareil.">
+          <div role="listitem" className="nx-row relative flex items-center justify-between gap-3 px-4 min-h-row py-2">
+            {!phone && <span className="text-label">Apparence</span>}
+            <SegmentedControl<Appearance>
+              label="Apparence"
+              value={appearance}
+              onChange={setAppearance}
+              full={phone}
+              options={[
+                { value: 'auto', label: 'Auto' },
+                { value: 'light', label: 'Clair' },
+                { value: 'dark', label: 'Sombre' },
+              ]}
+            />
           </div>
-          <div className="grid grid-cols-2 gap-2 sm:gap-3">
-            {(['dark', 'light'] as const).map((t) => (
-              <button
-                key={t}
-                className="flex items-center gap-2 sm:gap-3 p-3 rounded-xl border-2 transition-all text-left min-w-0"
-                style={{
-                  background:   theme === t ? 'var(--blue-dim)' : 'var(--surface2)',
-                  borderColor:  theme === t ? 'var(--blue)'     : 'var(--border)',
-                }}
-                onClick={() => setTheme(t)}
-              >
-                {t === 'dark'
-                  ? <Moon size={16} strokeWidth={2} style={{ color: theme === t ? 'var(--blue)' : 'var(--text3)' }} />
-                  : <Sun  size={16} strokeWidth={2} style={{ color: theme === t ? 'var(--blue)' : 'var(--text3)' }} />
-                }
-                <div>
-                  <div className="text-[13px] font-semibold" style={{ color: theme === t ? 'var(--blue)' : 'var(--text)' }}>
-                    {t === 'dark' ? 'Sombre' : 'Clair'}
-                  </div>
-                  <div className="text-[10.5px]" style={{ color: 'var(--text3)' }}>
-                    {t === 'dark' ? 'Mode nuit' : 'Mode jour'}
-                  </div>
-                </div>
-              </button>
-            ))}
-          </div>
-        </div>
+        </Group>
 
-        {/* Bibliothèque */}
         {user?.role === 'admin' && (
-          <div className="card p-4 sm:p-5 animate-fade-up" style={{ animationDelay: '120ms' }}>
-            <div className="flex items-center gap-2 mb-4">
-              <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'var(--blue-dim)' }}>
-                <ScanLine size={15} strokeWidth={2} style={{ color: 'var(--blue)' }} />
-              </div>
-              <h2 className="text-[14px] font-semibold" style={{ color: 'var(--text)' }}>Bibliothèque</h2>
-            </div>
-            <div className="flex flex-col gap-2">
-              <div className="flex flex-wrap sm:flex-nowrap items-start gap-3 p-3 rounded-xl" style={{ background: 'var(--surface2)' }}>
-                <ScanLine size={15} strokeWidth={2} style={{ color: 'var(--text3)', marginTop: 2 }} />
-                <div className="flex-1 min-w-[180px]">
-                  <div className="text-[13px] font-semibold" style={{ color: 'var(--text)' }}>Scanner les médias</div>
-                  <div className="text-[11px]" style={{ color: 'var(--text3)' }}>
-                    Ajoute les nouveaux fichiers détectés dans les dossiers configurés
-                  </div>
-                </div>
-                <button className="btn-primary text-[12px] w-full sm:w-auto justify-center flex-shrink-0" onClick={handleScan} disabled={scanning}>
-                  {scanning ? 'Scan…' : 'Scanner'}
-                </button>
-              </div>
-              <div className="flex flex-wrap sm:flex-nowrap items-start gap-3 p-3 rounded-xl" style={{ background: 'var(--surface2)' }}>
-                <Trash2 size={15} strokeWidth={2} style={{ color: 'var(--red)', marginTop: 2 }} />
-                <div className="flex-1 min-w-[180px]">
-                  <div className="text-[13px] font-semibold" style={{ color: 'var(--text)' }}>Nettoyer la bibliothèque</div>
-                  <div className="text-[11px]" style={{ color: 'var(--text3)' }}>
-                    Supprime de la base les films, séries, animes et mangas dont le fichier n'existe plus
-                  </div>
-                </div>
-                <button
-                  className="btn-ghost text-[12px] w-full sm:w-auto justify-center flex-shrink-0"
-                  style={{ color: 'var(--red)', borderColor: 'var(--red)' }}
-                  onClick={handlePrune}
-                  disabled={pruning}
-                >
-                  {pruning ? 'Nettoyage…' : 'Nettoyer'}
-                </button>
-              </div>
-            </div>
-          </div>
+          <Group header="Bibliothèque">
+            <ListRow wrap title="Analyser les médias" subtitle="Ajoute les fichiers trouvés dans les dossiers de la bibliothèque.">
+              <Button size="small" loading={scanning} onClick={handleScan}>Analyser</Button>
+            </ListRow>
+            <ListRow wrap title="Nettoyer la bibliothèque" subtitle="Retire les titres dont le fichier n’existe plus.">
+              <Button size="small" variant="destructive" loading={pruning} onClick={handlePrune}>Nettoyer…</Button>
+            </ListRow>
+          </Group>
         )}
 
-        {/* Version */}
-        <VersionCard />
+        <PasswordGroup />
+        <VersionGroup />
 
-        {/* Password */}
-        <div className="card p-4 sm:p-5 animate-fade-up" style={{ animationDelay: '180ms' }}>
-          <div className="flex items-center gap-2 mb-4">
-            <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'var(--red-dim)' }}>
-              <Lock size={15} strokeWidth={2} style={{ color: 'var(--red)' }} />
-            </div>
-            <h2 className="text-[14px] font-semibold" style={{ color: 'var(--text)' }}>Mot de passe</h2>
-          </div>
-          <form onSubmit={handlePasswordChange} className="flex flex-col gap-3">
-            {[
-              { label: 'Mot de passe actuel', value: currentPwd, set: setCurrentPwd, auto: 'current-password' },
-              { label: 'Nouveau mot de passe', value: newPwd, set: setNewPwd, auto: 'new-password' },
-              { label: 'Confirmer',            value: confirmPwd, set: setConfirmPwd, auto: 'new-password' },
-            ].map((f) => (
-              <div key={f.label}>
-                <label className="block text-[11px] font-semibold mb-1" style={{ color: 'var(--text3)' }}>
-                  {f.label.toUpperCase()}
-                </label>
-                <input
-                  className="input"
-                  type="password"
-                  autoComplete={f.auto}
-                  value={f.value}
-                  onChange={(e) => f.set(e.target.value)}
-                  required
-                />
-              </div>
-            ))}
-            <button type="submit" className="btn-primary w-full sm:w-auto sm:self-start justify-center mt-1" disabled={saving}>
-              <Save size={13} strokeWidth={2} />
-              {saving ? 'Sauvegarde…' : 'Mettre à jour'}
-            </button>
-          </form>
-        </div>
-
+        <Group>
+          <ListRow title="Se déconnecter" destructive onClick={handleLogout} className="justify-center [&>span]:text-center" />
+        </Group>
       </div>
-    </div>
+    </Page>
   )
 }
 
-function VersionCard() {
+function PasswordGroup() {
+  const [current, setCurrent] = useState('')
+  const [next, setNext] = useState('')
+  const [again, setAgain] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault()
+    if (next.length < 8) { setError('Le nouveau mot de passe doit faire au moins 8 caractères.'); return }
+    if (next !== again) { setError('Les deux nouveaux mots de passe ne sont pas identiques.'); return }
+    setSaving(true); setError(null)
+    try {
+      await authService.changePassword(current, next)
+      toast.success('Mot de passe mis à jour')
+      setCurrent(''); setNext(''); setAgain('')
+    } catch {
+      setError('Le mot de passe actuel est incorrect.')
+    } finally { setSaving(false) }
+  }
+
+  const field = (id: string, label: string, value: string, set: (v: string) => void, auto: string) => (
+    <div role="listitem" className="nx-row relative flex items-center gap-3 px-4 min-h-row">
+      <label htmlFor={id} className="w-[120px] max-md:w-[110px] flex-shrink-0 text-label">{label}</label>
+      <input
+        id={id}
+        type="password"
+        autoComplete={auto}
+        value={value}
+        onChange={(e) => { set(e.target.value); setError(null) }}
+        required
+        className="flex-1 min-w-0 bg-transparent outline-none text-label placeholder:text-label3 py-2"
+        placeholder="Requis"
+        aria-invalid={!!error || undefined}
+        aria-describedby={error ? 'password-error' : undefined}
+      />
+    </div>
+  )
+
+  return (
+    <form onSubmit={submit} aria-labelledby="password-h">
+      <Group id="password" header="Mot de passe">
+        {field('pwd-current', 'Actuel', current, setCurrent, 'current-password')}
+        {field('pwd-new', 'Nouveau', next, setNext, 'new-password')}
+        {field('pwd-again', 'Confirmer', again, setAgain, 'new-password')}
+      </Group>
+      {error && <p id="password-error" role="alert" className="text-subhead text-danger-text px-4 pt-2">{error}</p>}
+      <div className="flex justify-end px-1 pt-3">
+        <Button type="submit" variant="primary" loading={saving} disabled={!current || !next || !again} className="max-md:w-full max-md:min-h-[44px]">
+          Modifier le mot de passe
+        </Button>
+      </div>
+    </form>
+  )
+}
+
+function VersionGroup() {
   const { data, isError } = useQuery({ queryKey: ['server-health'], queryFn: getServerHealth, staleTime: 60_000, retry: 1 })
   const outdated = isBackendOutdated(data)
   return (
-    <div className="card p-4 sm:p-5 animate-fade-up" style={{ animationDelay: '150ms' }}>
-      <div className="flex items-center gap-2 mb-4">
-        <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: 'var(--surface3)' }}>
-          <Info size={15} strokeWidth={2} style={{ color: 'var(--text2)' }} />
-        </div>
-        <h2 className="text-[14px] font-semibold" style={{ color: 'var(--text)' }}>Version</h2>
-      </div>
-      <dl className="grid grid-cols-1 min-[420px]:grid-cols-2 gap-3 text-[13px]">
-        <div>
-          <dt className="text-[10.5px] mb-1" style={{ color: 'var(--text3)' }}>Interface</dt>
-          <dd className="font-mono font-semibold" style={{ color: 'var(--text)' }}>{FRONTEND_COMMIT}</dd>
-        </div>
-        <div>
-          <dt className="text-[10.5px] mb-1" style={{ color: 'var(--text3)' }}>Serveur</dt>
-          <dd className="font-mono font-semibold" style={{ color: outdated ? 'var(--orange)' : 'var(--text)' }}>
-            {isError ? 'injoignable' : data?.build?.commit ?? (data ? 'ancienne version' : '…')}
-          </dd>
-        </div>
-      </dl>
-      {data?.startedAt && (
-        <p className="text-[11px] mt-3" style={{ color: 'var(--text3)' }}>
-          Serveur démarré le {new Date(data.startedAt).toLocaleString('fr-FR')}
-        </p>
-      )}
-      {outdated && (
-        <p className="text-[12px] mt-3 px-3 py-2 rounded-lg" style={{ background: 'var(--orange-dim)', color: 'var(--orange)' }}>
-          Le serveur n'exécute pas la même version que l'interface : relance <span className="font-mono">bash scripts/deploy.sh</span>.
-        </p>
-      )}
-    </div>
+    <Group
+      header="Version"
+      footer={outdated ? 'Le serveur n’exécute pas la même version que l’interface. Sur le serveur, lance bash scripts/deploy.sh.' : undefined}
+    >
+      <ListRow title="Interface" detail={<span className="font-mono">{FRONTEND_COMMIT}</span>} />
+      <ListRow
+        title="Serveur"
+        status={outdated ? 'warn' : undefined}
+        detail={<span className="font-mono">{isError ? 'injoignable' : data?.build?.commit ?? (data ? 'ancienne version' : '…')}</span>}
+      />
+      {data?.startedAt && <ListRow title="Démarré le" detail={new Date(data.startedAt).toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' })} />}
+    </Group>
   )
 }

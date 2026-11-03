@@ -218,7 +218,7 @@ export default function MediaDetailPage() {
         />
         <div className={cn('min-w-0 flex-1 flex flex-col gap-2', phone && 'items-center w-full')}>
           <p className="text-subhead text-label2">{metaBits.join(' · ')}</p>
-          <h1 className="text-[28px] md:text-[34px] font-bold tracking-[-0.022em] leading-tight text-label break-words text-balance">{media.title}</h1>
+          <h2 className="text-[28px] md:text-[34px] font-bold tracking-[-0.022em] leading-tight text-label break-words text-balance">{media.title}</h2>
           {media.originalTitle && media.originalTitle !== media.title && <p className="text-subhead text-label2">{media.originalTitle}</p>}
           {r && (
             <p className="flex items-center gap-1 text-subhead text-label2 tabular">

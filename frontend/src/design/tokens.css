@@ -23,6 +23,7 @@
   --label:       #1d1d1f;
   --label-2:     #6e6e73;               /* secondary — 5.1:1 on white */
   --label-3:     #aeaeb2;               /* placeholders, disabled, decoration only */
+  --gray:        #8e8e93;               /* neutral icon squares (systemGray) */
   --on-accent:   #ffffff;
 
   /* ── Colour: the one accent ─────────────────────────── */

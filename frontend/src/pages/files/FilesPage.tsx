@@ -1,132 +1,47 @@
-import { useState, useRef, useEffect } from 'react'
-import { useSearchParams } from 'react-router-dom'
+import { useEffect, useMemo, useRef, useState } from 'react'
+import { Link, useSearchParams } from 'react-router-dom'
 import {
-  ChevronRight, ChevronUp, FolderPlus, FilePlus,
-  Upload, Download, Trash2, Edit2, Search,
-  Grid, List, X, Folder,
-  FileVideo, FileImage, FileCode2, FileCog, FileText, FileArchive,
-  Eye, MoreVertical,
+  ChevronRight, ChevronUp, Download, Ellipsis, Eye, FileArchive, FileCode2, FileImage, FilePlus,
+  FileText, FileVideo, Folder, FolderPlus, LayoutGrid, List, Pencil, Search, Trash2, Upload, X,
 } from 'lucide-react'
-import { useMediaQuery } from '@/hooks/useMediaQuery'
+import toast from 'react-hot-toast'
 import { useConfirm } from '@/components/ui/useConfirm'
+import { useContextMenu } from '@/components/ui/useContextMenu'
+import type { MenuItem } from '@/components/ui/ContextMenu'
 import { useFiles } from '@/hooks/useFiles'
 import { filesService } from '@/services/filesService'
-import { formatBytes, formatDate } from '@/utils'
+import { cn, formatBytes, formatDate } from '@/utils'
 import type { FileEntry } from '@/types'
-import toast from 'react-hot-toast'
 import { serverError, showError } from '@/utils/errorToast'
-
-function FileIcon({ entry, size = 15 }: { entry: FileEntry; size?: number }) {
-  const ext = entry.extension?.replace('.', '') || ''
-  if (entry.type === 'directory')
-    return <Folder size={size} style={{ color: 'var(--orange)' }} strokeWidth={1.8} />
-
-  const videoExts = ['mp4', 'mkv', 'avi', 'mov', 'webm']
-  const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg']
-  const codeExts  = ['ts', 'tsx', 'js', 'jsx', 'py', 'sh', 'json', 'yaml', 'yml']
-  const confExts  = ['conf', 'service', 'env', 'toml', 'ini', 'cfg']
-  const archExts  = ['zip', 'tar', 'gz', 'rar', '7z']
-
-  if (videoExts.includes(ext)) return <FileVideo   size={size} style={{ color: 'var(--red)'    }} strokeWidth={1.8} />
-  if (imageExts.includes(ext)) return <FileImage   size={size} style={{ color: 'var(--teal)'   }} strokeWidth={1.8} />
-  if (codeExts.includes(ext))  return <FileCode2   size={size} style={{ color: 'var(--blue)'   }} strokeWidth={1.8} />
-  if (confExts.includes(ext))  return <FileCog     size={size} style={{ color: 'var(--yellow)' }} strokeWidth={1.8} />
-  if (archExts.includes(ext))  return <FileArchive size={size} style={{ color: 'var(--purple)' }} strokeWidth={1.8} />
-  return <FileText size={size} style={{ color: 'var(--text3)' }} strokeWidth={1.8} />
-}
-
-function Modal({
-  title, onClose, children,
-}: { title: string; onClose: () => void; children: React.ReactNode }) {
-  return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{ background: 'rgba(0,0,0,0.65)' }}
-      onClick={onClose}
-    >
-      <div
-        className="card p-5 w-full max-w-sm animate-fade-up"
-        style={{ boxShadow: 'var(--shadow-lg)' }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <h3 className="text-[14px] font-semibold mb-4" style={{ color: 'var(--text)' }}>{title}</h3>
-        {children}
-      </div>
-    </div>
-  )
-}
-
-function EditorModal({ entry, onClose }: { entry: FileEntry; onClose: () => void }) {
-  const [content, setContent] = useState('')
-  const [loading, setLoading] = useState(true)
-  const [saving,  setSaving]  = useState(false)
-
-  useState(() => {
-    filesService.readFile(entry.path)
-      .then((c) => { setContent(c); setLoading(false) })
-      .catch((err) => { showError('Lecture impossible', serverError(err)); onClose() })
-  })
-
-  async function save() {
-    setSaving(true)
-    try {
-      await filesService.writeFile(entry.path, content)
-      toast.success('Sauvegardé')
-      onClose()
-    } catch (err) { showError('Enregistrement impossible', serverError(err)) }
-    finally { setSaving(false) }
-  }
-
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center sm:p-4"
-      style={{ background: 'rgba(0,0,0,0.7)' }}>
-      <div className="card flex flex-col w-full max-w-4xl animate-fade-up h-[100dvh] sm:h-[82vh] !rounded-none sm:!rounded-[14px]"
-        style={{ boxShadow: 'var(--shadow-lg)' }}>
-        <div className="flex items-center justify-between gap-2 px-3 sm:px-4 py-3 border-b"
-          style={{ borderColor: 'var(--border)' }}>
-          <div className="flex items-center gap-2 min-w-0">
-            <FileIcon entry={entry} size={13} />
-            <span className="text-[12.5px] font-mono font-semibold truncate" title={entry.path} style={{ color: 'var(--text)' }}>
-              {entry.path}
-            </span>
-          </div>
-          <div className="flex gap-2 flex-shrink-0">
-            <button className="btn-primary text-[12px]" onClick={save} disabled={saving || loading}>
-              {saving ? 'Sauvegarde…' : 'Sauvegarder'}
-            </button>
-            <button className="btn-ghost text-[12px]" onClick={onClose}>
-              <X size={13} strokeWidth={2} />
-            </button>
-          </div>
-        </div>
-        <div className="flex-1 overflow-hidden">
-          {loading ? (
-            <div className="flex items-center justify-center h-full" style={{ color: 'var(--text3)' }}>
-              Chargement…
-            </div>
-          ) : (
-            <textarea
-              className="w-full h-full p-3 sm:p-4 resize-none outline-none terminal-font text-[13px] sm:text-[12.5px]"
-              style={{ background: 'var(--bg)', color: 'var(--text)', border: 'none', lineHeight: '1.7' }}
-              value={content}
-              onChange={(e) => setContent(e.target.value)}
-              spellCheck={false}
-            />
-          )}
-        </div>
-      </div>
-    </div>
-  )
-}
-
-interface CtxMenu { x: number; y: number; entry: FileEntry }
-
-// Checkbox · name · size · [modified · permissions on md+] · actions
-const LIST_COLS = 'grid grid-cols-[18px_minmax(0,1fr)_72px_28px] md:grid-cols-[18px_minmax(0,1fr)_110px_150px_90px_28px]'
+import Page from '@/components/shell/Page'
+import { useShell } from '@/components/shell/shellContext'
+import SegmentedControl from '@/components/ui/SegmentedControl'
+import Button from '@/components/ui/Button'
+import Sheet from '@/components/ui/Sheet'
+import ActionSheet from '@/components/ui/ActionSheet'
+import TextField from '@/components/ui/TextField'
+import EmptyState from '@/components/ui/EmptyState'
+import Spinner from '@/components/ui/Spinner'
+import { SkeletonRows } from '@/components/ui/Skeleton'
 
 const EDITABLE_EXTS = ['.txt', '.md', '.json', '.yaml', '.yml', '.conf',
   '.service', '.env', '.sh', '.py', '.ts', '.tsx', '.js', '.jsx',
   '.toml', '.ini', '.cfg', '.log', '.sql', '.css', '.html']
+const VIDEO_EXTS = ['.mp4', '.mkv', '.avi', '.mov', '.webm']
+
+/** Folders in the accent colour (like Finder), files in grey whatever their type. */
+function FileIcon({ entry, size = 16 }: { entry: FileEntry; size?: number }) {
+  if (entry.type === 'directory') {
+    return <Folder size={size} strokeWidth={1.5} className="text-accent flex-shrink-0" fill="var(--accent-soft)" aria-hidden="true" />
+  }
+  const ext = (entry.extension || '').replace('.', '')
+  const Icon = ['mp4', 'mkv', 'avi', 'mov', 'webm'].includes(ext) ? FileVideo
+    : ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext) ? FileImage
+    : ['ts', 'tsx', 'js', 'jsx', 'py', 'sh', 'json', 'yaml', 'yml', 'conf', 'service', 'env', 'toml', 'ini', 'cfg'].includes(ext) ? FileCode2
+    : ['zip', 'tar', 'gz', 'rar', '7z', 'cbz'].includes(ext) ? FileArchive
+    : FileText
+  return <Icon size={size} strokeWidth={1.5} className="text-label2 flex-shrink-0" aria-hidden="true" />
+}
 
 /**
  * Open a URL that needs an async stream token. The tab is opened
@@ -135,22 +50,24 @@ const EDITABLE_EXTS = ['.txt', '.md', '.json', '.yaml', '.yml', '.conf',
 function openInNewTab(urlPromise: Promise<string>) {
   const tab = window.open('about:blank', '_blank')
   urlPromise
-    .then((url) => {
-      if (tab) tab.location.href = url
-      else window.location.href = url
-    })
-    .catch(() => {
-      tab?.close()
-      toast.error("Impossible d'ouvrir le fichier")
-    })
+    .then((url) => { if (tab) tab.location.href = url; else window.location.href = url })
+    .catch(() => { tab?.close(); toast.error('Impossible d’ouvrir le fichier') })
 }
+
+const parentOf = (p: string) => p.split('/').slice(0, -1).join('/') || '/'
+const nameOf = (p: string) => (p === '/' ? 'Racine' : p.split('/').filter(Boolean).pop() ?? p)
+const VIEW_KEY = 'nexus-files-view'
 
 export default function FilesPage() {
   const [searchParams, setSearchParams] = useSearchParams()
   const urlPath = searchParams.get('path') || '/'
+  const { device } = useShell()
+  const phone = device === 'phone'
+  const confirm = useConfirm()
+  const menu = useContextMenu()
 
   const {
-    currentPath, entries, isLoading, breadcrumbs,
+    currentPath, entries, isLoading, error, breadcrumbs,
     selected, navigate, goUp,
     toggleSelect, selectAll, clearSelect,
     deleteEntry, deleteEntries, deleting, renameEntry, createDir, createFile, invalidate,
@@ -166,28 +83,26 @@ export default function FilesPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [urlPath])
 
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('list')
-  const [search,   setSearch]   = useState('')
+  const [view, setViewRaw] = useState<'list' | 'icons'>(() => { try { return localStorage.getItem(VIEW_KEY) === 'icons' ? 'icons' : 'list' } catch { return 'list' } })
+  const setView = (v: 'list' | 'icons') => { setViewRaw(v); try { localStorage.setItem(VIEW_KEY, v) } catch { /* private mode */ } }
+  const [search, setSearch] = useState('')
   const [renaming, setRenaming] = useState<FileEntry | null>(null)
   const [creating, setCreating] = useState<'file' | 'dir' | null>(null)
-  const [editing,  setEditing]  = useState<FileEntry | null>(null)
-  const [ctxMenu,  setCtxMenu]  = useState<CtxMenu | null>(null)
-  const [newName,  setNewName]  = useState('')
-  const [newItem,  setNewItem]  = useState('')
+  const [editing, setEditing] = useState<FileEntry | null>(null)
+  const [selecting, setSelecting] = useState(false)   // phone selection mode
+  const [phoneMenu, setPhoneMenu] = useState(false)
+  const [uploading, setUploading] = useState(false)
   const uploadRef = useRef<HTMLInputElement>(null)
 
-  const filtered = entries.filter((e) =>
-    e.name.toLowerCase().includes(search.toLowerCase()))
+  useEffect(() => { setSearch(''); setSelecting(false) }, [currentPath])
 
-  const confirm = useConfirm()
+  const filtered = useMemo(() => entries.filter((e) => e.name.toLowerCase().includes(search.toLowerCase())), [entries, search])
 
   async function confirmDelete(entry: FileEntry) {
     const isDir = entry.type === 'directory'
     const ok = await confirm({
       title: `Supprimer « ${entry.name} » ?`,
-      message: isDir
-        ? 'Le dossier et tout son contenu seront définitivement supprimés du serveur.'
-        : 'Le fichier sera définitivement supprimé du serveur.',
+      message: isDir ? 'Le dossier et tout son contenu seront définitivement supprimés du serveur.' : 'Le fichier sera définitivement supprimé du serveur.',
       details: [entry.path],
       confirmLabel: 'Supprimer',
       danger: true,
@@ -195,260 +110,402 @@ export default function FilesPage() {
     if (ok) deleteEntry(entry.path)
   }
 
-  // On touch screens a single tap opens (no double-click / right-click)
-  const isTouch = useMediaQuery('(pointer: coarse)')
-
-  function openMenuAt(el: HTMLElement, entry: FileEntry) {
-    const r = el.getBoundingClientRect()
-    setCtxMenu({ x: r.right - 180, y: r.bottom + 4, entry })
+  async function deleteSelection() {
+    const paths = [...selected]
+    const ok = await confirm({
+      title: `Supprimer ${paths.length} élément(s) ?`,
+      message: 'Ils seront définitivement supprimés du serveur, dossiers compris avec tout leur contenu.',
+      details: paths.map((p) => p.split('/').pop() || p),
+      confirmLabel: 'Supprimer',
+      danger: true,
+    })
+    if (ok) { deleteEntries(paths); clearSelect(); setSelecting(false) }
   }
 
-  function handleOpen(entry: FileEntry) {
+  function open(entry: FileEntry) {
     if (entry.type === 'directory') return navigate(entry.path)
-    const videoExts = ['.mp4', '.mkv', '.avi', '.mov', '.webm']
-    if (videoExts.includes(entry.extension || '')) {
-      openInNewTab(filesService.getStreamUrl(entry.path))
-    } else if (EDITABLE_EXTS.includes(entry.extension || '')) {
-      setEditing(entry)
-    } else {
-      openInNewTab(filesService.getDownloadUrl(entry.path))
-    }
+    if (VIDEO_EXTS.includes(entry.extension || '')) openInNewTab(filesService.getStreamUrl(entry.path))
+    else if (EDITABLE_EXTS.includes(entry.extension || '')) setEditing(entry)
+    else openInNewTab(filesService.getDownloadUrl(entry.path))
   }
 
   async function handleUpload(files: FileList | null) {
     if (!files?.length) return
-    const id = toast.loading(`Upload ${Array.from(files).length} fichier(s)…`)
+    setUploading(true)
+    const n = files.length
+    const id = toast.loading(`Envoi de ${n} fichier${n > 1 ? 's' : ''}…`)
     try {
       await filesService.upload(currentPath, Array.from(files))
-      toast.success('Upload terminé', { id })
-    } catch (err) { toast.dismiss(id); showError('Upload impossible', serverError(err)) }
-    finally { invalidate() }
+      toast.success(`${n} fichier${n > 1 ? 's' : ''} envoyé${n > 1 ? 's' : ''}`, { id })
+    } catch (err) { toast.dismiss(id); showError('Envoi impossible', serverError(err)) }
+    finally { setUploading(false); invalidate(); if (uploadRef.current) uploadRef.current.value = '' }
+  }
+
+  const itemsFor = (entry: FileEntry): MenuItem[] => [
+    { label: entry.type === 'directory' ? 'Ouvrir' : 'Ouvrir', icon: <Eye />, shortcut: '↩', onSelect: () => open(entry) },
+    ...(EDITABLE_EXTS.includes(entry.extension || '') ? [{ label: 'Modifier', icon: <Pencil />, onSelect: () => setEditing(entry) }] : []),
+    ...(entry.type === 'file' ? [{ label: 'Télécharger', icon: <Download />, onSelect: () => openInNewTab(filesService.getDownloadUrl(entry.path)) }] : []),
+    { label: 'Renommer…', icon: <Pencil />, onSelect: () => setRenaming(entry) },
+    { separator: true },
+    { label: 'Supprimer…', icon: <Trash2 />, destructive: true, onSelect: () => confirmDelete(entry) },
+  ]
+
+  // Finder-like selection: click = this one, ⌘/Ctrl-click = add / remove
+  function select(entry: FileEntry, e: React.MouseEvent) {
+    if (e.metaKey || e.ctrlKey) { toggleSelect(entry.path); return }
+    clearSelect(); toggleSelect(entry.path)
+  }
+
+  // Keyboard: ⌘A, Delete, Enter, Escape
+  useEffect(() => {
+    if (phone) return
+    const onKey = (e: KeyboardEvent) => {
+      const t = e.target as HTMLElement
+      if (t.closest('input, textarea, [role="dialog"], [role="alertdialog"], [role="menu"]')) return
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'a') { e.preventDefault(); selectAll() }
+      else if ((e.key === 'Delete' || (e.metaKey && e.key === 'Backspace')) && selected.size) { e.preventDefault(); void deleteSelection() }
+      else if (e.key === 'Escape') clearSelect()
+      else if (e.key === 'Enter' && selected.size === 1) { const en = entries.find((x) => selected.has(x.path)); if (en) open(en) }
+    }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  })
+
+  /* ── Chrome ─────────────────────────────────────────────────────────── */
+  const iconBtn = 'w-8 h-8 grid place-items-center rounded-[6px] text-label2 hoverable disabled:opacity-40'
+  const searchField = (
+    <label className={cn('relative flex items-center', phone ? 'w-full' : 'w-[180px]')}>
+      <span className="sr-only">Rechercher dans ce dossier</span>
+      <Search size={phone ? 16 : 13} strokeWidth={1.75} className="absolute left-2 text-label2 pointer-events-none" aria-hidden="true" />
+      <input
+        type="search" value={search} onChange={(e) => setSearch(e.target.value)} placeholder="Rechercher"
+        className={cn('w-full bg-fill text-label placeholder:text-label2 outline-none focus:shadow-[0_0_0_3px_color-mix(in_srgb,var(--accent)_35%,transparent)]',
+          phone ? 'h-9 pl-8 pr-8 rounded-[10px] text-[17px]' : 'h-7 pl-7 pr-7 rounded-[7px] text-body')}
+      />
+      {search && (
+        <button type="button" className="absolute right-1.5 w-5 h-5 grid place-items-center rounded-full bg-label3 text-surface" onClick={() => setSearch('')} aria-label="Effacer la recherche">
+          <X size={11} strokeWidth={2.5} />
+        </button>
+      )}
+    </label>
+  )
+
+  const desktopActions = (
+    <>
+      <button type="button" className={iconBtn} onClick={goUp} disabled={currentPath === '/'} aria-label="Dossier parent" title="Dossier parent"><ChevronUp size={18} strokeWidth={1.5} /></button>
+      <SegmentedControl label="Présentation" value={view} onChange={setView} options={[
+        { value: 'list', label: <List size={14} strokeWidth={1.75} aria-label="Liste" />, title: 'Liste' },
+        { value: 'icons', label: <LayoutGrid size={14} strokeWidth={1.75} aria-label="Icônes" />, title: 'Icônes' },
+      ]} />
+      {selected.size > 0 && (
+        <button type="button" className={cn(iconBtn, 'text-danger-text w-auto px-2 gap-1 flex items-center')} disabled={deleting} onClick={deleteSelection} aria-label="Supprimer la sélection" title="Supprimer la sélection">
+          <Trash2 size={16} strokeWidth={1.5} /><span className="text-subhead tabular">{selected.size}</span>
+        </button>
+      )}
+      <button type="button" className={iconBtn} onClick={() => setCreating('dir')} aria-label="Nouveau dossier" title="Nouveau dossier"><FolderPlus size={17} strokeWidth={1.5} /></button>
+      <button type="button" className={iconBtn} onClick={() => setCreating('file')} aria-label="Nouveau fichier" title="Nouveau fichier"><FilePlus size={17} strokeWidth={1.5} /></button>
+      <button type="button" className={iconBtn} onClick={() => uploadRef.current?.click()} disabled={uploading} aria-label="Envoyer des fichiers" title="Envoyer des fichiers">
+        {uploading ? <Spinner size={16} /> : <Upload size={17} strokeWidth={1.5} />}
+      </button>
+      {searchField}
+    </>
+  )
+  const phoneActions = selecting ? (
+    <Button variant="plain" className="font-semibold text-[17px] min-h-[44px]" onClick={() => { setSelecting(false); clearSelect() }}>OK</Button>
+  ) : (
+    <button type="button" className="w-11 h-11 grid place-items-center text-accent-text active:opacity-50" onClick={() => setPhoneMenu(true)} aria-label="Options du dossier">
+      <Ellipsis size={24} strokeWidth={1.75} />
+    </button>
+  )
+
+  /* ── Content ────────────────────────────────────────────────────────── */
+  let content: React.ReactNode
+  if (isLoading) content = <SkeletonRows rows={6} />
+  else if (error) content = <EmptyState tone="error" icon={<Folder strokeWidth={1.25} />} title="Dossier inaccessible" message={serverError(error)} action={<Button onClick={goUp}>Dossier parent</Button>} />
+  else if (filtered.length === 0) content = <EmptyState icon={<Folder strokeWidth={1.25} />} title={search ? 'Aucun résultat' : 'Dossier vide'} message={search ? `Aucun élément ne contient « ${search} ».` : 'Envoie des fichiers ou crée un dossier.'} />
+  else if (phone) {
+    content = (
+      <div className="bg-surface rounded-group overflow-hidden" role="list" aria-label={`Contenu de ${nameOf(currentPath)}`}>
+        {filtered.map((entry, i) => {
+          const on = selected.has(entry.path)
+          return (
+            <button
+              key={entry.path}
+              type="button"
+              role="listitem"
+              className={cn('relative w-full flex items-center gap-3 pl-4 pr-3 min-h-[60px] text-left pressable', i > 0 && 'hairline-t')}
+              onClick={() => (selecting ? toggleSelect(entry.path) : open(entry))}
+              {...menu.bind(itemsFor(entry), entry.name)}
+              aria-pressed={selecting ? on : undefined}
+            >
+              {selecting && (
+                <span className={cn('w-[22px] h-[22px] rounded-full grid place-items-center flex-shrink-0', on ? 'bg-accent text-white' : 'border-[1.5px] border-label3')} aria-hidden="true">
+                  {on && <span className="text-[13px] font-bold">✓</span>}
+                </span>
+              )}
+              <FileIcon entry={entry} size={30} />
+              <span className="flex-1 min-w-0">
+                <span className="block text-[17px] text-label truncate">{entry.name}</span>
+                <span className="block text-[13px] text-label2 truncate tabular">{formatDate(entry.modified)}{entry.size != null ? ` · ${formatBytes(entry.size)}` : ''}</span>
+              </span>
+              {entry.type === 'directory' && !selecting && <ChevronRight size={16} strokeWidth={2} className="text-label3 flex-shrink-0" aria-hidden="true" />}
+            </button>
+          )
+        })}
+      </div>
+    )
+  } else if (view === 'icons') {
+    content = (
+      <div className="grid gap-2 grid-cols-[repeat(auto-fill,minmax(104px,1fr))]" role="list" onClick={(e) => { if (e.target === e.currentTarget) clearSelect() }}>
+        {filtered.map((entry) => {
+          const on = selected.has(entry.path)
+          return (
+            <button
+              key={entry.path}
+              type="button"
+              role="listitem"
+              className="flex flex-col items-center gap-1.5 p-2 rounded-[8px] text-center outline-none focus-visible:ring-2 focus-visible:ring-accent"
+              onClick={(e) => select(entry, e)}
+              onDoubleClick={() => open(entry)}
+              {...menu.bind(itemsFor(entry), entry.name)}
+              aria-pressed={on}
+              aria-label={entry.name}
+            >
+              <span className={cn('p-2 rounded-[8px]', on && 'bg-fill')}><FileIcon entry={entry} size={44} /></span>
+              <span className={cn('text-subhead w-full px-1 rounded-[4px] line-clamp-2 break-all', on ? 'bg-accent text-white' : 'text-label')}>{entry.name}</span>
+            </button>
+          )
+        })}
+      </div>
+    )
+  } else {
+    content = (
+      <div className="bg-surface rounded-card overflow-hidden">
+        <table className="w-full text-body border-collapse table-fixed" aria-label={`Contenu de ${nameOf(currentPath)}`}>
+          <thead className="hairline-b">
+            <tr className="text-caption text-label2 text-left">
+              <th scope="col" className="font-normal pl-4 h-7">Nom</th>
+              <th scope="col" className="font-normal w-[190px] max-lg:w-[150px] px-2">Date de modification</th>
+              <th scope="col" className="font-normal w-[96px] px-2 text-right">Taille</th>
+              <th scope="col" className="font-normal w-[96px] px-2 max-lg:hidden">Autorisations</th>
+              <th scope="col" className="w-[40px]"><span className="sr-only">Actions</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map((entry, n) => {
+              const on = selected.has(entry.path)
+              const muted = on ? 'text-white/80' : 'text-label2'
+              return (
+                <tr
+                  key={entry.path}
+                  aria-selected={on}
+                  tabIndex={0}
+                  className={cn('h-[30px] outline-none', on ? 'bg-accent text-white' : n % 2 ? 'bg-fill2' : '', 'focus-visible:shadow-[inset_0_0_0_2px_var(--accent)]')}
+                  onClick={(e) => select(entry, e)}
+                  onDoubleClick={() => open(entry)}
+                  onKeyDown={(e) => { if (e.key === 'Enter') open(entry) }}
+                  {...menu.bind(itemsFor(entry), entry.name)}
+                >
+                  <td className="pl-4 pr-2">
+                    <span className="flex items-center gap-2 min-w-0">
+                      {on && entry.type === 'directory' ? <Folder size={16} strokeWidth={1.5} className="text-white flex-shrink-0" aria-hidden="true" /> : <FileIcon entry={entry} />}
+                      <span className="truncate">{entry.name}</span>
+                    </span>
+                  </td>
+                  <td className={cn('px-2 truncate tabular', muted)}>{formatDate(entry.modified)}</td>
+                  <td className={cn('px-2 text-right tabular', muted)}>{entry.size != null ? formatBytes(entry.size) : '—'}</td>
+                  <td className={cn('px-2 font-mono text-subhead max-lg:hidden', muted)}>{entry.permissions}</td>
+                  <td className="pr-2 text-right">
+                    <button
+                      type="button"
+                      className={cn('w-6 h-6 inline-grid place-items-center rounded-[5px]', on ? 'text-white hover:bg-white/20' : 'text-label2 hover:bg-fill')}
+                      aria-label={`Actions pour ${entry.name}`}
+                      onClick={(e) => { e.stopPropagation(); menu.openFrom(e.currentTarget, itemsFor(entry), entry.name) }}
+                    >
+                      <Ellipsis size={15} strokeWidth={1.75} />
+                    </button>
+                  </td>
+                </tr>
+              )
+            })}
+          </tbody>
+        </table>
+      </div>
+    )
+  }
+
+  const status = `${filtered.length} élément${filtered.length > 1 ? 's' : ''}${selected.size ? `, ${selected.size} sélectionné${selected.size > 1 ? 's' : ''}` : ''}`
+
+  return (
+    <Page
+      title={nameOf(currentPath)}
+      subtitle={currentPath}
+      back={phone && currentPath !== '/' ? { to: `/files?path=${encodeURIComponent(parentOf(currentPath))}`, label: nameOf(parentOf(currentPath)) } : undefined}
+      actions={phone ? phoneActions : desktopActions}
+      accessory={phone ? searchField : undefined}
+    >
+      <div className={cn('flex flex-col gap-3', phone && selecting && 'pb-24')}>
+        {content}
+        {!phone && (
+          // Path bar + status (Finder)
+          <div className="flex items-center justify-between gap-4 px-1 text-caption text-label2">
+            <nav aria-label="Chemin" className="flex items-center gap-0.5 min-w-0 overflow-x-auto scrollbar-none">
+              {breadcrumbs.map((c, i) => (
+                <span key={c.path} className="flex items-center gap-0.5 flex-shrink-0">
+                  {i > 0 && <ChevronRight size={11} strokeWidth={2} aria-hidden="true" />}
+                  <Link to={`/files?path=${encodeURIComponent(c.path)}`} className={cn('flex items-center gap-1 px-1 rounded-[4px] hover:bg-fill', i === breadcrumbs.length - 1 && 'text-label')}>
+                    <Folder size={11} strokeWidth={1.75} className="text-accent" aria-hidden="true" />
+                    {c.label === '/' ? 'Racine' : c.label}
+                  </Link>
+                </span>
+              ))}
+            </nav>
+            <span className="flex-shrink-0 tabular" aria-live="polite">{status}</span>
+          </div>
+        )}
+        {phone && !isLoading && <p className="text-center text-subhead text-label2 tabular">{status}</p>}
+      </div>
+
+      {/* Phone: selection toolbar */}
+      {phone && selecting && (
+        <div className="fixed inset-x-0 z-40 material-bar hairline-t flex items-center justify-between px-4" style={{ bottom: 'calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px))', height: 48 }}>
+          <Button variant="plain" className="text-[17px]" onClick={() => (selected.size === filtered.length ? clearSelect() : selectAll())}>
+            {selected.size === filtered.length ? 'Tout désélectionner' : 'Tout sélectionner'}
+          </Button>
+          <Button variant="destructive-plain" className="text-[17px]" disabled={!selected.size || deleting} onClick={deleteSelection} aria-label="Supprimer la sélection">
+            Supprimer{selected.size ? ` (${selected.size})` : ''}
+          </Button>
+        </div>
+      )}
+
+      {/* Phone: folder actions */}
+      <ActionSheet
+        open={phoneMenu}
+        onClose={() => setPhoneMenu(false)}
+        title={nameOf(currentPath)}
+        actions={[
+          { label: 'Nouveau dossier', onSelect: () => setCreating('dir') },
+          { label: 'Nouveau fichier', onSelect: () => setCreating('file') },
+          { label: 'Envoyer des fichiers', onSelect: () => uploadRef.current?.click() },
+          { label: 'Sélectionner', onSelect: () => setSelecting(true) },
+        ]}
+      />
+
+      {menu.element}
+
+      <NameSheet
+        open={!!renaming}
+        title="Renommer"
+        label="Nouveau nom"
+        initial={renaming?.name ?? ''}
+        confirmLabel="Renommer"
+        onClose={() => setRenaming(null)}
+        onSubmit={(name) => { if (renaming) renameEntry({ path: renaming.path, newName: name }) }}
+      />
+      <NameSheet
+        open={!!creating}
+        title={creating === 'dir' ? 'Nouveau dossier' : 'Nouveau fichier'}
+        label="Nom"
+        initial={creating === 'dir' ? 'Nouveau dossier' : 'sans titre.txt'}
+        confirmLabel="Créer"
+        onClose={() => setCreating(null)}
+        onSubmit={(name) => (creating === 'dir' ? createDir(name) : createFile(name))}
+      />
+      {editing && <Editor entry={editing} onClose={() => setEditing(null)} />}
+
+      <input ref={uploadRef} type="file" multiple className="hidden" onChange={(e) => handleUpload(e.target.files)} />
+    </Page>
+  )
+}
+
+/* ── Name sheet (create / rename) ─────────────────────────────────────── */
+
+function NameSheet({ open, title, label, initial, confirmLabel, onClose, onSubmit }: {
+  open: boolean; title: string; label: string; initial: string; confirmLabel: string
+  onClose: () => void; onSubmit: (name: string) => void
+}) {
+  const [name, setName] = useState(initial)
+  const input = useRef<HTMLInputElement>(null)
+  const { device } = useShell()
+  const phone = device === 'phone'
+  useEffect(() => {
+    if (!open) return
+    setName(initial)
+    // Select the name without its extension, like Finder
+    setTimeout(() => { const el = input.current; if (!el) return; const dot = initial.lastIndexOf('.'); el.setSelectionRange(0, dot > 0 ? dot : initial.length) }, 60)
+  }, [open, initial])
+  const valid = name.trim() && !name.includes('/')
+  const submit = () => { if (!valid) return; onSubmit(name.trim()); onClose() }
+  return (
+    <Sheet
+      open={open}
+      onClose={onClose}
+      title={title}
+      size="sm"
+      initialFocus={input}
+      phoneHeader={{ left: <Button variant="plain" onClick={onClose}>Annuler</Button>, right: <Button variant="plain" className="font-semibold" disabled={!valid} onClick={submit}>{confirmLabel}</Button> }}
+      footer={phone ? undefined : <><Button onClick={onClose}>Annuler</Button><Button variant="primary" disabled={!valid} onClick={submit}>{confirmLabel}</Button></>}
+    >
+      <form onSubmit={(e) => { e.preventDefault(); submit() }}>
+        <TextField ref={input} label={label} hideLabel={phone} value={name} onChange={(e) => setName(e.target.value)}
+          error={name.includes('/') ? 'Le nom ne peut pas contenir « / ».' : undefined} autoComplete="off" spellCheck={false} />
+      </form>
+    </Sheet>
+  )
+}
+
+/* ── Text editor ──────────────────────────────────────────────────────── */
+
+function Editor({ entry, onClose }: { entry: FileEntry; onClose: () => void }) {
+  const [content, setContent] = useState('')
+  const [original, setOriginal] = useState('')
+  const [loading, setLoading] = useState(true)
+  const [saving, setSaving] = useState(false)
+  const confirm = useConfirm()
+
+  useEffect(() => {
+    filesService.readFile(entry.path)
+      .then((c) => { setContent(c); setOriginal(c); setLoading(false) })
+      .catch((err) => { showError('Lecture impossible', serverError(err)); onClose() })
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [entry.path])
+
+  async function save() {
+    setSaving(true)
+    try {
+      await filesService.writeFile(entry.path, content)
+      toast.success('Enregistré')
+      onClose()
+    } catch (err) { showError('Enregistrement impossible', serverError(err)) }
+    finally { setSaving(false) }
+  }
+  async function close() {
+    if (content !== original && !(await confirm({ title: 'Ignorer les modifications ?', message: `Les changements apportés à « ${entry.name} » seront perdus.`, confirmLabel: 'Ignorer', danger: true }))) return
+    onClose()
   }
 
   return (
-    <div className="flex flex-col h-full" style={{ background: 'var(--bg)' }}>
-
-      {/* TOPBAR */}
-      <div className="flex flex-wrap items-center gap-2 px-3 sm:px-5 py-2.5 sm:py-3 border-b"
-        style={{ background: 'var(--surface)', borderColor: 'var(--border)' }}>
-
-        {/* Breadcrumbs — full row on mobile */}
-        <div className="flex items-center gap-0.5 basis-full md:basis-auto flex-1 min-w-0 overflow-x-auto">
-          {breadcrumbs.map((c, i) => (
-            <div key={c.path} className="flex items-center gap-0.5 flex-shrink-0">
-              {i > 0 && <ChevronRight size={12} style={{ color: 'var(--text3)' }} />}
-              <button
-                className="px-1.5 py-0.5 rounded text-[12px] font-mono transition-colors hover:bg-[var(--surface2)]"
-                style={{ color: i === breadcrumbs.length - 1 ? 'var(--text)' : 'var(--text3)', fontWeight: i === breadcrumbs.length - 1 ? 600 : 400 }}
-                onClick={() => navigate(c.path)}
-              >{c.label}</button>
-            </div>
-          ))}
-        </div>
-
-        {/* Search */}
-        <div className="relative flex-1 md:flex-none min-w-[120px]">
-          <Search size={12} className="absolute left-2.5 top-1/2 -translate-y-1/2" style={{ color: 'var(--text3)' }} />
-          <input className="input pl-7 pr-3 py-1.5 text-[16px] sm:text-[12px] w-full md:w-44" placeholder="Rechercher…"
-            value={search} onChange={(e) => setSearch(e.target.value)} />
-          {search && <button className="absolute right-2 top-1/2 -translate-y-1/2" onClick={() => setSearch('')}>
-            <X size={11} style={{ color: 'var(--text3)' }} /></button>}
-        </div>
-
-        {/* Buttons */}
-        <button className="btn-ghost text-[12px] px-2.5 py-1.5" onClick={goUp} aria-label="Dossier parent" title="Dossier parent"><ChevronUp size={13} strokeWidth={2} /></button>
-        <button className="btn-ghost text-[12px] px-2.5 sm:px-4" onClick={() => { setCreating('dir'); setNewItem('') }} aria-label="Nouveau dossier" title="Nouveau dossier"><FolderPlus size={13} strokeWidth={2} /> <span className="hidden sm:inline">Dossier</span></button>
-        <button className="btn-ghost text-[12px] px-2.5 sm:px-4" onClick={() => { setCreating('file'); setNewItem('') }} aria-label="Nouveau fichier" title="Nouveau fichier"><FilePlus size={13} strokeWidth={2} /> <span className="hidden sm:inline">Fichier</span></button>
-        <button className="btn-ghost text-[12px] px-2.5 sm:px-4" onClick={() => uploadRef.current?.click()} aria-label="Upload" title="Upload"><Upload size={13} strokeWidth={2} /> <span className="hidden sm:inline">Upload</span></button>
-        {selected.size > 0 && (
-          <button className="btn-danger text-[12px]" disabled={deleting} onClick={async () => {
-            const paths = [...selected]
-            const ok = await confirm({
-              title: `Supprimer ${paths.length} élément(s) ?`,
-              message: 'Ils seront définitivement supprimés du serveur, dossiers compris avec tout leur contenu.',
-              details: paths.map((p) => p.split('/').pop() || p),
-              confirmLabel: 'Supprimer',
-              danger: true,
-            })
-            if (ok) { deleteEntries(paths); clearSelect() }
-          }} aria-label="Supprimer la sélection"><Trash2 size={13} strokeWidth={2} /> ({selected.size})</button>
-        )}
-        <button className="btn-ghost text-[12px] px-2.5 py-1.5"
-          aria-label={viewMode === 'list' ? 'Vue grille' : 'Vue liste'}
-          onClick={() => setViewMode(v => v === 'list' ? 'grid' : 'list')}>
-          {viewMode === 'list' ? <Grid size={13} strokeWidth={2} /> : <List size={13} strokeWidth={2} />}
-        </button>
-      </div>
-
-      {/* CONTENT */}
-      <div className="flex-1 overflow-y-auto p-2 sm:p-4">
-        {isLoading ? (
-          <div className="flex justify-center items-center h-40">
-            <div className="w-5 h-5 border-2 rounded-full animate-spin"
-              style={{ borderColor: 'var(--border2)', borderTopColor: 'var(--blue)' }} />
-          </div>
-        ) : filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center h-40 gap-2">
-            <Folder size={32} style={{ color: 'var(--text3)' }} strokeWidth={1.5} />
-            <p className="text-[13px]" style={{ color: 'var(--text3)' }}>
-              {search ? 'Aucun résultat' : 'Dossier vide'}
-            </p>
-          </div>
-        ) : viewMode === 'list' ? (
-          <div className="card overflow-hidden">
-            <div className={`${LIST_COLS} gap-x-2 px-3 sm:px-4 py-2 border-b text-[11px] font-semibold uppercase tracking-wide`}
-              style={{ borderColor: 'var(--border)', background: 'var(--surface2)', color: 'var(--text3)' }}>
-              <input type="checkbox" className="w-3.5 h-3.5 cursor-pointer"
-                checked={selected.size === filtered.length && filtered.length > 0}
-                onChange={(e) => e.target.checked ? selectAll() : clearSelect()} />
-              <span>Nom</span><span>Taille</span>
-              <span className="hidden md:block">Modifié</span>
-              <span className="hidden md:block">Permissions</span>
-              <span />
-            </div>
-            {filtered.map((entry) => (
-              <div key={entry.path}
-                className={`${LIST_COLS} gap-x-2 items-center px-3 sm:px-4 py-2.5 sm:py-2 border-b cursor-pointer transition-colors`}
-                style={{
-                  borderColor: 'var(--border)',
-                  background: selected.has(entry.path) ? 'var(--blue-dim)' : 'transparent',
-                }}
-                onMouseEnter={(e) => { if (!selected.has(entry.path)) e.currentTarget.style.background = 'var(--surface2)' }}
-                onMouseLeave={(e) => { if (!selected.has(entry.path)) e.currentTarget.style.background = 'transparent' }}
-                onDoubleClick={() => handleOpen(entry)}
-                onClick={() => { if (isTouch) handleOpen(entry) }}
-                onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, entry }) }}
-              >
-                <input type="checkbox" className="w-4 h-4 sm:w-3.5 sm:h-3.5 cursor-pointer"
-                  checked={selected.has(entry.path)}
-                  onChange={() => toggleSelect(entry.path)}
-                  onClick={(e) => e.stopPropagation()} />
-                <div className="flex items-center gap-2 min-w-0">
-                  <FileIcon entry={entry} />
-                  <span className="text-[13px] truncate" style={{ color: 'var(--text)' }}>{entry.name}</span>
-                </div>
-                <span className="text-[11.5px] font-mono truncate" style={{ color: 'var(--text3)' }}>
-                  {entry.size != null ? formatBytes(entry.size) : '—'}
-                </span>
-                <span className="hidden md:block text-[11.5px] truncate" style={{ color: 'var(--text3)' }}>{formatDate(entry.modified)}</span>
-                <span className="hidden md:block text-[11px] font-mono" style={{ color: 'var(--text3)' }}>{entry.permissions}</span>
-                <button
-                  className="w-7 h-7 -mr-1 rounded-md flex items-center justify-center hover:bg-[var(--surface3)]"
-                  style={{ color: 'var(--text3)' }}
-                  aria-label={`Actions pour ${entry.name}`}
-                  onClick={(e) => { e.stopPropagation(); openMenuAt(e.currentTarget, entry) }}
-                >
-                  <MoreVertical size={14} />
-                </button>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="grid gap-1.5" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(96px, 1fr))' }}>
-            {filtered.map((entry) => (
-              <div key={entry.path}
-                className="flex flex-col items-center gap-1.5 p-3 rounded-xl cursor-pointer transition-all text-center"
-                style={{
-                  background: selected.has(entry.path) ? 'var(--blue-dim)' : 'transparent',
-                  border: `1px solid ${selected.has(entry.path) ? 'var(--blue)' : 'transparent'}`,
-                }}
-                onMouseEnter={(e) => { if (!selected.has(entry.path)) e.currentTarget.style.background = 'var(--surface2)' }}
-                onMouseLeave={(e) => { if (!selected.has(entry.path)) e.currentTarget.style.background = 'transparent' }}
-                onDoubleClick={() => handleOpen(entry)}
-                onClick={() => (isTouch ? handleOpen(entry) : toggleSelect(entry.path))}
-                onContextMenu={(e) => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY, entry }) }}
-              >
-                <FileIcon entry={entry} size={30} />
-                <span className="text-[11px] font-medium w-full truncate" style={{ color: 'var(--text)' }}>{entry.name}</span>
-                {entry.size != null && <span className="text-[9.5px] font-mono" style={{ color: 'var(--text3)' }}>{formatBytes(entry.size)}</span>}
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
-
-      {/* STATUS BAR */}
-      <div className="flex items-center justify-between gap-3 px-3 sm:px-5 py-1.5 border-t text-[11px] font-mono"
-        style={{ background: 'var(--surface)', borderColor: 'var(--border)', color: 'var(--text3)', paddingBottom: 'max(0.375rem, env(safe-area-inset-bottom))' }}>
-        <span className="flex-shrink-0">{filtered.length} élément(s)</span>
-        <span className="hidden sm:block truncate max-w-sm">{currentPath}</span>
-        {selected.size > 0 && <span>{selected.size} sélectionné(s)</span>}
-      </div>
-
-      {/* CONTEXT MENU */}
-      {ctxMenu && (
-        <>
-          <div className="fixed inset-0 z-40" onClick={() => setCtxMenu(null)} />
-          <div className="fixed z-50 card py-1 min-w-[180px]"
-            style={{
-              top:  Math.max(8, Math.min(ctxMenu.y, window.innerHeight - 230)),
-              left: Math.max(8, Math.min(ctxMenu.x, window.innerWidth - 190)),
-              boxShadow: 'var(--shadow-lg)',
-            }}>
-            {[
-              { icon: <Eye size={13} />, label: 'Ouvrir', action: () => { handleOpen(ctxMenu.entry); setCtxMenu(null) } },
-              EDITABLE_EXTS.includes(ctxMenu.entry.extension || '') && {
-                icon: <Edit2 size={13} />, label: 'Éditer',
-                action: () => { setEditing(ctxMenu.entry); setCtxMenu(null) },
-              },
-              { icon: <Download size={13} />, label: 'Télécharger',
-                action: () => { openInNewTab(filesService.getDownloadUrl(ctxMenu.entry.path)); setCtxMenu(null) } },
-              { icon: <Edit2 size={13} />, label: 'Renommer',
-                action: () => { setRenaming(ctxMenu.entry); setNewName(ctxMenu.entry.name); setCtxMenu(null) } },
-              { icon: <Trash2 size={13} />, label: 'Supprimer', danger: true,
-                action: () => { const entry = ctxMenu.entry; setCtxMenu(null); confirmDelete(entry) } },
-            ].filter((x): x is { icon: React.ReactElement; label: string; action: () => void; danger?: boolean } => Boolean(x)).map((item) => (
-              <button key={item.label}
-                className="flex items-center gap-2.5 w-full px-3 py-2.5 sm:py-2 text-[13px] sm:text-[12.5px] text-left transition-colors"
-                style={{ color: item.danger ? 'var(--red)' : 'var(--text)' }}
-                onMouseEnter={(e) => e.currentTarget.style.background = 'var(--surface2)'}
-                onMouseLeave={(e) => e.currentTarget.style.background = 'transparent'}
-                onClick={item.action}>
-                <span style={{ color: item.danger ? 'var(--red)' : 'var(--text3)' }}>{item.icon}</span>
-                {item.label}
-              </button>
-            ))}
-          </div>
-        </>
+    <Sheet
+      open
+      onClose={close}
+      title={entry.name}
+      size="lg"
+      dismissible={!saving}
+      phoneHeader={{ left: <Button variant="plain" onClick={close}>Annuler</Button>, right: <Button variant="plain" className="font-semibold" loading={saving} disabled={loading} onClick={save}>Enregistrer</Button> }}
+      footer={<><span className="mr-auto text-caption text-label2 font-mono truncate max-md:hidden">{entry.path}</span><Button onClick={close} className="max-md:hidden">Annuler</Button><Button variant="primary" loading={saving} disabled={loading} onClick={save} className="max-md:hidden">Enregistrer</Button></>}
+      className="md:h-[78vh] max-md:h-[92dvh]"
+    >
+      {loading ? <div className="grid place-items-center h-full min-h-[200px]"><Spinner /></div> : (
+        <textarea
+          className="w-full h-full min-h-[50vh] p-3 rounded-[8px] resize-none outline-none font-mono text-[13px] leading-relaxed text-label bg-surface2"
+          style={{ boxShadow: 'inset 0 0 0 .5px var(--separator)' }}
+          value={content}
+          onChange={(e) => setContent(e.target.value)}
+          spellCheck={false}
+          aria-label={`Contenu de ${entry.name}`}
+          onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') { e.preventDefault(); void save() } }}
+        />
       )}
-
-      {/* RENAME MODAL */}
-      {renaming && (
-        <Modal title="Renommer" onClose={() => setRenaming(null)}>
-          <input className="input mb-4" value={newName} onChange={(e) => setNewName(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && (renameEntry({ path: renaming.path, newName }), setRenaming(null))}
-            autoFocus />
-          <div className="flex gap-2 justify-end">
-            <button className="btn-ghost" onClick={() => setRenaming(null)}>Annuler</button>
-            <button className="btn-primary" onClick={() => { renameEntry({ path: renaming.path, newName }); setRenaming(null) }}>
-              Renommer
-            </button>
-          </div>
-        </Modal>
-      )}
-
-      {/* CREATE MODAL */}
-      {creating && (
-        <Modal title={creating === 'dir' ? 'Nouveau dossier' : 'Nouveau fichier'} onClose={() => setCreating(null)}>
-          <input className="input mb-4" placeholder={creating === 'dir' ? 'mon-dossier' : 'fichier.txt'}
-            value={newItem} onChange={(e) => setNewItem(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && newItem && (creating === 'dir' ? createDir(newItem) : createFile(newItem), setCreating(null))}
-            autoFocus />
-          <div className="flex gap-2 justify-end">
-            <button className="btn-ghost" onClick={() => setCreating(null)}>Annuler</button>
-            <button className="btn-primary" disabled={!newItem}
-              onClick={() => { newItem && (creating === 'dir' ? createDir(newItem) : createFile(newItem)); setCreating(null) }}>
-              Créer
-            </button>
-          </div>
-        </Modal>
-      )}
-
-      {/* EDITOR */}
-      {editing && <EditorModal entry={editing} onClose={() => setEditing(null)} />}
-
-      <input ref={uploadRef} type="file" multiple className="hidden"
-        onChange={(e) => handleUpload(e.target.files)} />
-    </div>
+    </Sheet>
   )
 }

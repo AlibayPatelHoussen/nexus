@@ -54,18 +54,20 @@ interface ListRowProps {
   className?:  string
   /** Text actions / buttons inside the row (not a single click target) */
   children?:   React.ReactNode
+  /** Let the subtitle wrap instead of truncating (explanations) */
+  wrap?:       boolean
   'aria-label'?: string
 }
 
 const TONE: Record<string, string> = {
-  accent: 'var(--accent)', gray: '#8e8e93', green: 'var(--green)', orange: 'var(--orange)', red: 'var(--red)',
+  accent: 'var(--accent)', gray: 'var(--gray)', green: 'var(--green)', orange: 'var(--orange)', red: 'var(--red)',
 }
 const DOT: Record<string, string> = { ok: 'var(--green)', warn: 'var(--orange)', error: 'var(--red)', off: 'var(--label-3)' }
 
 /** One line of a grouped list: icon, title, subtitle, value, chevron / control. */
 export function ListRow({
   title, subtitle, detail, icon, iconTone = 'none', status, accessory, to, onClick, onContextMenu,
-  destructive, selected, disabled, className, children, ...aria
+  destructive, selected, disabled, className, children, wrap, ...aria
 }: ListRowProps) {
   const interactive = !!(to || onClick)
   const content = (
@@ -86,7 +88,7 @@ export function ListRow({
       )}
       <span className="flex-1 min-w-0 py-[7px] max-md:py-[11px]">
         <span className={cn('block truncate', destructive ? 'text-danger-text' : 'text-label')}>{title}</span>
-        {subtitle && <span className="block text-subhead text-label2 truncate mt-px">{subtitle}</span>}
+        {subtitle && <span className={cn('block text-subhead text-label2 mt-px', wrap ? 'text-balance' : 'truncate')}>{subtitle}</span>}
       </span>
       {detail != null && detail !== '' && <span className="text-label2 tabular truncate max-w-[45%] text-right">{detail}</span>}
       {children}

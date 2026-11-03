@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest'
-import { formatBytes, formatUptime, formatDuration, formatRate, formatPercent, getFileIcon, cn } from '@/utils'
+import { formatBytes, formatUptime, formatDuration, formatRate, formatPercent, cn } from '@/utils'
 
 const nb = (s: string) => s.replace(/\u00a0/g, ' ')
 
@@ -24,21 +24,6 @@ describe('formatDuration', () => {
   it('formats mm:ss under an hour', () => expect(formatDuration(125)).toBe('2:05'))
   it('formats h:mm:ss over an hour', () => expect(formatDuration(3661)).toBe('1:01:01'))
   it('pads seconds', () => expect(formatDuration(65)).toBe('1:05'))
-})
-
-describe('getFileIcon', () => {
-  it('returns folder icon for directories', () => {
-    expect(getFileIcon(null, 'directory')).toBe('folder')
-  })
-  it('returns video icon for mkv', () => {
-    expect(getFileIcon('.mkv', 'file')).toBe('file-video')
-  })
-  it('returns code icon for py', () => {
-    expect(getFileIcon('.py', 'file')).toBe('file-code-2')
-  })
-  it('returns generic file icon for unknown', () => {
-    expect(getFileIcon('.xyz', 'file')).toBe('file')
-  })
 })
 
 describe('cn', () => {
