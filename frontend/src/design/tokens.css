@@ -91,6 +91,9 @@
   --dur-slow: 250ms;
   --ease-out:   cubic-bezier(0.2, 0.8, 0.2, 1);
   --ease-sheet: cubic-bezier(0.32, 0.72, 0, 1);   /* iOS sheet / navigation */
+  /* Release of a pressed control: a light spring that settles without wobbling */
+  --ease-spring: linear(0, 0.157, 0.438, 0.676, 0.844, 0.949, 1.006, 1.031, 1.035, 1.028, 1.017, 1.007, 1.001, 0.998, 0.998, 1);
+  --press-scale: 0.96;
 
   color-scheme: light;
 }

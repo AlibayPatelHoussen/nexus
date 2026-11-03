@@ -91,7 +91,7 @@ function Popover({ x, y, items, title, onClose }: Omit<ContextMenuProps, 'open'>
       onKeyDown={onKey}
       onContextMenu={(e) => e.preventDefault()}
       className="fixed z-[120] min-w-[200px] max-w-[300px] p-[5px] rounded-[8px] material-bar text-body outline-none"
-      style={{ ...pos, boxShadow: 'var(--shadow-popover)', animation: 'nx-fade-in 120ms var(--ease-out) both' }}
+      style={{ ...pos, boxShadow: 'var(--shadow-popover)', animation: 'nx-menu-in 220ms var(--ease-spring) both', transformOrigin: 'top left' }}
     >
       {items.map((it, i) =>
         'separator' in it ? (

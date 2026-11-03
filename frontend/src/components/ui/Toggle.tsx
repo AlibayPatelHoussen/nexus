@@ -24,12 +24,17 @@ export default function Toggle({ checked, onChange, label, disabled, id }: Toggl
       aria-label={label}
       disabled={disabled}
       onClick={() => onChange(!checked)}
-      className={cn('relative flex-shrink-0 rounded-full transition-colors duration ease-out disabled:opacity-40')}
+      className={cn('group relative flex-shrink-0 rounded-full transition-colors duration ease-out disabled:opacity-40 no-press')}
       style={{ width: w, height: h, background: checked ? (phone ? 'var(--green)' : 'var(--accent)') : 'var(--fill)' }}
     >
       <span
-        className="absolute top-[2px] left-[2px] rounded-full bg-white transition-transform duration ease-sheet"
-        style={{ width: knob, height: knob, boxShadow: 'var(--shadow-thumb)', transform: checked ? `translateX(${w - h}px)` : 'none' }}
+        // The knob slides with a spring and stretches while pressed (iOS)
+        className="absolute top-[2px] left-[2px] rounded-full bg-white w-[var(--knob)] transition-[transform,width] duration-slow ease-sheet [transform:translateX(var(--x))] group-active:w-[var(--knob-press)] group-active:[transform:translateX(var(--x-press))] group-disabled:!w-[var(--knob)]"
+        style={{
+          height: knob, boxShadow: 'var(--shadow-thumb)',
+          ['--knob' as string]: `${knob}px`, ['--knob-press' as string]: `${knob + 6}px`,
+          ['--x' as string]: `${checked ? w - h : 0}px`, ['--x-press' as string]: `${checked ? w - h - 6 : 0}px`,
+        }}
       />
     </button>
   )

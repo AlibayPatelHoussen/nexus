@@ -29,9 +29,9 @@ export default function TabBar() {
               <Link
                 to={t.to}
                 aria-current={on ? 'page' : undefined}
-                className={cn('flex-1 flex flex-col items-center justify-center gap-[2px] pt-[3px] text-[10px] font-medium select-none active:opacity-60', on ? 'text-accent' : 'text-label2')}
+                className={cn('flex-1 flex flex-col items-center justify-center gap-[2px] pt-[3px] text-[10px] font-medium select-none no-press active:opacity-60', on ? 'text-accent' : 'text-label2')}
               >
-                <t.icon size={25} strokeWidth={on ? 1.9 : 1.5} aria-hidden="true" />
+                <t.icon size={25} strokeWidth={on ? 1.9 : 1.5} aria-hidden="true" style={on ? { animation: 'nx-tab-bounce 450ms var(--ease-out)' } : undefined} />
                 <span>{t.label}</span>
               </Link>
             </li>
