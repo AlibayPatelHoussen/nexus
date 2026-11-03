@@ -2,10 +2,12 @@
 # ══════════════════════════════════════════════════════════════════════
 #  Nexus — automatic deployment
 #
-#  Every 2 minutes (systemd timer) the server checks whether main changed
-#  on GitHub. If so, and once the CI of that commit is green, it runs
-#  scripts/deploy.sh by itself. Nothing to open on the router, no secret
-#  on GitHub: the server only reads (git fetch + public CI status).
+#  Immediate: GitHub calls Nexus (webhook /api/deploy/webhook) as soon as
+#  the CI of main is green; Nexus writes logs/.deploy-request, the systemd
+#  unit nexus-auto-deploy.path sees it and runs the deployment right away
+#  (outside Nexus, since deploying restarts it).
+#  Safety net: a check every 10 minutes (missed webhook, Wi-Fi down...).
+#  Each run deploys only a NEW commit of main whose CI is green.
 #
 #  sudo bash scripts/auto-deploy.sh install     install + start
 #  bash scripts/auto-deploy.sh status           state + last deployments
@@ -14,7 +16,7 @@
 #
 #  Options (/etc/default/nexus-auto-deploy):
 #    REQUIRE_CI=1      wait for a green CI before deploying (0: deploy at once)
-#    INTERVAL=2min     how often to check (install-time)
+#    INTERVAL=10min    safety-net check interval (install-time)
 #    GITHUB_TOKEN=…    only if the repository becomes private
 # ══════════════════════════════════════════════════════════════════════
 set -u
@@ -54,36 +56,45 @@ ci_state() {
 }
 
 do_run() {
+  # Commits merged during a deployment are deployed right after it
+  local i
+  for i in 1 2 3; do
+    run_once || return 0
+  done
+}
+
+# Returns 0 when it deployed successfully (then check again), 1 otherwise
+run_once() {
   cd "$DIR" || exit 1
   mkdir -p "$DIR/logs"
   # One run at a time (a deployment takes longer than the timer interval)
   exec 9>"$DIR/logs/.auto-deploy.lock"
-  flock -n 9 || exit 0
+  flock -n 9 || return 1
 
   if ! git fetch -q origin main 2>/dev/null; then
     log_once "fetch-$(date +%F-%H)" "⚠️  git fetch failed (no Internet?) — retrying later"
-    exit 0
+    return 1
   fi
   local head remote
   head=$(git rev-parse HEAD); remote=$(git rev-parse origin/main)
-  [ "$head" = "$remote" ] && exit 0
+  [ "$head" = "$remote" ] && return 1
   if ! git merge-base --is-ancestor "$head" "$remote"; then
     log_once "diverged-$remote" "❌ Local commits in $DIR are not on GitHub main: automatic deployment stopped (git status / git log to check)"
-    exit 0
+    return 1
   fi
 
   local short=${remote:0:7}
   if [ "$REQUIRE_CI" = 1 ]; then
     case $(ci_state "$remote") in
       success) ;;
-      pending) log_once "pending-$remote" "⏳ $short: waiting for the CI to finish"; exit 0 ;;
-      failure) log_once "failure-$remote" "❌ $short: CI failed — not deployed (the current version keeps running)"; exit 0 ;;
+      pending) log_once "pending-$remote" "⏳ $short: waiting for the CI to finish"; return 1 ;;
+      failure) log_once "failure-$remote" "❌ $short: CI failed — not deployed (the current version keeps running)"; return 1 ;;
       none|unknown)
         # No CI result (API unreachable / CI not run): deploy after a delay
         grep -q "^seen $remote " "$STATE" 2>/dev/null || echo "seen $remote $(date +%s)" >> "$STATE"
         local seen; seen=$(awk -v s="$remote" '$1=="seen" && $2==s {print $3; exit}' "$STATE")
         if [ $(( $(date +%s) - seen )) -lt "$NO_CI_WAIT" ]; then
-          log_once "noci-$remote" "⏳ $short: no CI result yet, deploying in 15 min at the latest"; exit 0
+          log_once "noci-$remote" "⏳ $short: no CI result yet, deploying in 15 min at the latest"; return 1
         fi ;;
     esac
   fi
@@ -91,7 +102,7 @@ do_run() {
   local tries; tries=$(grep -c "^try $remote" "$STATE" 2>/dev/null || true)
   if [ "${tries:-0}" -ge "$MAX_ATTEMPTS" ]; then
     log_once "gaveup-$remote" "❌ $short: deployment failed $MAX_ATTEMPTS times — stopped, run 'bash scripts/deploy.sh' by hand to see why"
-    exit 0
+    return 1
   fi
   echo "try $remote" >> "$STATE"
 
@@ -100,9 +111,11 @@ do_run() {
     log "✅ $short deployed"
     # Keep the state file small
     grep -v -e "$remote" "$STATE" > "$STATE.tmp" 2>/dev/null; mv -f "$STATE.tmp" "$STATE" 2>/dev/null || true
-  else
-    log "❌ $short: deploy.sh failed (attempt $((tries + 1))/$MAX_ATTEMPTS) — see $LOG"
+    flock -u 9
+    return 0
   fi
+  log "❌ $short: deploy.sh failed (attempt $((tries + 1))/$MAX_ATTEMPTS) — see $LOG"
+  return 1
 }
 
 need_root() { [ "$(id -u)" = 0 ] || { echo "À lancer avec sudo : sudo bash $0 $1"; exit 1; }; }
@@ -138,20 +151,57 @@ Nice=5
 EOF
   cat > /etc/systemd/system/$NAME.timer <<EOF
 [Unit]
-Description=Nexus automatic deployment, every ${INTERVAL:-2min}
+Description=Nexus automatic deployment, safety-net check every ${INTERVAL:-10min}
 
 [Timer]
 OnBootSec=3min
-OnUnitActiveSec=${INTERVAL:-2min}
-AccuracySec=15s
+OnUnitActiveSec=${INTERVAL:-10min}
+AccuracySec=30s
 
 [Install]
 WantedBy=timers.target
 EOF
+  # Immediate trigger: the webhook writes this file, systemd starts the deployment
+  local req="$DIR/logs/.deploy-request"
+  sudo -u "$user" mkdir -p "$DIR/logs"
+  sudo -u "$user" touch "$req"
+  cat > /etc/systemd/system/$NAME.path <<EOF
+[Unit]
+Description=Nexus automatic deployment, triggered by the GitHub webhook
+
+[Path]
+PathChanged=$req
+Unit=$NAME.service
+
+[Install]
+WantedBy=paths.target
+EOF
   systemctl daemon-reload
-  systemctl enable --now $NAME.timer >/dev/null
-  echo "✅ Automatic deployment installed"
-  echo "   Every ${INTERVAL:-2min}, as $user: new commit on main + green CI → scripts/deploy.sh"
+  systemctl enable --now $NAME.timer $NAME.path >/dev/null
+
+  # Webhook secret shared with GitHub, created once in backend/.env
+  local envf="$DIR/backend/.env" secret site
+  secret=$(grep -E '^DEPLOY_WEBHOOK_SECRET=' "$envf" 2>/dev/null | tail -1 | cut -d= -f2-)
+  if [ -z "$secret" ]; then
+    secret=$(openssl rand -hex 32 2>/dev/null || od -An -N32 -tx1 /dev/urandom | tr -d ' \n')
+    printf '\n# GitHub webhook -> immediate deployment (scripts/auto-deploy.sh)\nDEPLOY_WEBHOOK_SECRET=%s\n' "$secret" >> "$envf"
+    if sudo -u "$user" env PATH="$upath" HOME="$home" pm2 restart nexus-backend >/dev/null 2>&1; then
+      echo "   (Nexus restarted to load the webhook secret)"
+    fi
+  fi
+  site=$(grep -E '^FRONTEND_URL=' "$envf" 2>/dev/null | tail -1 | cut -d= -f2- | tr -d "\"' ")
+  case $site in ""|*localhost*|*127.0.0.1*) site="https://<ton-domaine-nexus>" ;; esac
+
+  echo "✅ Automatic deployment installed (as $user)"
+  echo ""
+  echo "   Last step, once, on GitHub: repository → Settings → Webhooks → Add webhook"
+  echo "     Payload URL  : ${site%/}/api/deploy/webhook"
+  echo "     Content type : application/json"
+  echo "     Secret       : $secret"
+  echo "     Events       : « Let me select individual events » → only « Workflow runs »"
+  echo "   GitHub then shows a green ✓ next to the webhook."
+  echo ""
+  echo "   Safety net: also checks every ${INTERVAL:-10min}."
   echo "   State / last deployments : bash scripts/auto-deploy.sh status"
   echo "   Full log                 : $LOG"
 }
@@ -165,14 +215,16 @@ do_status() {
     else echo "GitHub main     : $(git log -1 --format='%h %s' "$r" | cut -c1-90)  (CI: $(ci_state "$r"))"; fi
   else echo "GitHub main     : unreachable (no Internet?)"; fi
   systemctl list-timers $NAME.timer --no-pager 2>/dev/null | head -2
+  if [ -s "$DIR/logs/.deploy-request" ]; then echo "Last webhook    : $(cat "$DIR/logs/.deploy-request")"
+  else echo "Last webhook    : none received yet (check the webhook on GitHub)"; fi
   echo ""; echo "Last events:"
   grep -E '🚀|✅|❌|⏳|⚠️' "$LOG" 2>/dev/null | tail -10 || echo "(none yet)"
 }
 
 do_uninstall() {
   need_root uninstall
-  systemctl disable --now $NAME.timer 2>/dev/null
-  rm -f /etc/systemd/system/$NAME.service /etc/systemd/system/$NAME.timer
+  systemctl disable --now $NAME.timer $NAME.path 2>/dev/null
+  rm -f /etc/systemd/system/$NAME.service /etc/systemd/system/$NAME.timer /etc/systemd/system/$NAME.path
   systemctl daemon-reload
   echo "Automatic deployment removed (deploy by hand with: bash scripts/deploy.sh)"
 }

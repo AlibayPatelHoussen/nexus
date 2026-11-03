@@ -170,12 +170,16 @@ answering on the port is the new build**. It must end with
 cd /opt/nexus && sudo bash scripts/auto-deploy.sh install
 ```
 
-Every 2 minutes the server checks GitHub: when `main` has a new commit **and its
-CI is green**, it runs `deploy.sh` by itself (as your user, logs in
-`logs/auto-deploy.log`). Red CI → not deployed; a failing deployment is retried
-3 times then left alone (the running version keeps working). Nothing to open on
-the router, no secret on GitHub. `bash scripts/auto-deploy.sh status` shows the
-running version, what GitHub has and the last deployments.
+As soon as the CI of `main` is green, GitHub calls Nexus
+(`/api/deploy/webhook`, signed with `DEPLOY_WEBHOOK_SECRET`) and the server
+deploys right away (systemd unit `nexus-auto-deploy.path`, outside Nexus since
+deploying restarts it). `install` creates the secret and prints the webhook to
+add once on GitHub (*Settings → Webhooks*, event **Workflow runs**). A check every
+10 minutes is the safety net (missed webhook, Wi-Fi down). Red CI → not deployed;
+a failing deployment is retried 3 times then left alone (the running version
+keeps working); commits merged during a deployment are deployed right after.
+`bash scripts/auto-deploy.sh status` shows the running version, GitHub's, the
+last webhook and the last deployments (log: `logs/auto-deploy.log`).
 
 ### Wi-Fi watchdog (USB dongle)
 
