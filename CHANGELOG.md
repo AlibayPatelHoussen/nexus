@@ -4,6 +4,10 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Changed — immediate automatic deployment
+- GitHub webhook `POST /api/deploy/webhook` (HMAC `X-Hub-Signature-256` with `DEPLOY_WEBHOOK_SECRET`, event "Workflow runs"): when the CI of a push to `main` is green, Nexus writes `logs/.deploy-request` and the systemd unit `nexus-auto-deploy.path` deploys immediately
+- `auto-deploy.sh install` creates the secret in `backend/.env`, restarts Nexus and prints the webhook settings for GitHub; the timer becomes a 10-minute safety net; commits merged during a deployment are deployed right after it
+
 ### Added — automatic deployment
 - `scripts/auto-deploy.sh install`: the server checks `main` every 2 minutes and runs `deploy.sh` by itself once the commit's CI is green (red CI → skipped; failing deployment retried 3 times; one run at a time; no CI result after 15 min → deployed anyway). Pull-based: no inbound SSH or GitHub secret. `status` shows the running version vs GitHub and the last deployments
 - The disabled SSH "Deploy to Server" CI job is removed
