@@ -96,7 +96,7 @@ function PhonePage({ title, actions, accessory, back, bleed, largeTitle = true, 
         className={cn('sticky top-0 z-30 transition-[background-color,box-shadow] duration-fast', compact ? 'material-bar hairline-b' : 'bg-bg')}
         style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
       >
-        <div className="grid grid-cols-[1fr_auto_1fr] items-center h-[var(--navbar-h)] px-2 safe-x">
+        <div className="grid grid-cols-[1fr_auto_1fr] items-center h-[var(--navbar-h)] safe-x" style={{ ['--gutter' as string]: '8px' }}>
           <div className="justify-self-start min-w-0">
             {parent && (
               <Link to={parent.to} className="flex items-center text-accent-text text-[17px] min-h-[44px] pr-2 active:opacity-50">
@@ -116,13 +116,13 @@ function PhonePage({ title, actions, accessory, back, bleed, largeTitle = true, 
         </div>
       </header>
       {largeTitle && (
-        <div className="px-4 safe-x pt-0.5 pb-2">
+        <div className="gutter safe-x pt-0.5 pb-2">
           <h1 ref={titleRef} className="text-largetitle text-label">{title}</h1>
         </div>
       )}
       {!largeTitle && <h1 className="sr-only">{title}</h1>}
-      {accessory && <div className="px-4 safe-x pb-3">{accessory}</div>}
-      <div className={cn('flex-1 min-h-0', !bleed && 'px-4 pb-6 safe-x', className)}>{children}</div>
+      {accessory && <div className="gutter safe-x pb-3">{accessory}</div>}
+      <div className={cn('flex-1 min-h-0', !bleed && 'gutter safe-x pb-6', className)}>{children}</div>
     </div>
   )
 }

@@ -1,18 +1,23 @@
 import { describe, it, expect } from 'vitest'
-import { formatBytes, formatUptime, formatDuration, getFileIcon, cn } from '@/utils'
+import { formatBytes, formatUptime, formatDuration, formatRate, formatPercent, getFileIcon, cn } from '@/utils'
 
-describe('formatBytes', () => {
-  it('returns 0 B for 0', () => expect(formatBytes(0)).toBe('0 B'))
-  it('formats bytes', () => expect(formatBytes(1024)).toBe('1 KB'))
-  it('formats megabytes', () => expect(formatBytes(1024 * 1024)).toBe('1 MB'))
-  it('formats gigabytes', () => expect(formatBytes(1.5 * 1024 ** 3)).toBe('1.5 GB'))
-  it('handles terabytes', () => expect(formatBytes(1024 ** 4)).toBe('1 TB'))
+const nb = (s: string) => s.replace(/\u00a0/g, ' ')
+
+describe('formatBytes (French units)', () => {
+  it('returns 0 o for 0', () => expect(nb(formatBytes(0))).toBe('0 o'))
+  it('formats kilo-octets', () => expect(nb(formatBytes(1024))).toBe('1 Ko'))
+  it('formats mega-octets', () => expect(nb(formatBytes(1024 * 1024))).toBe('1 Mo'))
+  it('uses a decimal comma', () => expect(nb(formatBytes(1.5 * 1024 ** 3))).toBe('1,5 Go'))
+  it('handles tera-octets', () => expect(nb(formatBytes(1024 ** 4))).toBe('1 To'))
+  it('ignores negative / invalid values', () => expect(nb(formatBytes(-5))).toBe('0 o'))
+  it('formats a transfer rate', () => expect(nb(formatRate(2.4 * 1024 ** 2))).toBe('2,4 Mo/s'))
+  it('formats a percentage', () => expect(nb(formatPercent(23.4))).toBe('23 %'))
 })
 
 describe('formatUptime', () => {
-  it('formats minutes only', () => expect(formatUptime(300)).toBe('5m'))
-  it('formats hours and minutes', () => expect(formatUptime(3661)).toBe('1h 1m'))
-  it('formats days', () => expect(formatUptime(90061)).toBe('1j 1h 1m'))
+  it('formats minutes only', () => expect(nb(formatUptime(300))).toBe('5 min'))
+  it('formats hours and minutes', () => expect(nb(formatUptime(3661))).toBe('1 h 1 min'))
+  it('formats days and hours', () => expect(nb(formatUptime(90061))).toBe('1 j 1 h'))
 })
 
 describe('formatDuration', () => {
