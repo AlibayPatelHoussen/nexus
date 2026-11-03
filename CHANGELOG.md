@@ -4,6 +4,10 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Fixed
+- Manga PDF chapters were blank on iPhone (Safari cannot show a PDF inside a page): pages are now rendered to images with pdf.js and read like the other chapters (vertical scroll, page by page, swipe)
+- Notifications were unreadable in dark mode (white text on the toast library's white background)
+
 ### Changed — interface redesigned like a native Apple app
 - One design system in `src/design/tokens.css` (colours light / dark, type scale per device, radii, 4/8 spacing, motion, materials); Tailwind only reads these tokens. System font (SF Pro / SF Mono), Geist removed. One accent (system blue); green / orange / red only for states; darker accessible variants for coloured text (WCAG AA)
 - Appearance Auto / Clair / Sombre (Auto follows the device and stays local; the server keeps storing light / dark)

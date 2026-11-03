@@ -111,7 +111,6 @@ export default function TerminalPage() {
         import('@xterm/addon-fit'),
         import('@xterm/addon-web-links'),
         import('@xterm/addon-unicode11'),
-        // @ts-expect-error — CSS module lacks type declarations
         import('@xterm/xterm/css/xterm.css'),
       ])
       if (!mounted || !termRef.current) return
