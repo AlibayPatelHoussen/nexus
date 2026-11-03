@@ -1,7 +1,7 @@
 import { Server, Socket } from 'socket.io'
-import { spawn } from 'node-pty'
 import { SystemService } from './services/system'
 import { logger } from './utils/logger'
+import { attachTerminal } from './services/terminal'
 import { verifyToken } from './middleware/auth'
 import type { JwtPayload } from './middleware/auth'
 
@@ -47,41 +47,11 @@ export function registerSocketHandlers(io: Server): void {
     const user = authenticateSocket(socket)
     if (!user) { next(new Error('unauthorized')); return }
     if (user.role !== 'admin') { next(new Error('forbidden')); return }
+    socket.data = { userId: user.userId }
     next()
   })
 
   termNs.on('connection', (socket) => {
-    logger.info(`Terminal socket connected: ${socket.id}`)
-
-    const isWindows = process.platform === 'win32'
-    const shell = spawn(isWindows ? 'powershell.exe' : 'bash', [], {
-      name: 'xterm-color',
-      cols: 80,
-      rows: 24,
-      cwd: process.env.HOME || process.env.USERPROFILE || '/',
-      env: process.env as Record<string, string>,
-    })
-
-    shell.onData((data) => socket.emit('output', data))
-
-    shell.onExit(({ exitCode }) => {
-      socket.emit('exit', exitCode)
-      socket.disconnect()
-    })
-
-    socket.on('input', (data: unknown) => { if (typeof data === 'string') shell.write(data) })
-
-    socket.on('resize', (size: { cols?: unknown; rows?: unknown } | undefined) => {
-      const cols = Number(size?.cols)
-      const rows = Number(size?.rows)
-      if (Number.isInteger(cols) && Number.isInteger(rows) && cols > 0 && rows > 0 && cols <= 1000 && rows <= 1000) {
-        shell.resize(cols, rows)
-      }
-    })
-
-    socket.on('disconnect', () => {
-      shell.kill()
-      logger.info(`Terminal socket disconnected: ${socket.id}`)
-    })
+    attachTerminal(socket, (socket.data as { userId: string }).userId)
   })
 }

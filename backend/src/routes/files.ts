@@ -3,6 +3,9 @@ import asyncHandler from 'express-async-handler'
 import multer from 'multer'
 import path from 'path'
 import fs from 'fs'
+import os from 'os'
+import { owner, sudoRun, withSudo } from '../utils/sudo'
+
 import { authenticate, authenticateStream, requireAdmin } from '../middleware/auth'
 import { sudoLimiter } from '../middleware/rateLimit'
 import { elevatedDelete } from '../services/elevatedDelete'
@@ -16,6 +19,12 @@ import {
 } from '../services/transcode'
 
 const MEDIA_ROOT = process.env.MEDIA_ROOT || '/media'
+
+/** Upload into a folder Nexus cannot write to: received in `tmp`, moved with sudo */
+interface SudoUploadRequest extends Request {
+  uploadDir?:  Promise<string>
+  sudoUpload?: { tmp: string; dest: string }
+}
 
 const router = Router()
 
@@ -223,11 +232,27 @@ const storage = multer.diskStorage({
       return
     }
     const dest = sanitizePath(raw)
-    fs.promises.mkdir(dest, { recursive: true }).then(() => cb(null, dest), (err) => cb(err, ''))
+    const r = req as SudoUploadRequest
+    // Called once per file, possibly concurrently: decide the folder once per request
+    r.uploadDir ??= withSudo(
+      async () => {
+        await fs.promises.mkdir(dest, { recursive: true })
+        await fs.promises.access(dest, fs.constants.W_OK)
+        return dest
+      },
+      // Folder Nexus cannot write to: receive into a temporary folder, then move with sudo
+      async () => {
+        const tmp = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'nexus-upload-'))
+        r.sudoUpload = { tmp, dest }
+        return tmp
+      },
+    )
+    r.uploadDir.then((d) => cb(null, d), (err) => cb(err, ''))
   },
   // Never trust the client filename for directories
   filename: (_req, file, cb) => {
-    const name = path.basename(file.originalname)
+    // Busboy decodes multipart file names as latin1: "Épisode" arrived as "Ã\x89pisode"
+    const name = path.basename(Buffer.from(file.originalname, 'latin1').toString('utf8'))
     if (!name || name === '.' || name === '..') cb(new ValidationError('Invalid file name'), '')
     else cb(null, name)
   },
@@ -330,7 +355,21 @@ router.post('/delete-elevated', sudoLimiter, asyncHandler(async (req: Request, r
 }))
 
 // UPLOAD
-router.post('/upload', upload.array('files'), asyncHandler((_req: Request, res: Response) => {
+router.post('/upload', upload.array('files'), asyncHandler(async (req: Request, res: Response) => {
+  const job = (req as SudoUploadRequest).sudoUpload
+  if (job) {
+    try {
+      const [uid, gid] = owner.split(':')
+      await sudoRun(['install', '-d', '-o', uid, '-g', gid, '--', job.dest])
+      for (const f of (req.files as Express.Multer.File[] | undefined) ?? []) {
+        const target = path.join(job.dest, f.filename)
+        await sudoRun(['mv', '-f', '--', f.path, target])
+        await sudoRun(['chown', owner, '--', target])
+      }
+    } finally {
+      await fs.promises.rm(job.tmp, { recursive: true, force: true })
+    }
+  }
   res.status(201).json({ success: true, message: 'Files uploaded' })
 }))
 

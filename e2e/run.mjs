@@ -284,14 +284,42 @@ test('UI: admin pages (files, services, scripts, network, settings)', async () =
   await page.context().close()
 })
 
-test('UI: terminal connects and runs a command', async () => {
+test('UI: terminal — login shell, clean env, session survives leaving the page, reset', async () => {
   const page = await newPage(admin, { width: 1280, height: 800 })
+  const screen = () => page.evaluate(() => document.querySelector('.xterm')?.textContent || '')
+  const waitText = (t) => page.waitForFunction((t) => document.querySelector('.xterm')?.textContent?.includes(t), t, { timeout: 10000 })
+  const run = async (cmd) => { await page.click('.xterm'); await page.keyboard.type(cmd + '\n') }
   await page.goto(`${B}/terminal`, { waitUntil: 'networkidle' })
-  await page.waitForSelector('.xterm', { timeout: 10000 })
-  await page.waitForTimeout(1500)
-  await page.click('.xterm')
-  await page.keyboard.type('echo nexus-$((40+2))\n')
-  await page.waitForFunction(() => document.querySelector('.xterm')?.textContent?.includes('nexus-42'), null, { timeout: 10000 })
+  await page.waitForSelector('[data-testid="terminal-title"]:has-text("@")', { timeout: 10000 })
+  await run('echo nexus-$((40+2))')
+  await waitText('nexus-42')
+  // Real terminal type, no Nexus secrets in the shell environment
+  await run('echo "T=$TERM S=[${JWT_SECRET}${DB_PASSWORD}] N=[${NODE_ENV}]"')
+  await waitText('T=xterm-256color S=[] N=[]')
+  // State kept when leaving the page and coming back
+  await run('export NEXUS_KEEP=persist-$((6*7))')
+  await page.goto(`${B}/dashboard`, { waitUntil: 'networkidle' })
+  await page.goto(`${B}/terminal`, { waitUntil: 'networkidle' })
+  await waitText('export NEXUS_KEEP')               // previous output replayed
+  await page.waitForSelector('[data-testid="terminal-title"]:has-text("@")')
+  await run('echo got-$NEXUS_KEEP')
+  await waitText('got-persist-42')
+  // Font size
+  await page.click('button[aria-label="Agrandir le texte"]')
+  // Reset → a new shell (variable gone)
+  await page.click('button[aria-label="Réinitialiser le terminal"]')
+  await page.click('[role="alertdialog"] button:has-text("Réinitialiser")')
+  await page.waitForFunction(() => !document.querySelector('.xterm')?.textContent?.includes('got-persist'), null, { timeout: 10000 })
+  await page.waitForTimeout(800)
+  await run('echo after-[$NEXUS_KEEP]')
+  await waitText('after-[]')
+  // exit → "Nouvelle session"
+  await run('exit')
+  await page.click('button:has-text("Nouvelle session")', { timeout: 10000 })
+  await page.waitForTimeout(800)
+  await run('echo again-$((1+1))')
+  await waitText('again-2')
+  assert(!(await screen()).includes('Impossible de démarrer'), 'shell started')
   await page.context().close()
 })
 

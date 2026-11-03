@@ -2,14 +2,8 @@ import { useState, useCallback } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { filesService } from '@/services/filesService'
 import toast from 'react-hot-toast'
-import { showError } from '@/utils/errorToast'
+import { serverError, showError } from '@/utils/errorToast'
 import { useOptionalConfirm } from '@/components/ui/useConfirm'
-
-/** Error message sent by the server (falls back to a generic text). */
-function serverError(err: unknown): string {
-  const e = err as { response?: { data?: { error?: string } }; message?: string }
-  return e?.response?.data?.error || e?.message || 'erreur inconnue'
-}
 
 /** The server can force this deletion with the sudo password (permission problem in the library). */
 function needsPassword(err: unknown): boolean {
@@ -120,21 +114,21 @@ export function useFiles(initialPath = '/') {
     mutationFn: ({ path, newName }: { path: string; newName: string }) =>
       filesService.rename(path, newName),
     onSuccess:  () => { invalidate(); toast.success('Renommé') },
-    onError:    () => toast.error('Erreur lors du renommage'),
+    onError:    (err) => showError('Renommage impossible', serverError(err)),
   })
 
   const createDirMut = useMutation({
     mutationFn: (name: string) =>
       filesService.createDir(`${currentPath}/${name}`.replace('//', '/')),
     onSuccess: () => { invalidate(); toast.success('Dossier créé') },
-    onError:   () => toast.error('Erreur lors de la création'),
+    onError:   (err) => showError('Création impossible', serverError(err)),
   })
 
   const createFileMut = useMutation({
     mutationFn: (name: string) =>
       filesService.createFile(`${currentPath}/${name}`.replace('//', '/')),
     onSuccess: () => { invalidate(); toast.success('Fichier créé') },
-    onError:   () => toast.error('Erreur lors de la création'),
+    onError:   (err) => showError('Création impossible', serverError(err)),
   })
 
   // Selection

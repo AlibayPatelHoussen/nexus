@@ -94,9 +94,15 @@ if [ "$RUNNING" = "$EXPECTED" ]; then
   if [ -n "$NOT_OWNED" ]; then
     MEDIA=$(env_val MEDIA_ROOT)
     echo ""
-    echo "⚠️  Some library files do not belong to $(id -un): deleting or renaming them from Nexus will fail."
-    echo "   Folders concerned:$NOT_OWNED"
-    echo "   Fix (once):  sudo chown -R $(id -un): \"${MEDIA:-/media}\""
+    if sudo -n true 2>/dev/null; then
+      # Passwordless sudo: give the library back to the Nexus account now
+      for dir in $NOT_OWNED; do sudo -n chown -R "$(id -un):" "$dir" || true; done
+      echo "✅ Library folders given back to $(id -un):$NOT_OWNED"
+    else
+      echo "⚠️  Some library files do not belong to $(id -un): deleting or renaming them from Nexus will fail."
+      echo "   Folders concerned:$NOT_OWNED"
+      echo "   Fix (once):  sudo chown -R $(id -un): \"${MEDIA:-/media}\""
+    fi
   fi
 else
   echo ""

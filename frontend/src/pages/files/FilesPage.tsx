@@ -14,6 +14,7 @@ import { filesService } from '@/services/filesService'
 import { formatBytes, formatDate } from '@/utils'
 import type { FileEntry } from '@/types'
 import toast from 'react-hot-toast'
+import { serverError, showError } from '@/utils/errorToast'
 
 function FileIcon({ entry, size = 15 }: { entry: FileEntry; size?: number }) {
   const ext = entry.extension?.replace('.', '') || ''
@@ -63,7 +64,7 @@ function EditorModal({ entry, onClose }: { entry: FileEntry; onClose: () => void
   useState(() => {
     filesService.readFile(entry.path)
       .then((c) => { setContent(c); setLoading(false) })
-      .catch(() => { toast.error('Impossible de lire'); onClose() })
+      .catch((err) => { showError('Lecture impossible', serverError(err)); onClose() })
   })
 
   async function save() {
@@ -72,7 +73,7 @@ function EditorModal({ entry, onClose }: { entry: FileEntry; onClose: () => void
       await filesService.writeFile(entry.path, content)
       toast.success('Sauvegardé')
       onClose()
-    } catch { toast.error('Erreur') }
+    } catch (err) { showError('Enregistrement impossible', serverError(err)) }
     finally { setSaving(false) }
   }
 
@@ -152,7 +153,7 @@ export default function FilesPage() {
     currentPath, entries, isLoading, breadcrumbs,
     selected, navigate, goUp,
     toggleSelect, selectAll, clearSelect,
-    deleteEntry, deleteEntries, deleting, renameEntry, createDir, createFile,
+    deleteEntry, deleteEntries, deleting, renameEntry, createDir, createFile, invalidate,
   } = useFiles(urlPath)
 
   // Keep the current folder in the URL (?path=…): reload, share and Back work
@@ -220,7 +221,8 @@ export default function FilesPage() {
     try {
       await filesService.upload(currentPath, Array.from(files))
       toast.success('Upload terminé', { id })
-    } catch { toast.error('Erreur upload', { id }) }
+    } catch (err) { toast.dismiss(id); showError('Upload impossible', serverError(err)) }
+    finally { invalidate() }
   }
 
   return (

@@ -3,6 +3,7 @@ import path from 'path'
 import mime from 'mime-types'
 import { AppError } from '../utils/errors'
 import { deletePermissionError, fsError } from '../utils/fsErrors'
+import { canSudo, isPermissionError, owner, sudo, sudoRun, withSudo } from '../utils/sudo'
 
 export interface FileEntry {
   name:      string
@@ -61,11 +62,71 @@ export async function isInsideDir(root: string, target: string): Promise<boolean
   }
 }
 
+function sortEntries(entries: FileEntry[]): FileEntry[] {
+  // Directories first, then alphabetical
+  return entries.sort((a, b) => {
+    if (a.type !== b.type) return a.type === 'directory' ? -1 : 1
+    return a.name.localeCompare(b.name)
+  })
+}
+
+/** Lists a folder Nexus cannot read, with sudo (administrator mode). */
+async function sudoList(dir: string): Promise<FileEntry[]> {
+  const out = await sudoRun(['find', dir, '-mindepth', '1', '-maxdepth', '1', '-printf', '%Y\\t%s\\t%T@\\t%m\\t%f\\0'])
+  return out.toString('utf8').split('\0').filter(Boolean).map((line) => {
+    const [kind, size, mtime, mode, ...rest] = line.split('\t')
+    const name = rest.join('\t')
+    const isDir = kind === 'd'
+    const ext = isDir ? null : path.extname(name).toLowerCase()
+    const date = new Date(Number(mtime) * 1000).toISOString()
+    return {
+      name, path: path.join(dir, name), type: isDir ? 'directory' : 'file',
+      size: isDir ? null : Number(size), mimeType: ext ? (mime.lookup(name) || null) : null, extension: ext,
+      modified: date, created: date, permissions: mode,
+    } satisfies FileEntry
+  })
+}
+
+/** mkdir -p; with sudo if needed (the new folder then belongs to the Nexus account). */
+async function mkdirp(dir: string): Promise<void> {
+  const [uid, gid] = owner.split(':')
+  await withSudo(
+    () => fs.mkdir(dir, { recursive: true }).then(() => undefined),
+    () => sudoRun(['install', '-d', '-o', uid, '-g', gid, '--', dir]).then(() => undefined),
+  ).catch((err) => { throw fsError(err, dir) ?? err })
+}
+
+/** Writes a file; with sudo if needed. A NEW file belongs to the Nexus account, an existing one keeps its owner. */
+async function write(file: string, content: string): Promise<void> {
+  await withSudo(
+    () => fs.writeFile(file, content, 'utf8'),
+    async () => {
+      const existed = (await sudo(['test', '-e', file])).code === 0
+      await sudoRun(['dd', `of=${file}`, 'status=none'], content)
+      if (!existed) await sudoRun(['chown', owner, '--', file])
+    },
+  ).catch((err) => { throw fsError(err, file) ?? err })
+}
+
+/** rename / move; with sudo if needed (mv also handles moves between disks). */
+async function mv(src: string, dest: string): Promise<void> {
+  await withSudo(
+    () => fs.rename(src, dest),
+    () => sudoRun(['mv', '-T', '--', src, dest]).then(() => undefined),
+  ).catch((err) => { throw fsError(err, src) ?? err })
+}
+
 export class FilesService {
   static async list(dirPath: string): Promise<FileEntry[]> {
     const safe = sanitizePath(dirPath)
 
-    const entries = await fs.readdir(safe, { withFileTypes: true })
+    let entries
+    try {
+      entries = await fs.readdir(safe, { withFileTypes: true })
+    } catch (err) {
+      if (isPermissionError(err) && await canSudo()) return sortEntries(await sudoList(safe))
+      throw fsError(err, safe) ?? err
+    }
     const results: FileEntry[] = []
 
     for (const entry of entries) {
@@ -91,21 +152,17 @@ export class FilesService {
       }
     }
 
-    // Directories first, then alphabetical
-    return results.sort((a, b) => {
-      if (a.type !== b.type) return a.type === 'directory' ? -1 : 1
-      return a.name.localeCompare(b.name)
-    })
+    return sortEntries(results)
   }
 
   static async createDir(dirPath: string): Promise<void> {
-    await fs.mkdir(sanitizePath(dirPath), { recursive: true })
+    await mkdirp(sanitizePath(dirPath))
   }
 
   static async createFile(filePath: string, content = ''): Promise<void> {
     const safe = sanitizePath(filePath)
-    await fs.mkdir(path.dirname(safe), { recursive: true })
-    await fs.writeFile(safe, content, 'utf8')
+    await mkdirp(path.dirname(safe))
+    await write(safe, content)
   }
 
   static async rename(oldPath: string, newName: string): Promise<void> {
@@ -115,7 +172,7 @@ export class FilesService {
       throw new AppError('Invalid name', 422)
     }
     const newPath = path.join(path.dirname(safe), newName)
-    await fs.rename(safe, newPath)
+    await mv(safe, newPath)
   }
 
   static async delete(targetPath: string): Promise<void> {
@@ -127,8 +184,11 @@ export class FilesService {
       if (stat.isDirectory()) await fs.rm(safe, { recursive: true, force: true, maxRetries: 2 })
       else await fs.unlink(safe)
     } catch (err) {
-      const code = (err as NodeJS.ErrnoException).code
-      if (code === 'EACCES' || code === 'EPERM') throw deletePermissionError(safe, err as NodeJS.ErrnoException)
+      if (isPermissionError(err)) {
+        // Administrator mode: same deletion with sudo (rights are the only problem)
+        if (await canSudo()) { await sudoRun(['rm', '-rf', '--one-file-system', '--', safe]); return }
+        throw deletePermissionError(safe, err as NodeJS.ErrnoException)
+      }
       throw fsError(err, safe) ?? err
     }
   }
@@ -151,26 +211,26 @@ export class FilesService {
   static async move(srcPath: string, destPath: string): Promise<void> {
     const src = sanitizePath(srcPath)
     assertNotProtected(src)
-    try {
-      await fs.rename(src, sanitizePath(destPath))
-    } catch (err) {
-      throw fsError(err, src) ?? err
-    }
+    await mv(src, sanitizePath(destPath))
   }
 
   static async readFile(filePath: string): Promise<string> {
     const safe = sanitizePath(filePath)
-    const stat = await fs.stat(safe)
-
-    if (stat.size > 10 * 1024 * 1024) {
-      throw new AppError('File too large to read (>10MB)', 413)
+    const tooBig = () => new AppError('File too large to read (>10MB)', 413)
+    try {
+      const stat = await fs.stat(safe)
+      if (stat.size > 10 * 1024 * 1024) throw tooBig()
+      return await fs.readFile(safe, 'utf8')
+    } catch (err) {
+      if (!isPermissionError(err) || !(await canSudo())) throw fsError(err, safe) ?? err
+      const size = Number((await sudoRun(['stat', '-L', '-c', '%s', '--', safe])).toString().trim())
+      if (size > 10 * 1024 * 1024) throw tooBig()
+      return (await sudoRun(['cat', '--', safe])).toString('utf8')
     }
-
-    return fs.readFile(safe, 'utf8')
   }
 
   static async writeFile(filePath: string, content: string): Promise<void> {
-    await fs.writeFile(sanitizePath(filePath), content, 'utf8')
+    await write(sanitizePath(filePath), content)
   }
 
   static async getInfo(filePath: string): Promise<FileEntry> {
