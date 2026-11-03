@@ -1,5 +1,7 @@
 import { spawn } from 'child_process'
+import { existsSync } from 'fs'
 import fs from 'fs/promises'
+import os from 'os'
 import path from 'path'
 import { AppError } from '../utils/errors'
 import { libraryRoots, strictlyInside } from '../utils/fsErrors'
@@ -14,8 +16,11 @@ import { assertNotProtected, sanitizePath } from './files'
  * - only inside the media library (MEDIA_ROOT, FILMS_PATH…), never a library
  *   folder itself nor a protected system folder; symlinks in the path are
  *   resolved before the check, so they cannot point the deletion elsewhere;
- * - the password is passed to sudo on stdin, used once, never stored or logged;
- * - `sudo -k` ignores any cached sudo session: the password is always checked;
+ * - the password is checked by the system itself (unix_chkpwd, the PAM helper
+ *   used for logins) BEFORE sudo runs: sudo alone checks nothing when the
+ *   account has NOPASSWD (common on cloud servers);
+ * - it is then passed to sudo on stdin, used once, never stored or logged;
+ * - `sudo -k` ignores any cached sudo session;
  * - the route is rate-limited (see sudoLimiter).
  */
 
@@ -67,6 +72,44 @@ function runSudo(password: string, args: string[]): Promise<SudoResult> {
   })
 }
 
+function run(cmd: string, args: string[], input: string, timeoutMs = 15_000): Promise<number | null> {
+  return new Promise((resolve, reject) => {
+    const child = spawn(cmd, args, { stdio: ['pipe', 'ignore', 'ignore'], env: { PATH: '/usr/sbin:/usr/bin:/sbin:/bin', LC_ALL: 'C' } })
+    const timer = setTimeout(() => child.kill('SIGKILL'), timeoutMs)
+    child.on('error', (err) => { clearTimeout(timer); reject(err) })
+    child.on('close', (code) => { clearTimeout(timer); resolve(code) })
+    child.stdin.on('error', () => { /* exited before reading */ })
+    child.stdin.end(input)
+  })
+}
+
+const CHKPWD = ['/usr/sbin/unix_chkpwd', '/sbin/unix_chkpwd', '/usr/lib/unix_chkpwd'].find((p) => existsSync(p))
+
+/**
+ * Checks the password of the account Nexus runs as. unix_chkpwd (setgid
+ * shadow) only checks the CALLING user's own password: exit 0 = correct.
+ * Without it, only allowed when sudo itself requires a password.
+ */
+async function verifyPassword(password: string): Promise<void> {
+  const user = os.userInfo().username
+  if (CHKPWD) {
+    const code = await run(CHKPWD, [user, 'nonull'], `${password}\0`).catch(() => null)
+    if (code === 0) return
+    if (code === 7) {
+      logger.warn('Forced deletion: wrong server password')
+      throw new AppError('Mot de passe incorrect', 403, true, 'BAD_PASSWORD')
+    }
+    logger.warn(`unix_chkpwd could not check the password (exit ${code})`)
+  }
+  // Fallback: sudo must really ask for a password, otherwise nothing would be checked
+  const noPassword = await run('sudo', ['-n', '-k', '--', 'true'], '').catch(() => null)
+  if (noPassword === 0) {
+    throw new AppError(
+      'Impossible de vérifier le mot de passe sur ce serveur (sudo est configuré sans mot de passe et unix_chkpwd est absent) : ' +
+      'suppression forcée refusée par sécurité', 409)
+  }
+}
+
 export async function elevatedDelete(
   paths: string[], password: string,
 ): Promise<{ deleted: string[]; failed: { path: string; error: string }[] }> {
@@ -74,6 +117,7 @@ export async function elevatedDelete(
   if (typeof password !== 'string' || !password || password.length > 1024 || /[\r\n\0]/.test(password)) {
     throw new AppError('Mot de passe invalide', 400)
   }
+  await verifyPassword(password)
 
   const failed: { path: string; error: string }[] = []
   const targets: { input: string; real: string }[] = []
