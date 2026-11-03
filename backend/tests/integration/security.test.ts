@@ -92,6 +92,21 @@ describe('Streaming access', () => {
     expect(res.headers['content-length']).toBe('100')
   })
 
+  it('serves PDFs piece by piece too (206, inline) — PDF.js / Safari read big PDFs by ranges', async () => {
+    const pdf = path.join(path.dirname(mediaFile), 'chapitre.pdf')
+    fs.writeFileSync(pdf, Buffer.alloc(5000, 1))
+    const res = await request(app).get(`/api/files/stream?path=${encodeURIComponent(pdf)}`)
+      .set(bearer(makeToken('user'))).set('Range', 'bytes=1000-1999')
+    expect(res.status).toBe(206)
+    expect(res.headers['content-range']).toBe('bytes 1000-1999/5000')
+    expect(res.headers['content-length']).toBe('1000')
+    expect(res.headers['content-type']).toBe('application/pdf')
+    expect(res.headers['content-disposition']).toBe('inline')
+    const whole = await request(app).get(`/api/files/stream?path=${encodeURIComponent(pdf)}`).set(bearer(makeToken('user')))
+    expect(whole.status).toBe(200)
+    expect(whole.headers['content-length']).toBe('5000')
+  })
+
   it('rejects an unsatisfiable range with 416', async () => {
     const res = await request(app).get(`/api/files/stream?path=${encodeURIComponent(mediaFile)}`)
       .set(bearer(makeToken('user'))).set('Range', 'bytes=5000-6000')

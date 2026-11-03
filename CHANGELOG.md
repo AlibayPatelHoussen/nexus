@@ -4,6 +4,10 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Changed — manga: first pages first, chapters kept on the device
+- The server now answers Range requests for PDFs too (206): PDF.js only downloads what the page being read needs (first page of a 71 MB volume: ~2 MB instead of the whole file)
+- Pages already read (PDF and images) are kept on the device (Cache Storage, last 40 chapters): coming back to a chapter shows them without downloading anything again. Needs HTTPS (or localhost); without it, reading works without the cache
+
 ### Fixed
 - Manga PDF chapters stayed blank / loading on iPhone: they are now read with PDF.js (Mozilla's PDF reader, works in Safari) inside the Nexus reader, with the same modes as image chapters. The PDF is downloaded in one request (progress shown) because the server answers range requests with the whole file, which broke PDF.js and Safari's own viewer on big PDFs; pages are drawn only when they come near the screen
 - Notifications were unreadable in dark mode (white text on the toast library's white background)

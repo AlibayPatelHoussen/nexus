@@ -266,18 +266,18 @@ test('UI: manga reader loads image pages and PDF chapters', async () => {
   await page.goto(`${B}/reader/${ber}?ch=${pch}`)
   const res = await pdf
   eq(res.status(), 200, 'pdf status'); eq(res.headers()['content-type'], 'application/pdf', 'pdf type')
-  // PDF.js shows the pages (Safari cannot show a PDF in an iframe), downloaded in one
-  // request without Range: the server answers ranges with the whole file
+  // PDF.js shows the pages (Safari cannot show a PDF in an iframe)
   await page.waitForFunction(() => [...document.images].some((i) => i.alt === 'Page 1' && i.naturalWidth > 0), null, { timeout: 30000 })
   assert(!(await page.$('iframe')), 'no PDF iframe (blank on iPhone)')
+  // Coming back to chapters already read: pages come from the device, nothing is downloaded again
+  const streams = []
+  page.on('request', (r) => { if (r.url().includes('/api/files/stream')) streams.push(r.url()) })
+  const shown = () => page.waitForFunction(() => [...document.images].some((i) => i.alt === 'Page 1' && i.naturalWidth > 0), null, { timeout: 30000 })
+  await page.goto(`${B}/dashboard`, { waitUntil: 'networkidle' })
+  await page.goto(`${B}/reader/${ber}?ch=${pch}`, { waitUntil: 'networkidle' }); await shown()
+  await page.goto(`${B}/reader/${solo}?ch=${ch}`, { waitUntil: 'networkidle' }); await shown()
+  eq(streams, [], 'pages of chapters already read are not downloaded again')
   await page.context().close()
-  const ranges = []
-  const p2 = await newPage(admin)
-  p2.on('request', (r) => { if (r.url().includes('/api/files/stream')) ranges.push(r.headers().range ?? null) })
-  await p2.goto(`${B}/reader/${ber}?ch=${pch}`, { waitUntil: 'networkidle' })
-  await p2.waitForFunction(() => [...document.images].some((i) => i.alt === 'Page 1' && i.naturalWidth > 0), null, { timeout: 30000 })
-  eq(ranges, [null], 'one PDF request, without Range')
-  await p2.context().close()
 })
 
 test('UI: admin pages (files, services, scripts, network, settings)', async () => {

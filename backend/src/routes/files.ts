@@ -92,8 +92,10 @@ router.get('/stream', authenticateStream, asyncHandler(async (req: Request, res:
   const contentType = MIME[ext] || 'application/octet-stream'
   const isPdf = ext === '.pdf'
 
+  // Range requests for every file, PDFs included: PDF.js and Safari's viewer
+  // fetch big PDFs piece by piece (first pages first)
   const rangeHeader = req.headers.range
-  if (rangeHeader && !isPdf) {
+  if (rangeHeader) {
     const range = parseRange(rangeHeader, size)
     if (!range) {
       res.writeHead(416, { 'Content-Range': `bytes */${size}` })
@@ -105,6 +107,7 @@ router.get('/stream', authenticateStream, asyncHandler(async (req: Request, res:
       'Accept-Ranges':  'bytes',
       'Content-Length': range.end - range.start + 1,
       'Content-Type':   contentType,
+      ...(isPdf ? { 'Content-Disposition': 'inline' } : {}),
     })
     fs.createReadStream(filePath, range).pipe(res)
     return
