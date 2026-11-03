@@ -1,10 +1,11 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useEffect, lazy, Suspense } from 'react'
-import { useAuthStore } from '@/stores/authStore'
-import Layout        from '@/components/layout/Layout'
+import { applyAppearance, useAuthStore } from '@/stores/authStore'
+import AppShell      from '@/components/shell/AppShell'
 import LoginPage     from '@/pages/login/LoginPage'
 import DashboardPage from '@/pages/dashboard/DashboardPage'
 import NotFoundPage  from '@/pages/NotFoundPage'
+import Spinner       from '@/components/ui/Spinner'
 
 const FilesPage    = lazy(() => import('@/pages/files/FilesPage'))
 const TerminalPage = lazy(() => import('@/pages/terminal/TerminalPage'))
@@ -20,12 +21,7 @@ const MangaReader  = lazy(() => import('@/pages/player/MangaReaderPage'))
 const MediaDetail  = lazy(() => import('@/pages/media/MediaDetailPage'))
 
 function PageLoader() {
-  return (
-    <div className="flex items-center justify-center h-full min-h-[300px]">
-      <div className="w-5 h-5 border-2 rounded-full animate-spin"
-        style={{ borderColor: 'var(--border2)', borderTopColor: 'var(--blue)' }} />
-    </div>
-  )
+  return <div className="flex items-center justify-center h-full min-h-[300px]"><Spinner /></div>
 }
 
 function Guard({ children }: { children: React.ReactNode }) {
@@ -38,19 +34,17 @@ function S({ children }: { children: React.ReactNode }) {
 }
 
 export default function App() {
-  const theme = useAuthStore((s) => s.theme)
+  const appearance = useAuthStore((s) => s.appearance)
 
-  useEffect(() => {
-    document.documentElement.className = theme
-  }, [theme])
+  useEffect(() => { applyAppearance(appearance) }, [appearance])
 
   return (
     <BrowserRouter>
       <Routes>
         <Route path="/login" element={<LoginPage />} />
 
-        {/* Layout — sidebar + topbar */}
-        <Route path="/" element={<Guard><Layout /></Guard>}>
+        {/* App frame: sidebar / tab bar */}
+        <Route path="/" element={<Guard><AppShell /></Guard>}>
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<DashboardPage />} />
           <Route path="files"     element={<S><FilesPage    /></S>} />
@@ -62,10 +56,10 @@ export default function App() {
           <Route path="scripts"   element={<S><ScriptsPage  /></S>} />
           <Route path="network"   element={<S><NetworkPage  /></S>} />
           <Route path="settings"  element={<S><SettingsPage /></S>} />
+          <Route path="media/:id" element={<S><MediaDetail  /></S>} />
         </Route>
 
         {/* Full-screen — no sidebar */}
-        <Route path="/media/:id"  element={<Guard><S><MediaDetail /></S></Guard>} />
         <Route path="/player/:id" element={<Guard><S><PlayerPage  /></S></Guard>} />
         <Route path="/reader/:id" element={<Guard><S><MangaReader /></S></Guard>} />
 

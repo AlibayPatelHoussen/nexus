@@ -1,315 +1,222 @@
 import { useQuery } from '@tanstack/react-query'
-import {
-  Cpu, MemoryStick, HardDrive, Thermometer,
-  ArrowRight, RefreshCw, ArrowDownCircle, ScrollText, Terminal,
-} from 'lucide-react'
-import { useNavigate } from 'react-router-dom'
+import { Link } from 'react-router-dom'
+import { Activity, Folder, Wifi, WifiOff, Zap } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 import { useSystemStats } from '@/hooks/useSocket'
+import { useStatsHistory, type StatsHistory } from '@/hooks/useStatsHistory'
 import { servicesService } from '@/services/systemService'
-import StatCard from '@/components/ui/StatCard'
-import ServiceRow from '@/components/services/ServiceRow'
-import { formatBytes, formatUptime } from '@/utils'
-import toast from 'react-hot-toast'
-import { useConfirm } from '@/components/ui/useConfirm'
+import { formatBytes, formatPercent, formatRate, formatUptime } from '@/utils'
+import Page from '@/components/shell/Page'
+import { useShell } from '@/components/shell/shellContext'
+import { Group, ListRow } from '@/components/ui/GroupedList'
+import StatSparkline, { CapacityBar } from '@/components/ui/StatSparkline'
+import Skeleton, { SkeletonRows } from '@/components/ui/Skeleton'
+import EmptyState from '@/components/ui/EmptyState'
+import type { ServiceInfo, SystemStats } from '@/types'
+
+const last = (a: number[]) => (a.length ? a[a.length - 1] : 0)
 
 export default function DashboardPage() {
-  const user    = useAuthStore((s) => s.user)
-  const navigate = useNavigate()
-  const confirm  = useConfirm()
-
-  // Real-time stats via WebSocket
+  const { device } = useShell()
+  const phone = device === 'phone'
   const { stats, connected } = useSystemStats()
-
-  // Services
-  const { data: services } = useQuery({
+  const history = useStatsHistory(stats)
+  const { data: services, isError: servicesError } = useQuery({
     queryKey: ['services'],
     queryFn:  servicesService.getAll,
     refetchInterval: 10_000,
   })
 
-  const now = new Date().toLocaleDateString('fr-CA', {
-    weekday: 'long', day: 'numeric', month: 'long', year: 'numeric',
-  })
-
-  async function handleRestart() {
-    if (!(await confirm({ title: 'Redémarrer le serveur ?', message: 'Les lectures et transferts en cours seront interrompus.', confirmLabel: 'Redémarrer', danger: true }))) return
-    toast('Redémarrage en cours…')
-  }
-
-  async function handleUpdates() {
-    toast('Vérification des mises à jour…')
-  }
+  const subtitle = stats
+    ? `${stats.os.hostname} · en ligne depuis ${formatUptime(stats.uptime)}`
+    : connected ? 'Réception des mesures…' : 'Connexion au serveur…'
 
   return (
-    <div className="min-h-full" style={{ background: 'var(--bg)' }}>
+    <Page title={phone ? 'Aperçu' : 'Vue d’ensemble'} subtitle={subtitle}>
+      {!stats && !connected ? (
+        <Connecting />
+      ) : phone ? (
+        <PhoneOverview stats={stats} history={history} services={services} servicesError={servicesError} />
+      ) : (
+        <DesktopOverview stats={stats} history={history} services={services} servicesError={servicesError} />
+      )}
+    </Page>
+  )
+}
 
-      {/* ── TOPBAR ── */}
-      <div
-        className="lg:sticky top-0 z-30 flex flex-col sm:flex-row sm:items-start justify-between gap-3 px-4 sm:px-6 lg:px-7 pt-5 sm:pt-6 pb-1"
-        style={{ background: 'var(--bg)' }}
-      >
-        <div className="min-w-0">
-          <h1 className="text-[22px] sm:text-[26px] font-bold tracking-tight truncate" style={{ color: 'var(--text)' }}>
-            Bonjour, {user?.username} 👋
-          </h1>
-          <p className="text-[12.5px] mt-0.5 capitalize" style={{ color: 'var(--text3)' }}>
-            {now} ·{' '}
-            <span style={{ color: connected ? 'var(--green)' : 'var(--red)' }}>
-              {connected ? 'En ligne' : 'Hors ligne'}
-            </span>
-            {stats && ` · Uptime ${formatUptime(stats.uptime)}`}
-          </p>
-        </div>
+interface OverviewProps {
+  stats:    SystemStats | null
+  history:  StatsHistory
+  services: ServiceInfo[] | undefined
+  servicesError: boolean
+}
 
-        <div className="flex items-center gap-2 sm:pt-1 flex-shrink-0">
-          <button className="btn-ghost text-[12.5px]" onClick={handleUpdates}>
-            <ArrowDownCircle size={13} strokeWidth={2} />
-            Mises à jour
-          </button>
-          <button className="btn-primary text-[12.5px]" onClick={() => navigate('/files')}>
-            <ArrowRight size={13} strokeWidth={2} />
-            Fichiers
-          </button>
-        </div>
-      </div>
+function Connecting() {
+  return (
+    <EmptyState
+      icon={<WifiOff strokeWidth={1.25} />}
+      title="Connexion au serveur"
+      message="Les mesures en direct arrivent dès que la connexion est établie. Si rien ne change, vérifie que le serveur Nexus tourne."
+    />
+  )
+}
 
-      <div className="px-4 sm:px-6 lg:px-7 py-5 flex flex-col gap-4">
+/* ── Desktop: Activity Monitor panel, then lists ─────────────────────────── */
 
-        {/* ── STATS ROW ── */}
-        <div className="grid grid-cols-2 xl:grid-cols-4 gap-3 stagger">
-          <StatCard
-            icon={<Cpu size={15} strokeWidth={2} />}
-            label="Utilisation CPU"
-            value={stats ? `${Math.round(stats.cpu.usage)}%` : '—'}
-            sub={stats?.cpu.model}
-            percent={stats?.cpu.usage ?? 0}
-            color="var(--blue)"
-            dimColor="var(--blue-dim)"
-            badgeText="Normal"
-            badgeOk
-            delay={40}
-          />
-          <StatCard
-            icon={<MemoryStick size={15} strokeWidth={2} />}
-            label={`RAM · ${stats ? formatBytes(stats.memory.total) : '—'}`}
-            value={stats ? formatBytes(stats.memory.used) : '—'}
-            percent={stats?.memory.usedPercent ?? 0}
-            color="var(--purple)"
-            dimColor="var(--purple-dim)"
-            badgeText={stats ? `${stats.memory.usedPercent}%` : undefined}
-            badgeOk={(stats?.memory.usedPercent ?? 0) < 85}
-            delay={80}
-          />
-          <StatCard
-            icon={<HardDrive size={15} strokeWidth={2} />}
-            label={`Stockage · ${stats ? formatBytes(stats.disk.total) : '—'}`}
-            value={stats ? formatBytes(stats.disk.used) : '—'}
-            percent={stats?.disk.usedPercent ?? 0}
-            color="var(--orange)"
-            dimColor="var(--orange-dim)"
-            badgeText={stats ? `${stats.disk.usedPercent}%` : undefined}
-            badgeOk={(stats?.disk.usedPercent ?? 0) < 90}
-            delay={120}
-          />
-          {(() => {
-            const temp = stats?.temperature ?? null
-            const tempColor    = temp == null ? 'var(--green)' : temp >= 80 ? 'var(--red)'    : temp >= 60 ? 'var(--orange)'    : 'var(--green)'
-            const tempDimColor = temp == null ? 'var(--green-dim)' : temp >= 80 ? 'var(--red-dim)' : temp >= 60 ? 'var(--orange-dim)' : 'var(--green-dim)'
-            const tempLabel    = temp == null ? '—'        : temp >= 80 ? 'Critique'  : temp >= 60 ? 'Chaud'     : 'Normal'
-            return (
-              <StatCard
-                icon={<Thermometer size={15} strokeWidth={2} />}
-                label="Température CPU"
-                value={temp != null ? `${temp} °C` : '—'}
-                percent={temp != null ? Math.min(temp, 100) : 0}
-                color={tempColor}
-                dimColor={tempDimColor}
-                badgeText={tempLabel}
-                badgeOk={temp == null || temp < 60}
-                delay={160}
-              />
-            )
-          })()}
-        </div>
-
-        {/* ── MAIN GRID ── */}
-        <div className="grid gap-4 grid-cols-1 xl:grid-cols-[minmax(0,1fr)_300px]">
-
-          {/* LEFT */}
-          <div className="flex flex-col gap-4 min-w-0">
-
-            {/* STORAGE VISUAL */}
-            {stats && (
-              <div className="card p-5 animate-fade-up" style={{ animationDelay: '200ms' }}>
-                <div className="flex flex-wrap items-center justify-between gap-x-3 gap-y-1 mb-4">
-                  <h2 className="text-[14px] font-semibold" style={{ color: 'var(--text)' }}>
-                    Stockage
-                  </h2>
-                  <span className="text-[12px]" style={{ color: 'var(--text3)' }}>
-                    {formatBytes(stats.disk.free)} libres sur {formatBytes(stats.disk.total)}
-                  </span>
-                </div>
-
-                {/* Bar — widths computed from real directory sizes vs disk total */}
-                {(() => {
-                  const total = stats.disk.total || 1
-                  const ms    = stats.mediaStorage ?? { films: 0, series: 0, animes: 0, manga: 0 }
-                  const pct   = (n: number) => `${Math.max(0.5, (n / total) * 100).toFixed(1)}%`
-                  const segments = [
-                    { color: 'var(--red)',    bytes: ms.films  },
-                    { color: 'var(--teal)',   bytes: ms.animes },
-                    { color: 'var(--purple)', bytes: ms.series },
-                    { color: 'var(--yellow)', bytes: ms.manga  },
-                  ].filter(s => s.bytes > 0)
-                  return (
-                    <div
-                      className="flex gap-0.5 rounded overflow-hidden mb-3"
-                      style={{ height: '8px', background: 'var(--surface3)' }}
-                    >
-                      {segments.map((s, i) => (
-                        <div key={s.color} style={{
-                          width: pct(s.bytes),
-                          background: s.color,
-                          borderRadius: i === 0 ? '4px 0 0 4px' : undefined,
-                        }} />
-                      ))}
-                      <div style={{ flex: 1, background: 'var(--surface3)', borderRadius: segments.length ? '0 4px 4px 0' : '4px' }} />
-                    </div>
-                  )
-                })()}
-
-                <div className="flex flex-wrap gap-x-4 gap-y-2">
-                  {[
-                    { label: 'Films',  color: 'var(--red)',      bytes: stats.mediaStorage?.films  ?? 0 },
-                    { label: 'Animes', color: 'var(--teal)',     bytes: stats.mediaStorage?.animes ?? 0 },
-                    { label: 'Séries', color: 'var(--purple)',   bytes: stats.mediaStorage?.series ?? 0 },
-                    { label: 'Manga',  color: 'var(--yellow)',   bytes: stats.mediaStorage?.manga  ?? 0 },
-                    { label: 'Libre',  color: 'var(--surface3)', bytes: stats.disk.free, border: true },
-                  ].map((item) => (
-                    <div key={item.label} className="flex items-center gap-1.5 text-[11px]" style={{ color: 'var(--text2)' }}>
-                      <div
-                        className="w-2 h-2 rounded-sm flex-shrink-0"
-                        style={{
-                          background: item.color,
-                          border:     'border' in item ? '1px solid var(--border2)' : 'none',
-                        }}
-                      />
-                      {item.label} · {formatBytes(item.bytes)}
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* NETWORK */}
-            {stats && (
-              <div className="card p-5 animate-fade-up" style={{ animationDelay: '220ms' }}>
-                <h2 className="text-[14px] font-semibold mb-4" style={{ color: 'var(--text)' }}>
-                  Réseau
-                </h2>
-                <div
-                  className="grid grid-cols-2 md:grid-cols-4 gap-px rounded-lg overflow-hidden"
-                  style={{ background: 'var(--border)' }}
-                >
-                  {[
-                    { label: 'Statut',    value: stats.network.status === 'online' ? 'En ligne' : 'Hors ligne', green: stats.network.status === 'online' },
-                    { label: 'IP locale', value: stats.network.ip || '—' },
-                    { label: 'Interface', value: stats.network.interface ? stats.network.interface.slice(0, 10) + '…' : '—' },
-                    { label: 'OS',        value: `${stats.os.distro} ${stats.os.release}` },
-                  ].map((cell) => (
-                    <div
-                      key={cell.label}
-                      className="px-3 sm:px-4 py-3 min-w-0"
-                      style={{ background: 'var(--surface2)' }}
-                    >
-                      <div className="text-[10.5px] mb-1" style={{ color: 'var(--text3)' }}>{cell.label}</div>
-                      <div
-                        className="text-[12px] sm:text-[13px] font-semibold font-mono truncate"
-                        title={cell.value}
-                        style={{ color: cell.green ? 'var(--green)' : 'var(--text)' }}
-                      >
-                        {cell.value}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
+function DesktopOverview({ stats, history, services, servicesError }: OverviewProps) {
+  return (
+    <div className="flex flex-col gap-6">
+      <section aria-label="Activité" className="grid grid-cols-2 xl:grid-cols-4 gap-px bg-separator rounded-card overflow-hidden">
+        <Meter label="Processeur" value={stats ? formatPercent(stats.cpu.usage) : null}
+          detail={stats ? `${stats.cpu.cores} cœurs${stats.temperature != null ? ` · ${stats.temperature} °C` : ''}` : null}
+          warn={stats?.temperature != null && stats.temperature >= 80}>
+          <StatSparkline values={history.cpu} max={100} label="Utilisation du processeur, 3 dernières minutes" />
+        </Meter>
+        <Meter label="Mémoire" value={stats ? formatBytes(stats.memory.used) : null}
+          detail={stats ? `sur ${formatBytes(stats.memory.total)}` : null}>
+          <StatSparkline values={history.mem} max={100} label="Utilisation de la mémoire, 3 dernières minutes" />
+        </Meter>
+        <Meter label="Stockage" value={stats ? formatBytes(stats.disk.used) : null}
+          detail={stats ? `sur ${formatBytes(stats.disk.total)}` : null}>
+          <div className="h-[44px] flex flex-col justify-end gap-1.5">
+            {stats && <CapacityBar percent={stats.disk.usedPercent} label="Espace disque utilisé" />}
+            {stats && <p className="text-caption text-label2 tabular">{formatBytes(stats.disk.free)} disponibles</p>}
           </div>
+        </Meter>
+        <Meter label="Réseau" value={stats ? `↓ ${formatRate(last(history.down))}` : null}
+          detail={stats ? `↑ ${formatRate(last(history.up))}` : null}>
+          <StatSparkline values={history.down} secondary={history.up} label="Débit réseau reçu et envoyé, 3 dernières minutes" />
+        </Meter>
+      </section>
 
-          {/* RIGHT */}
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-1 gap-4 content-start min-w-0">
-
-            {/* SERVICES */}
-            <div className="card animate-fade-up" style={{ animationDelay: '200ms' }}>
-              <div className="flex items-center justify-between px-5 pt-5 pb-0 mb-3">
-                <h2 className="text-[14px] font-semibold" style={{ color: 'var(--text)' }}>
-                  Services
-                </h2>
-                <button
-                  className="flex items-center gap-1 text-[12px] font-medium"
-                  style={{ color: 'var(--blue)' }}
-                  onClick={() => navigate('/services')}
-                >
-                  Gérer <ArrowRight size={11} strokeWidth={2.5} />
-                </button>
-              </div>
-              <div className="px-2 pb-3 flex flex-col gap-0.5">
-                {services?.map((svc) => (
-                  <ServiceRow key={svc.name} service={svc} />
-                )) ?? (
-                  <div className="px-3 py-4 text-center text-[12px]" style={{ color: 'var(--text3)' }}>
-                    Chargement…
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* QUICK ACTIONS */}
-            <div className="card p-4 animate-fade-up" style={{ animationDelay: '220ms' }}>
-              <h2 className="text-[14px] font-semibold mb-3 px-1" style={{ color: 'var(--text)' }}>
-                Actions rapides
-              </h2>
-              <div className="grid grid-cols-2 gap-2">
-                {[
-                  { icon: <RefreshCw size={13} strokeWidth={2} />,      label: 'Redémarrer',  color: 'var(--red)',    dim: 'var(--red-dim)',    action: handleRestart },
-                  { icon: <ArrowDownCircle size={13} strokeWidth={2} />, label: 'Mises à jour', color: 'var(--blue)',  dim: 'var(--blue-dim)',   action: handleUpdates },
-                  { icon: <ScrollText size={13} strokeWidth={2} />,      label: 'Logs',         color: 'var(--green)', dim: 'var(--green-dim)',  action: () => navigate('/services') },
-                  { icon: <Terminal size={13} strokeWidth={2} />,         label: 'Terminal',     color: 'var(--purple)',dim: 'var(--purple-dim)', action: () => navigate('/terminal') },
-                ].map((btn) => (
-                  <button
-                    key={btn.label}
-                    className="flex items-center gap-2 p-3 rounded-lg border text-left transition-all duration-150"
-                    style={{ background: 'var(--surface2)', borderColor: 'var(--border)' }}
-                    onMouseEnter={(e) => {
-                      e.currentTarget.style.borderColor = 'var(--border2)'
-                      e.currentTarget.style.background   = 'var(--surface3)'
-                    }}
-                    onMouseLeave={(e) => {
-                      e.currentTarget.style.borderColor = 'var(--border)'
-                      e.currentTarget.style.background   = 'var(--surface2)'
-                    }}
-                    onClick={btn.action}
-                  >
-                    <div
-                      className="w-[28px] h-[28px] rounded-[7px] flex items-center justify-center flex-shrink-0"
-                      style={{ background: btn.dim }}
-                    >
-                      <div style={{ color: btn.color }}>{btn.icon}</div>
-                    </div>
-                    <span className="text-[11.5px] font-semibold" style={{ color: 'var(--text)' }}>
-                      {btn.label}
-                    </span>
-                  </button>
-                ))}
-              </div>
-            </div>
-
-          </div>
+      <div className="grid gap-6 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] items-start">
+        <ServicesGroup services={services} error={servicesError} />
+        <div className="flex flex-col gap-6 min-w-0">
+          <MediaStorage stats={stats} />
+          <SystemInfo stats={stats} />
         </div>
       </div>
     </div>
+  )
+}
+
+function Meter({ label, value, detail, warn, children }: { label: string; value: string | null; detail: string | null; warn?: boolean; children: React.ReactNode }) {
+  return (
+    <div className="flex flex-col gap-1 p-4 min-w-0 bg-surface">
+      <h3 className="text-subhead text-label2">{label}</h3>
+      {value == null ? (
+        <Skeleton className="h-6 w-24 my-0.5" />
+      ) : (
+        <p className="tabular leading-tight">
+          <span className="text-[22px] font-semibold tracking-[-0.02em] text-label">{value}</span>
+          {detail && <span className={warn ? 'ml-1.5 text-subhead text-warn-text' : 'ml-1.5 text-subhead text-label2'}>{detail}</span>}
+        </p>
+      )}
+      <div className="mt-2">{children}</div>
+    </div>
+  )
+}
+
+/* ── Phone: grouped lists, rows with chevrons ───────────────────────────── */
+
+function PhoneOverview({ stats, history, services, servicesError }: OverviewProps) {
+  const isAdmin = useAuthStore((s) => s.user?.role === 'admin')
+  const stopped = services?.filter((s) => s.status !== 'active').length ?? 0
+  return (
+    <div className="flex flex-col gap-8">
+      <Group>
+        <PhoneMeter label="Processeur" value={stats ? formatPercent(stats.cpu.usage) : null}>
+          <StatSparkline values={history.cpu} max={100} height={26} capacity={30} label="Processeur" />
+        </PhoneMeter>
+        <PhoneMeter label="Mémoire" value={stats ? formatPercent(stats.memory.usedPercent) : null}>
+          <StatSparkline values={history.mem} max={100} height={26} capacity={30} label="Mémoire" />
+        </PhoneMeter>
+        <PhoneMeter label="Stockage" value={stats ? formatPercent(stats.disk.usedPercent) : null}>
+          {stats && <CapacityBar percent={stats.disk.usedPercent} label="Espace disque utilisé" />}
+        </PhoneMeter>
+        <PhoneMeter label="Réseau" value={stats ? formatRate(last(history.down)) : null}>
+          <StatSparkline values={history.down} secondary={history.up} height={26} capacity={30} label="Débit réseau" />
+        </PhoneMeter>
+      </Group>
+
+      <Group header="Serveur">
+        {isAdmin && <ListRow to="/files" icon={<Folder strokeWidth={1.75} />} iconTone="accent" title="Fichiers" accessory="chevron" />}
+        <ListRow to="/services" icon={<Activity strokeWidth={1.75} />} iconTone="accent" title="Services"
+          detail={servicesError ? 'Indisponible' : services ? (stopped ? `${stopped} arrêté${stopped > 1 ? 's' : ''}` : 'Tous actifs') : ''} accessory="chevron" />
+        {isAdmin && <ListRow to="/scripts" icon={<Zap strokeWidth={1.75} />} iconTone="accent" title="Scripts" accessory="chevron" />}
+        <ListRow to="/network" icon={<Wifi strokeWidth={1.75} />} iconTone="accent" title="Réseau" detail={stats?.network.ip} accessory="chevron" />
+      </Group>
+
+      <MediaStorage stats={stats} />
+      <SystemInfo stats={stats} />
+    </div>
+  )
+}
+
+function PhoneMeter({ label, value, children }: { label: string; value: string | null; children: React.ReactNode }) {
+  return (
+    <div role="listitem" className="nx-row relative flex items-center gap-3 px-4 min-h-row">
+      <span className="w-[92px] flex-shrink-0 text-label">{label}</span>
+      <span className="flex-1 min-w-0 flex items-center [&>*]:w-full">{children}</span>
+      <span className="w-[86px] flex-shrink-0 text-right text-label2 tabular">{value ?? '—'}</span>
+    </div>
+  )
+}
+
+/* ── Shared groups ───────────────────────────────────────────────────────── */
+
+function ServicesGroup({ services, error }: { services: ServiceInfo[] | undefined; error: boolean }) {
+  return (
+    <Group header="Services" action={<Link to="/services" className="text-subhead text-accent-text hover:underline">Tout gérer</Link>}>
+      {error ? (
+        <EmptyState className="py-8" title="Services indisponibles" message="Le serveur n’a pas répondu. Réessaie dans un instant." />
+      ) : !services ? (
+        <SkeletonRows rows={4} />
+      ) : services.length === 0 ? (
+        <EmptyState className="py-8" title="Aucun service suivi" message="Ajoute des services dans la configuration du serveur pour les voir ici." />
+      ) : (
+        services.map((s) => (
+          <ListRow
+            key={s.name}
+            to="/services"
+            status={s.status === 'active' ? 'ok' : s.status === 'failed' ? 'error' : 'off'}
+            title={s.displayName}
+            detail={s.status === 'active' ? 'Actif' : s.status === 'failed' ? 'En échec' : s.status === 'inactive' ? 'Arrêté' : 'État inconnu'}
+          />
+        ))
+      )}
+    </Group>
+  )
+}
+
+function MediaStorage({ stats }: { stats: SystemStats | null }) {
+  const ms = stats?.mediaStorage
+  const rows = ms ? [
+    { label: 'Films', bytes: ms.films },
+    { label: 'Séries', bytes: ms.series },
+    { label: 'Animes', bytes: ms.animes },
+    { label: 'Manga', bytes: ms.manga },
+  ] : []
+  return (
+    <Group header="Bibliothèque" footer={stats ? `${formatBytes(stats.disk.free)} disponibles sur ${formatBytes(stats.disk.total)}` : undefined}>
+      {!stats ? <SkeletonRows rows={4} /> : rows.map((r) => (
+        <ListRow key={r.label} title={r.label} detail={r.bytes ? formatBytes(r.bytes) : 'Vide'} />
+      ))}
+    </Group>
+  )
+}
+
+function SystemInfo({ stats }: { stats: SystemStats | null }) {
+  return (
+    <Group header="Système">
+      {!stats ? <SkeletonRows rows={4} /> : (
+        <>
+          <ListRow title="Nom" detail={stats.os.hostname} />
+          <ListRow title="Système" detail={`${stats.os.distro} ${stats.os.release}`} />
+          <ListRow title="Processeur" detail={stats.cpu.model} />
+          <ListRow title="Adresse IP" detail={stats.network.ip || '—'} />
+        </>
+      )}
+    </Group>
   )
 }

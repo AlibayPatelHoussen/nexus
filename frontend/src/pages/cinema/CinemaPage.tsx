@@ -1,14 +1,16 @@
-import { Film, Tv } from 'lucide-react'
+import { Film } from 'lucide-react'
 import MediaBrowser from '@/components/media/MediaBrowser'
 
 export default function CinemaPage() {
   return (
     <MediaBrowser
-      title="Cinéma"
+      title="Films et séries"
       yearFilter
+      videoSwitch
+      emptyIcon={<Film strokeWidth={1.25} />}
       tabs={[
-        { key: 'films',  label: 'Films',  icon: <Film size={13} strokeWidth={2} />, type: 'film',  scanType: 'films',  noun: 'un film' },
-        { key: 'series', label: 'Séries', icon: <Tv   size={13} strokeWidth={2} />, type: 'serie', scanType: 'series', noun: 'une série' },
+        { key: 'films',  label: 'Films',  type: 'film',  scanType: 'films',  noun: 'un film' },
+        { key: 'series', label: 'Séries', type: 'serie', scanType: 'series', noun: 'une série' },
       ]}
     />
   )

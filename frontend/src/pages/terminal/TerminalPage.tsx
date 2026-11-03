@@ -1,10 +1,16 @@
 import { useEffect, useRef, useState } from 'react'
-import { ClipboardPaste, Copy, Maximize2, Minimize2, Minus, Plus, RotateCcw } from 'lucide-react'
+import { ClipboardPaste, Copy, Ellipsis, Maximize2, Minimize2, Minus, Plus, RotateCcw } from 'lucide-react'
 import toast from 'react-hot-toast'
 import type { Terminal as XTerm } from '@xterm/xterm'
 import type { FitAddon } from '@xterm/addon-fit'
 import { useTerminalSocket, type TerminalInfo } from '@/hooks/useSocket'
 import { useConfirm } from '@/components/ui/useConfirm'
+import Page from '@/components/shell/Page'
+import { useShell } from '@/components/shell/shellContext'
+import { useCoarsePointer } from '@/hooks/useDevice'
+import ActionSheet from '@/components/ui/ActionSheet'
+import Button from '@/components/ui/Button'
+import { cn } from '@/utils'
 
 // Keys missing from mobile on-screen keyboards
 const MOBILE_KEYS: { label: string; seq: string }[] = [
@@ -53,6 +59,30 @@ async function copyText(text: string): Promise<boolean> {
 
 type Status = 'connecting' | 'connected' | 'disconnected' | 'detached' | 'ended'
 
+const MONO = 'ui-monospace, "SF Mono", SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", monospace'
+
+// ANSI colours tuned on Apple's system colours, readable on each background
+const ANSI_LIGHT = {
+  black: '#1d1d1f', red: '#c4261d', green: '#1e7b34', yellow: '#946200', blue: '#0058d0', magenta: '#a42ea8', cyan: '#0b7a85', white: '#8e8e93',
+  brightBlack: '#6e6e73', brightRed: '#d70015', brightGreen: '#248a3d', brightYellow: '#b25000', brightBlue: '#0071e3', brightMagenta: '#b143c6', brightCyan: '#0d8a96', brightWhite: '#3a3a3c',
+}
+const ANSI_DARK = {
+  black: '#545458', red: '#ff6961', green: '#30d158', yellow: '#ffd60a', blue: '#409cff', magenta: '#da8fff', cyan: '#70d7ff', white: '#e5e5e7',
+  brightBlack: '#8e8e93', brightRed: '#ff8a80', brightGreen: '#5be27d', brightYellow: '#ffe55c', brightBlue: '#6eb6ff', brightMagenta: '#e5a8ff', brightCyan: '#9ae6ff', brightWhite: '#ffffff',
+}
+
+/** xterm theme from the current appearance (tokens --term-*) */
+function terminalTheme() {
+  const css = getComputedStyle(document.documentElement)
+  const v = (n: string) => css.getPropertyValue(n).trim()
+  const dark = css.colorScheme === 'dark' || v('color-scheme') === 'dark'
+  return {
+    background: v('--term-bg'), foreground: v('--term-fg'), cursor: v('--term-cursor'), cursorAccent: v('--term-bg'),
+    selectionBackground: v('--term-select'),
+    ...(dark ? ANSI_DARK : ANSI_LIGHT),
+  }
+}
+
 export default function TerminalPage() {
   const termRef    = useRef<HTMLDivElement>(null)
   const xtermRef   = useRef<XTerm | null>(null)
@@ -63,7 +93,11 @@ export default function TerminalPage() {
   const [status,     setStatus]     = useState<Status>('connecting')
   const [info,       setInfo]       = useState<TerminalInfo | null>(null)
   const [fullscreen, setFullscreen] = useState(false)
-  const [fontSize,   setFontSize]   = useState(() => Number(store(FONT_KEY)) || (window.innerWidth < 640 ? 12 : 14))
+  const [fontSize,   setFontSize]   = useState(() => Number(store(FONT_KEY)) || (window.innerWidth < 640 ? 12 : 13))
+  const [menuOpen,   setMenuOpen]   = useState(false)
+  const { device } = useShell()
+  const phone = device === 'phone'
+  const coarse = useCoarsePointer()
   const statusRef = useRef<Status>('connecting')
   const setStat = (s: Status) => { statusRef.current = s; setStatus(s) }
 
@@ -83,17 +117,13 @@ export default function TerminalPage() {
       if (!mounted || !termRef.current) return
 
       const term = new Terminal({
-        theme: {
-          background: '#09090e', foreground: '#e8e8f0', cursor: '#f0f0f8', selectionBackground: '#4f8ef766',
-          black: '#1c1c1e', red: '#f75a5a', green: '#3ecf6e', yellow: '#f7d04f', blue: '#4f8ef7',
-          magenta: '#a78bfa', cyan: '#4fd1c5', white: '#e8e8f0',
-          brightBlack: '#5a5a72', brightRed: '#ff7b7b', brightGreen: '#5be38a', brightYellow: '#ffe27a',
-          brightBlue: '#78a9ff', brightMagenta: '#c4a8ff', brightCyan: '#7ee8de', brightWhite: '#ffffff',
-        },
-        fontFamily:  '"Geist Mono", "Cascadia Code", "DejaVu Sans Mono", monospace',
+        theme: terminalTheme(),
+        fontFamily:  MONO,
         fontSize,
-        lineHeight:  1.2,
+        lineHeight:  1.15,
         cursorBlink: true,
+        cursorStyle: 'block',
+        cursorInactiveStyle: 'outline',
         scrollback:  10000,
         allowProposedApi: true,
         macOptionIsMeta: true,
@@ -156,6 +186,16 @@ export default function TerminalPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  // Follow Auto / Clair / Sombre
+  useEffect(() => {
+    const apply = () => { if (xtermRef.current) xtermRef.current.options.theme = terminalTheme() }
+    const mq = window.matchMedia('(prefers-color-scheme: dark)')
+    const mo = new MutationObserver(apply)
+    mo.observe(document.documentElement, { attributes: true, attributeFilter: ['data-theme'] })
+    mq.addEventListener('change', apply)
+    return () => { mo.disconnect(); mq.removeEventListener('change', apply) }
+  }, [])
+
   useEffect(() => {
     const term = xtermRef.current
     if (!term) return
@@ -205,76 +245,106 @@ export default function TerminalPage() {
     setTimeout(() => fitRef.current?.fit(), 120)
   }
 
-  const statusColor = status === 'connected' ? '#3ecf6e' : status === 'connecting' ? '#f7d04f' : '#f75a5a'
-  const statusText  = {
+  const statusText = {
     connecting: 'Connexion…', connected: 'Connecté', disconnected: 'Reconnexion…',
-    detached: 'Ouvert ailleurs', ended: 'Terminé',
+    detached: 'Ouvert dans un autre onglet', ended: 'Session terminée',
   }[status]
-  const btn = 'h-8 sm:h-7 min-w-8 sm:min-w-7 px-1.5 rounded-lg flex items-center justify-center gap-1 text-[11px] transition-colors hover:bg-white/10'
+  const where = info ? `${info.user}@${info.host}` : 'Terminal'
+  const smaller = () => setFontSize((f) => Math.max(9, f - 1))
+  const bigger  = () => setFontSize((f) => Math.min(28, f + 1))
+  const icon = 'w-8 h-8 grid place-items-center rounded-[6px] text-label2 hoverable disabled:opacity-40'
 
-  return (
-    <div className={`flex flex-col ${fullscreen ? 'fixed inset-0 z-50 h-[100dvh]' : 'h-full'}`} style={{ background: '#09090e' }}>
-      {/* Header */}
-      <div className="flex items-center justify-between gap-2 px-3 sm:px-4 py-2 border-b flex-shrink-0"
-        style={{ background: '#111118', borderColor: 'rgba(255,255,255,0.07)', paddingTop: fullscreen ? 'max(0.5rem, env(safe-area-inset-top))' : undefined }}>
-        <div className="flex items-center gap-2 min-w-0">
-          <div className="w-2 h-2 rounded-full flex-shrink-0"
-            style={{ background: statusColor, boxShadow: status === 'connected' ? `0 0 5px ${statusColor}` : 'none' }} />
-          <span className="text-[12px] font-mono truncate" style={{ color: 'rgba(255,255,255,0.6)' }} data-testid="terminal-title">
-            {info ? `${info.user}@${info.host}` : 'terminal'}
-          </span>
-          <span className="hidden sm:inline text-[11px]" style={{ color: 'rgba(255,255,255,0.3)' }}>{statusText}</span>
-        </div>
-        <div className="flex items-center gap-0.5" style={{ color: 'rgba(255,255,255,0.55)' }}>
-          <button className={btn} onClick={() => setFontSize((f) => Math.max(9, f - 1))} aria-label="Réduire le texte"><Minus size={13} /></button>
-          <span className="text-[11px] font-mono w-5 text-center hidden sm:inline">{fontSize}</span>
-          <button className={btn} onClick={() => setFontSize((f) => Math.min(28, f + 1))} aria-label="Agrandir le texte"><Plus size={13} /></button>
-          <span className="w-px h-4 mx-1" style={{ background: 'rgba(255,255,255,0.1)' }} />
-          <button className={btn} onClick={copySelection} aria-label="Copier la sélection" title="Copier (Ctrl+Shift+C)"><Copy size={13} /></button>
-          <button className={btn} onClick={paste} aria-label="Coller" title="Coller (Ctrl+Shift+V)"><ClipboardPaste size={13} /></button>
-          <button className={btn} onClick={reset} aria-label="Réinitialiser le terminal" title="Réinitialiser">
-            <RotateCcw size={13} /><span className="hidden md:inline">Réinitialiser</span>
-          </button>
-          <button className={btn} onClick={toggleFullscreen} aria-label={fullscreen ? 'Quitter le plein écran' : 'Plein écran'}>
-            {fullscreen ? <Minimize2 size={13} /> : <Maximize2 size={13} />}
-          </button>
-        </div>
+  const actions = phone ? (
+    <button type="button" className="w-11 h-11 grid place-items-center text-accent-text active:opacity-50" onClick={() => setMenuOpen(true)} aria-label="Options du terminal">
+      <Ellipsis size={24} strokeWidth={1.75} />
+    </button>
+  ) : (
+    <>
+      <div className="flex items-center rounded-[7px] bg-fill" role="group" aria-label="Taille du texte">
+        <button type="button" className={cn(icon, 'rounded-r-none')} onClick={smaller} aria-label="Réduire le texte" title="Réduire le texte"><Minus size={14} strokeWidth={1.75} /></button>
+        <span className="w-6 text-center text-caption text-label2 tabular" aria-live="polite">{fontSize}</span>
+        <button type="button" className={cn(icon, 'rounded-l-none')} onClick={bigger} aria-label="Agrandir le texte" title="Agrandir le texte"><Plus size={14} strokeWidth={1.75} /></button>
       </div>
+      <button type="button" className={icon} onClick={copySelection} aria-label="Copier la sélection" title="Copier (Ctrl+Maj+C)"><Copy size={16} strokeWidth={1.5} /></button>
+      <button type="button" className={icon} onClick={paste} aria-label="Coller" title="Coller (Ctrl+Maj+V)"><ClipboardPaste size={16} strokeWidth={1.5} /></button>
+      <button type="button" className={icon} onClick={reset} aria-label="Réinitialiser le terminal" title="Réinitialiser"><RotateCcw size={16} strokeWidth={1.5} /></button>
+      <button type="button" className={icon} onClick={toggleFullscreen} aria-label={fullscreen ? 'Quitter le plein écran' : 'Plein écran'} title={fullscreen ? 'Quitter le plein écran' : 'Plein écran'}>
+        {fullscreen ? <Minimize2 size={16} strokeWidth={1.5} /> : <Maximize2 size={16} strokeWidth={1.5} />}
+      </button>
+    </>
+  )
 
-      {/* Terminal area */}
+  const surface = (
+    <div className={cn('flex flex-col min-h-0', fullscreen ? 'fixed inset-0 z-[60]' : 'flex-1')} style={{ background: 'var(--term-bg)' }}>
+      {fullscreen && (
+        <div className="flex items-center justify-between gap-2 px-3 material-bar hairline-b flex-shrink-0" style={{ paddingTop: 'env(safe-area-inset-top, 0px)', minHeight: 'calc(44px + env(safe-area-inset-top, 0px))' }}>
+          <span className="text-subhead text-label2 font-mono truncate" data-testid="terminal-title">{where}</span>
+          <Button variant="plain" onClick={toggleFullscreen}>Terminé</Button>
+        </div>
+      )}
       <div className="relative flex-1 min-h-0">
-        <div ref={termRef} className="absolute inset-0 overflow-hidden" style={{ padding: '6px 4px 4px 8px' }} />
+        <div ref={termRef} className="absolute inset-0 overflow-hidden" style={{ padding: '8px 4px 4px 12px' }} />
         {(status === 'ended' || status === 'detached') && (
-          <div className="absolute inset-x-0 bottom-4 flex justify-center pointer-events-none">
-            <div className="pointer-events-auto flex items-center gap-3 rounded-xl px-4 py-2.5 text-[13px]"
-              style={{ background: '#1a1a24', color: '#e8e8f0', boxShadow: '0 8px 30px rgba(0,0,0,0.5)' }}>
-              {status === 'ended' ? 'La session est terminée.' : 'Ce terminal est ouvert dans un autre onglet.'}
-              <button className="btn-primary text-[12px] py-1.5" onClick={status === 'ended' ? newSession : reconnect}>
+          <div className="absolute inset-x-0 bottom-4 flex justify-center pointer-events-none px-4">
+            <div role="status" className="pointer-events-auto flex items-center gap-3 rounded-[12px] material-bar px-4 py-2.5 text-body" style={{ boxShadow: 'var(--shadow-popover)' }}>
+              <span className="text-label">{status === 'ended' ? 'La session est terminée.' : 'Ce terminal est ouvert dans un autre onglet.'}</span>
+              <Button variant="primary" size="small" onClick={status === 'ended' ? newSession : reconnect}>
                 {status === 'ended' ? 'Nouvelle session' : 'Reprendre ici'}
-              </button>
+              </Button>
             </div>
           </div>
         )}
       </div>
-
-      {/* Extra keys for touch keyboards */}
-      <div
-        className="md:hidden flex gap-1.5 px-2 py-2 overflow-x-auto border-t flex-shrink-0"
-        style={{ background: '#111118', borderColor: 'rgba(255,255,255,0.07)', paddingBottom: 'max(0.5rem, env(safe-area-inset-bottom))' }}
-      >
-        {MOBILE_KEYS.map((k) => (
-          <button
-            key={k.label}
-            className="px-3 h-9 rounded-md text-[12px] font-mono flex-shrink-0 active:scale-95 transition-transform"
-            style={{ background: 'rgba(255,255,255,0.07)', color: 'rgba(255,255,255,0.8)' }}
-            // Keep focus (and the soft keyboard) on the terminal
-            onMouseDown={(e) => e.preventDefault()}
-            onClick={() => { send(k.seq); xtermRef.current?.focus() }}
-          >
-            {k.label}
-          </button>
-        ))}
-      </div>
+      {/* Keys missing from touch keyboards (keyboard accessory bar) */}
+      {coarse && (
+        <div className="flex gap-1.5 px-2 py-1.5 overflow-x-auto scrollbar-none material-bar hairline-t flex-shrink-0" style={{ paddingBottom: fullscreen ? 'max(6px, env(safe-area-inset-bottom, 0px))' : 6 }}>
+          {MOBILE_KEYS.map((k) => (
+            <button
+              key={k.label}
+              type="button"
+              className="px-3 min-w-[44px] h-[38px] rounded-[6px] text-[15px] font-mono text-label flex-shrink-0 active:opacity-60"
+              style={{ background: 'var(--seg-on)', boxShadow: '0 1px 0 rgba(0,0,0,.25)' }}
+              // Keep focus (and the soft keyboard) on the terminal
+              onMouseDown={(e) => e.preventDefault()}
+              onClick={() => { send(k.seq); xtermRef.current?.focus() }}
+            >
+              {k.label}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
+  )
+
+  return (
+    <>
+      <div
+        className="flex flex-col"
+        style={{ height: phone ? 'calc(100dvh - var(--tabbar-h) - env(safe-area-inset-bottom, 0px))' : '100%' }}
+      >
+        <Page
+          title="Terminal"
+          subtitle={<span className="inline-flex items-center gap-1.5"><span className="font-mono" data-testid={fullscreen ? undefined : 'terminal-title'}>{where}</span><span aria-hidden="true">·</span><span>{statusText}</span></span>}
+          actions={actions}
+          bleed
+          largeTitle={false}
+        >
+          <div className="flex flex-col h-full">{surface}</div>
+        </Page>
+      </div>
+      <ActionSheet
+        open={menuOpen}
+        onClose={() => setMenuOpen(false)}
+        title={`${where} · ${statusText}`}
+        actions={[
+          { label: 'Copier la sélection', onSelect: copySelection },
+          { label: 'Coller', onSelect: paste },
+          { label: 'Agrandir le texte', onSelect: bigger },
+          { label: 'Réduire le texte', onSelect: smaller },
+          { label: 'Plein écran', onSelect: toggleFullscreen },
+          { label: status === 'ended' ? 'Nouvelle session' : 'Réinitialiser', onSelect: reset, destructive: status !== 'ended' },
+        ]}
+      />
+    </>
   )
 }

@@ -4,6 +4,17 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Changed — interface redesigned like a native Apple app
+- One design system in `src/design/tokens.css` (colours light / dark, type scale per device, radii, 4/8 spacing, motion, materials); Tailwind only reads these tokens. System font (SF Pro / SF Mono), Geist removed. One accent (system blue); green / orange / red only for states; darker accessible variants for coloured text (WCAG AA)
+- Appearance Auto / Clair / Sombre (Auto follows the device and stays local; the server keeps storing light / dark)
+- Adaptive app frame: translucent sidebar and toolbar on desktop (⌘K quick search, ⌘, for Réglages), collapsible sidebar on tablets, tab bar (Aperçu, Médias, Manga, Terminal, Réglages), Large Titles and back buttons on phones
+- Components: Button, Toggle, SegmentedControl, TextField, GroupedList / ListRow, Sheet (macOS sheet / iOS bottom sheet with swipe to dismiss), ActionSheet, ContextMenu (right click / long press), StatSparkline, CapacityBar, EmptyState, Skeleton, Spinner; confirmations as macOS alerts / iOS action sheets; notifications as banners
+- Overview like Activity Monitor (live 3-minute graphs), library like the TV app (featured title, shelves, Finder-like list view), title pages inside the app frame, AVKit-style player controls, Books-style manga reader, Terminal.app theme in light and dark, Finder / Files-like file manager (selection, keyboard, path bar, selection mode on phones), Services as list + detail, Réglages and Réseau as grouped lists, Apple ID-style sign-in
+- PWA: manifest, app icon, Apple web-app meta tags (installable on the home screen)
+- French units everywhere (6,1 Go, 2,4 Mo/s, 23 %); no emoji, no gradients, glows or neon; old styles, `StatCard`, `ServiceRow`, `notify.tsx` and the unused Plyr stylesheet removed
+- Removed the overview's "Redémarrer" and "Mises à jour" buttons: they only displayed a message and did nothing
+- Stopping or restarting a service now asks for confirmation (it can cut access to Nexus)
+
 ### Changed — immediate automatic deployment
 - GitHub webhook `POST /api/deploy/webhook` (HMAC `X-Hub-Signature-256` with `DEPLOY_WEBHOOK_SECRET`, event "Workflow runs"): when the CI of a push to `main` is green, Nexus writes `logs/.deploy-request` and the systemd unit `nexus-auto-deploy.path` deploys immediately
 - `auto-deploy.sh install` creates the secret in `backend/.env`, restarts Nexus and prints the webhook settings for GitHub; the timer becomes a 10-minute safety net; commits merged during a deployment are deployed right after it

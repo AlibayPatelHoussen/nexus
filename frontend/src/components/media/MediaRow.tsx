@@ -2,6 +2,7 @@ import { useRef } from 'react'
 import { ChevronLeft, ChevronRight } from 'lucide-react'
 import MediaCard from './MediaCard'
 import { ROW_CARD_WIDTH } from './layout'
+import Skeleton from '@/components/ui/Skeleton'
 import type { MediaItem } from '@/types'
 
 export interface RowItem {
@@ -20,60 +21,48 @@ interface MediaRowProps {
 
 const isRowItem = (x: MediaItem | RowItem): x is RowItem => 'item' in x
 
-/** Netflix-style row: title, horizontally scrolling posters (snap), arrows on desktop. */
+/** Shelf (TV app): title, "Tout voir", posters scrolling sideways; arrows on hover (desktop). */
 export default function MediaRow({ title, items, onSeeAll, isLoading }: MediaRowProps) {
   const scroller = useRef<HTMLDivElement>(null)
   if (!isLoading && items.length === 0) return null
 
-  function scrollBy(dir: 1 | -1) {
+  const scrollBy = (dir: 1 | -1) => {
     const el = scroller.current
     if (el) el.scrollBy({ left: dir * el.clientWidth * 0.85, behavior: 'smooth' })
   }
+  const arrow = 'hidden lg:grid absolute top-[calc(50%-24px)] -translate-y-1/2 w-8 h-8 place-items-center rounded-full material-bar text-label opacity-0 group-hover/row:opacity-100 transition-opacity duration-fast'
 
   return (
-    <section className="mb-6 sm:mb-8 group/row">
-      <div className="flex items-baseline justify-between gap-3 mb-2 sm:mb-3">
-        <h2 className="text-[15px] sm:text-[17px] font-bold tracking-tight" style={{ color: 'var(--text)' }}>{title}</h2>
+    <section className="mb-8 group/row" aria-label={title}>
+      <div className="flex items-baseline justify-between gap-3 mb-2.5">
+        <h2 className="text-headline text-label">{title}</h2>
         {onSeeAll && (
-          <button className="flex items-center gap-0.5 text-[12px] font-semibold flex-shrink-0" style={{ color: 'var(--blue)' }} onClick={onSeeAll}>
-            Tout voir <ChevronRight size={13} strokeWidth={2.5} />
+          <button type="button" className="text-subhead text-accent-text hover:underline flex-shrink-0" onClick={onSeeAll}>
+            Tout voir
           </button>
         )}
       </div>
-
       <div className="relative">
         <div
           ref={scroller}
-          className="flex gap-2.5 sm:gap-3 overflow-x-auto scrollbar-none snap-x snap-mandatory scroll-px-4 sm:scroll-px-6 lg:scroll-px-0 -mx-4 px-4 sm:-mx-6 sm:px-6 lg:mx-0 lg:px-0 pb-1"
+          className="flex gap-3 lg:gap-4 overflow-x-auto scrollbar-none snap-x snap-mandatory -mx-4 px-4 scroll-px-4 lg:-mx-6 lg:px-6 lg:scroll-px-6 pb-1"
         >
           {isLoading
             ? Array.from({ length: 8 }).map((_, i) => (
                 <div key={i} className={`${ROW_CARD_WIDTH} flex-shrink-0`}>
-                  <div className="w-full aspect-[2/3] rounded-lg animate-pulse" style={{ background: 'var(--surface2)' }} />
+                  <Skeleton className="w-full aspect-[2/3] rounded-[8px]" />
+                  <Skeleton className="h-3 w-3/4 mt-2.5" />
                 </div>
               ))
             : items.map((x) => isRowItem(x)
                 ? <MediaCard key={x.item.id + (x.subtitle ?? '')} item={x.item} progress={x.progress} duration={x.duration} subtitle={x.subtitle} />
-                : <MediaCard key={x.id} item={x} />)
-          }
+                : <MediaCard key={x.id} item={x} />)}
         </div>
-
-        {/* Desktop arrows */}
-        <button
-          className="hidden lg:flex absolute left-0 top-0 bottom-8 w-10 -ml-3 items-center justify-center opacity-0 group-hover/row:opacity-100 transition-opacity rounded-r-lg"
-          style={{ background: 'linear-gradient(to right, var(--bg), transparent)' }}
-          onClick={() => scrollBy(-1)}
-          aria-label={`Défiler ${title} vers la gauche`}
-        >
-          <ChevronLeft size={26} style={{ color: 'var(--text)' }} />
+        <button type="button" className={`${arrow} -left-2`} style={{ boxShadow: 'var(--shadow-popover)' }} onClick={() => scrollBy(-1)} aria-label={`${title} : précédents`}>
+          <ChevronLeft size={18} strokeWidth={1.75} />
         </button>
-        <button
-          className="hidden lg:flex absolute right-0 top-0 bottom-8 w-10 -mr-3 items-center justify-center opacity-0 group-hover/row:opacity-100 transition-opacity rounded-l-lg"
-          style={{ background: 'linear-gradient(to left, var(--bg), transparent)' }}
-          onClick={() => scrollBy(1)}
-          aria-label={`Défiler ${title} vers la droite`}
-        >
-          <ChevronRight size={26} style={{ color: 'var(--text)' }} />
+        <button type="button" className={`${arrow} -right-2`} style={{ boxShadow: 'var(--shadow-popover)' }} onClick={() => scrollBy(1)} aria-label={`${title} : suivants`}>
+          <ChevronRight size={18} strokeWidth={1.75} />
         </button>
       </div>
     </section>

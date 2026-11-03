@@ -1,220 +1,161 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
-import { RefreshCw, ScrollText, ExternalLink, Play, Square, RotateCcw } from 'lucide-react'
-import * as LucideIcons from 'lucide-react'
-import { servicesService } from '@/services/systemService'
-import { getColorVar, getDimVar } from '@/utils'
-import type { ServiceInfo } from '@/types'
+import { Activity, ExternalLink, RotateCw } from 'lucide-react'
 import toast from 'react-hot-toast'
+import { servicesService } from '@/services/systemService'
+import type { ServiceInfo } from '@/types'
+import Page from '@/components/shell/Page'
+import { useShell } from '@/components/shell/shellContext'
+import { Group, ListRow } from '@/components/ui/GroupedList'
+import Button from '@/components/ui/Button'
+import Sheet from '@/components/ui/Sheet'
+import EmptyState from '@/components/ui/EmptyState'
+import { SkeletonRows } from '@/components/ui/Skeleton'
+import Spinner from '@/components/ui/Spinner'
+import { useConfirm } from '@/components/ui/useConfirm'
+import { cn } from '@/utils'
 
-function DynamicIcon({ name, color }: { name: string; color: string }) {
-  const pascal = name.split('-').map((s) => s[0].toUpperCase() + s.slice(1)).join('')
-  const Icon   = (LucideIcons as unknown as Record<string, React.ComponentType<{ size?: number; strokeWidth?: number; color?: string }>>)[pascal]
-  if (!Icon) return null
-  return <Icon size={16} strokeWidth={1.8} color={color} />
-}
-
-function ServiceCard({ service }: { service: ServiceInfo }) {
-  const qc = useQueryClient()
-  const [showLogs, setShowLogs] = useState(false)
-  const [logs,     setLogs]     = useState<string[]>([])
-  const [loadingLogs, setLoadingLogs] = useState(false)
-
-  const isOn     = service.status === 'active'
-  const isFailed = service.status === 'failed'
-  const color    = getColorVar(service.color)
-  const dimColor = getDimVar(service.color)
-
-  const toggleMut = useMutation({
-    mutationFn: (action: 'start' | 'stop' | 'restart') =>
-      servicesService.toggle(service.name, action),
-    onSuccess: (_, action) => {
-      qc.invalidateQueries({ queryKey: ['services'] })
-      toast.success(`${service.displayName} ${
-        action === 'start' ? 'démarré' : action === 'stop' ? 'arrêté' : 'redémarré'
-      }`)
-    },
-    onError: () => toast.error(`Erreur sur ${service.displayName}`),
-  })
-
-  async function fetchLogs() {
-    setLoadingLogs(true)
-    try {
-      const l = await servicesService.getLogs(service.name, 80)
-      setLogs(l)
-      setShowLogs(true)
-    } catch { toast.error('Impossible de charger les logs') }
-    finally { setLoadingLogs(false) }
-  }
-
-  return (
-    <div className="card overflow-hidden animate-fade-up">
-      {/* Card header */}
-      <div className="flex items-center gap-3 p-4 border-b" style={{ borderColor: 'var(--border)' }}>
-        <div className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0"
-          style={{ background: dimColor }}>
-          <DynamicIcon name={service.icon} color={color} />
-        </div>
-        <div className="flex-1 min-w-0">
-          <div className="text-[14px] font-semibold truncate" style={{ color: 'var(--text)' }}>
-            {service.displayName}
-          </div>
-          <div className="text-[11px] font-mono truncate" style={{ color: 'var(--text3)' }}>
-            {service.description}
-          </div>
-        </div>
-
-        {/* Status badge */}
-        <div
-          className="badge text-[10.5px] px-2 py-0.5 flex-shrink-0"
-          style={{
-            background: isOn ? 'var(--green-dim)' : isFailed ? 'var(--red-dim)' : 'var(--surface3)',
-            color:      isOn ? 'var(--green)'     : isFailed ? 'var(--red)'     : 'var(--text3)',
-          }}
-        >
-          <div
-            className="w-1.5 h-1.5 rounded-full mr-1.5 inline-block"
-            style={{
-              background: isOn ? 'var(--green)' : isFailed ? 'var(--red)' : 'var(--text3)',
-              animation:  isOn ? 'pulse-glow 2.5s ease-in-out infinite' : 'none',
-            }}
-          />
-          {service.status}
-        </div>
-      </div>
-
-      {/* Actions */}
-      <div className="flex items-center gap-1.5 p-2.5 sm:p-3" style={{ background: 'var(--surface2)' }}>
-        <button
-          className="btn-ghost text-[12px] flex-1 justify-center px-2 sm:px-4 min-w-0"
-          disabled={isOn || toggleMut.isPending}
-          style={{ opacity: isOn ? 0.4 : 1 }}
-          onClick={() => toggleMut.mutate('start')}
-          aria-label="Démarrer"
-        >
-          <Play size={12} strokeWidth={2} /> <span className="hidden min-[420px]:inline truncate">Démarrer</span>
-        </button>
-        <button
-          className="btn-ghost text-[12px] flex-1 justify-center px-2 sm:px-4 min-w-0"
-          disabled={!isOn || toggleMut.isPending}
-          style={{ opacity: !isOn ? 0.4 : 1 }}
-          onClick={() => toggleMut.mutate('stop')}
-          aria-label="Arrêter"
-        >
-          <Square size={12} strokeWidth={2} /> <span className="hidden min-[420px]:inline truncate">Arrêter</span>
-        </button>
-        <button
-          className="btn-ghost text-[12px] flex-1 justify-center px-2 sm:px-4 min-w-0"
-          disabled={toggleMut.isPending}
-          onClick={() => toggleMut.mutate('restart')}
-          aria-label="Redémarrer"
-        >
-          <RotateCcw size={12} strokeWidth={2} /> <span className="hidden min-[420px]:inline truncate">Redémarrer</span>
-        </button>
-        <button
-          className="btn-ghost text-[12px] px-3 flex-shrink-0"
-          onClick={fetchLogs}
-          disabled={loadingLogs}
-          aria-label="Voir les logs"
-        >
-          <ScrollText size={12} strokeWidth={2} />
-        </button>
-        {service.url && (
-          <a href={service.url} target="_blank" rel="noopener noreferrer"
-            className="btn-ghost text-[12px] px-3 flex-shrink-0" aria-label="Ouvrir le service">
-            <ExternalLink size={12} strokeWidth={2} />
-          </a>
-        )}
-      </div>
-
-      {/* Logs */}
-      {showLogs && (
-        <div className="border-t" style={{ borderColor: 'var(--border)' }}>
-          <div className="flex items-center justify-between px-4 py-2"
-            style={{ background: 'var(--surface2)' }}>
-            <span className="text-[11px] font-semibold" style={{ color: 'var(--text3)' }}>
-              LOGS — {service.displayName}
-            </span>
-            <button className="text-[11px] p-1.5 -mr-1.5" style={{ color: 'var(--text3)' }}
-              onClick={() => setShowLogs(false)} aria-label="Fermer les logs">✕</button>
-          </div>
-          <div className="p-3 overflow-y-auto max-h-60 terminal-font text-[11px]"
-            style={{ background: '#09090e', lineHeight: '1.7', color: '#9191a8' }}>
-            {logs.length === 0
-              ? <span style={{ color: 'var(--text3)' }}>Aucun log disponible</span>
-              : logs.map((line, i) => (
-                <div key={i} className="whitespace-pre-wrap break-all">
-                  {line.includes('error') || line.includes('Error') || line.includes('failed')
-                    ? <span style={{ color: 'var(--red)' }}>{line}</span>
-                    : line.includes('active') || line.includes('started') || line.includes('success')
-                    ? <span style={{ color: 'var(--green)' }}>{line}</span>
-                    : line
-                  }
-                </div>
-              ))
-            }
-          </div>
-        </div>
-      )}
-    </div>
-  )
+const STATE: Record<ServiceInfo['status'], { label: string; dot: 'ok' | 'error' | 'off' }> = {
+  active:   { label: 'Actif',        dot: 'ok' },
+  failed:   { label: 'En échec',     dot: 'error' },
+  inactive: { label: 'Arrêté',       dot: 'off' },
+  unknown:  { label: 'État inconnu', dot: 'off' },
 }
 
 export default function ServicesPage() {
   const qc = useQueryClient()
+  const { device } = useShell()
+  const phone = device === 'phone'
+  const [selected, setSelected] = useState<string | null>(null)
+  const [sheet, setSheet] = useState(false)
 
-  const { data: services = [], isLoading } = useQuery({
+  const { data: services = [], isLoading, isError, isFetching } = useQuery({
     queryKey: ['services'],
     queryFn:  servicesService.getAll,
     refetchInterval: 10_000,
   })
+  useEffect(() => {
+    if (!phone && !selected && services.length) setSelected(services[0].name)
+  }, [phone, selected, services])
 
-  const active   = services.filter((s) => s.status === 'active').length
-  const inactive = services.filter((s) => s.status !== 'active').length
+  const active = services.filter((s) => s.status === 'active').length
+  const stopped = services.length - active
+  const current = services.find((s) => s.name === selected)
+  const refresh = (
+    <button type="button" className={phone ? 'w-11 h-11 grid place-items-center text-accent-text active:opacity-50' : 'w-8 h-8 grid place-items-center rounded-[6px] text-label2 hoverable'}
+      onClick={() => qc.invalidateQueries({ queryKey: ['services'] })} aria-label="Actualiser" title="Actualiser">
+      <RotateCw size={phone ? 22 : 16} strokeWidth={phone ? 1.75 : 1.5} className={isFetching ? 'animate-spin' : ''} />
+    </button>
+  )
+
+  const list = isLoading ? <SkeletonRows rows={5} /> : (
+    <Group footer={services.length ? `${active} actif${active > 1 ? 's' : ''}, ${stopped} arrêté${stopped > 1 ? 's' : ''}` : undefined}>
+      {services.map((s) => (
+        <ListRow
+          key={s.name}
+          status={STATE[s.status].dot}
+          title={s.displayName}
+          subtitle={!phone ? undefined : s.description}
+          detail={<span className={s.status === 'failed' ? 'text-danger-text' : undefined}>{STATE[s.status].label}</span>}
+          selected={!phone && s.name === selected}
+          accessory={phone ? 'chevron' : undefined}
+          onClick={() => { setSelected(s.name); if (phone) setSheet(true) }}
+        />
+      ))}
+    </Group>
+  )
 
   return (
-    <div className="min-h-full" style={{ background: 'var(--bg)' }}>
-
-      {/* Topbar */}
-      <div className="md:sticky top-0 z-30 flex items-center justify-between gap-3 px-4 sm:px-6 lg:px-7 pt-5 sm:pt-6 pb-1"
-        style={{ background: 'var(--bg)' }}>
-        <div className="min-w-0">
-          <h1 className="text-[22px] sm:text-[26px] font-bold tracking-tight" style={{ color: 'var(--text)' }}>
-            Services
-          </h1>
-          <p className="text-[12.5px] mt-0.5" style={{ color: 'var(--text3)' }}>
-            <span style={{ color: 'var(--green)' }}>{active} actifs</span>
-            {' · '}
-            <span style={{ color: inactive > 0 ? 'var(--red)' : 'var(--text3)' }}>
-              {inactive} inactifs
-            </span>
-          </p>
+    <Page title="Services" subtitle={services.length ? `${active} actif${active > 1 ? 's' : ''} · ${stopped} arrêté${stopped > 1 ? 's' : ''}` : undefined} actions={refresh}>
+      {isError ? (
+        <EmptyState tone="error" icon={<Activity strokeWidth={1.25} />} title="Services indisponibles" message="Le serveur n’a pas répondu. Réessaie dans un instant." />
+      ) : !isLoading && services.length === 0 ? (
+        <EmptyState icon={<Activity strokeWidth={1.25} />} title="Aucun service suivi" message="Ajoute des services dans la configuration du serveur pour les gérer ici." />
+      ) : phone ? (
+        <>
+          {list}
+          <Sheet open={sheet && !!current} onClose={() => setSheet(false)} title={current?.displayName}>
+            {current && <ServiceDetail service={current} />}
+          </Sheet>
+        </>
+      ) : (
+        <div className="grid gap-6 grid-cols-[minmax(240px,320px)_minmax(0,1fr)] items-start">
+          {list}
+          <div className="bg-surface rounded-card p-5 min-w-0">
+            {current ? <ServiceDetail service={current} showTitle /> : <SkeletonRows rows={3} />}
+          </div>
         </div>
-        <button
-          className="btn-ghost text-[12.5px] flex-shrink-0"
-          onClick={() => qc.invalidateQueries({ queryKey: ['services'] })}
-          aria-label="Actualiser"
-        >
-          <RefreshCw size={13} strokeWidth={2} /> <span className="hidden sm:inline">Actualiser</span>
-        </button>
-      </div>
+      )}
+    </Page>
+  )
+}
 
-      <div className="px-4 sm:px-6 lg:px-7 py-5">
-        {isLoading ? (
-          <div className="flex justify-center items-center h-40">
-            <div className="w-5 h-5 border-2 rounded-full animate-spin"
-              style={{ borderColor: 'var(--border2)', borderTopColor: 'var(--blue)' }} />
-          </div>
-        ) : (
-          <div className="grid gap-4" style={{ gridTemplateColumns: 'repeat(auto-fill, minmax(min(320px, 100%), 1fr))' }}>
-            {services.map((svc, i) => (
-              <div key={svc.name} style={{ animationDelay: `${i * 40}ms` }}>
-                <ServiceCard service={svc} />
-              </div>
-            ))}
-          </div>
+function ServiceDetail({ service, showTitle }: { service: ServiceInfo; showTitle?: boolean }) {
+  const qc = useQueryClient()
+  const confirm = useConfirm()
+  const isOn = service.status === 'active'
+  const { data: logs, isLoading: loadingLogs, refetch } = useQuery({
+    queryKey: ['service-logs', service.name],
+    queryFn:  () => servicesService.getLogs(service.name, 80),
+    retry: false,
+  })
+
+  const mut = useMutation({
+    mutationFn: (action: 'start' | 'stop' | 'restart') => servicesService.toggle(service.name, action),
+    onSuccess: (_, action) => {
+      qc.invalidateQueries({ queryKey: ['services'] })
+      setTimeout(() => refetch(), 800)
+      toast.success(`${service.displayName} ${action === 'start' ? 'démarré' : action === 'stop' ? 'arrêté' : 'redémarré'}`)
+    },
+    onError: () => toast.error(`${service.displayName} n’a pas répondu à la commande.`),
+  })
+
+  async function run(action: 'start' | 'stop' | 'restart') {
+    if (action !== 'start') {
+      const ok = await confirm({
+        title: `${action === 'stop' ? 'Arrêter' : 'Redémarrer'} ${service.displayName} ?`,
+        message: 'Si tu accèdes à Nexus à travers ce service (tunnel, Wi-Fi…), la connexion sera coupée.',
+        confirmLabel: action === 'stop' ? 'Arrêter' : 'Redémarrer',
+        danger: action === 'stop',
+      })
+      if (!ok) return
+    }
+    mut.mutate(action)
+  }
+
+  return (
+    <div className="flex flex-col gap-5">
+      {showTitle && (
+        <div>
+          <h2 className="text-title text-label">{service.displayName}</h2>
+          <p className="text-subhead text-label2 font-mono mt-0.5">{service.name}</p>
+        </div>
+      )}
+      <Group>
+        <ListRow title="État" status={STATE[service.status].dot} detail={STATE[service.status].label} />
+        {service.description && <ListRow title="Description" detail={service.description} />}
+        {service.url && (
+          <ListRow title="Adresse" detail={<a className="text-accent-text hover:underline inline-flex items-center gap-1" href={service.url} target="_blank" rel="noopener noreferrer">Ouvrir <ExternalLink size={12} strokeWidth={1.75} /></a>} />
         )}
+      </Group>
+      <div className="flex flex-wrap gap-2 max-md:grid max-md:grid-cols-3">
+        <Button variant={isOn ? 'secondary' : 'primary'} disabled={isOn || mut.isPending} onClick={() => run('start')} className="max-md:min-h-[44px]">Démarrer</Button>
+        <Button disabled={!isOn || mut.isPending} onClick={() => run('stop')} className="max-md:min-h-[44px]">Arrêter</Button>
+        <Button disabled={mut.isPending} onClick={() => run('restart')} className="max-md:min-h-[44px]">Redémarrer</Button>
       </div>
+      <section aria-label="Journal">
+        <div className="flex items-center justify-between mb-1.5 px-1">
+          <h3 className="text-subhead text-label2">Journal</h3>
+          <Button variant="plain" size="small" onClick={() => refetch()}>Actualiser</Button>
+        </div>
+        <div className="rounded-[10px] p-3 max-h-72 overflow-auto font-mono text-[11.5px] leading-relaxed" style={{ background: 'var(--term-bg)', color: 'var(--term-fg)', boxShadow: 'inset 0 0 0 .5px var(--separator)' }}>
+          {loadingLogs ? <Spinner size={16} /> : !logs?.length ? (
+            <span className="text-label2">Aucune entrée dans le journal.</span>
+          ) : logs.map((line, i) => (
+            <div key={i} className={cn('whitespace-pre-wrap break-all', /error|failed/i.test(line) && 'text-danger-text')}>{line}</div>
+          ))}
+        </div>
+      </section>
     </div>
   )
 }

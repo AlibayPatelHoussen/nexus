@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
 import {
   Play, Pause, Volume2, VolumeX,
-  Maximize, Minimize, RotateCcw, RotateCw,
+  Maximize, Minimize, RotateCcw, RotateCw, AlertTriangle,
 } from 'lucide-react'
+import Spinner from '@/components/ui/Spinner'
 import type Hls from 'hls.js'
 import { filesService } from '@/services/filesService'
 import { getPlayInfo, startTranscode, stopTranscode } from '@/services/playbackService'
@@ -416,195 +417,120 @@ export default function VideoPlayer({ filePath, streamToken, onTimeUpdate, onEnd
       {/* Click-to-play zone (covers video area, stops above controls bar) */}
       <div
         className="absolute left-0 right-0 top-0"
-        style={{ bottom: 72, cursor: playing ? 'none' : 'pointer' }}
+        style={{ bottom: 96, cursor: playing && !showControls ? 'none' : 'default' }}
         onClick={onVideoTap}
       />
 
       {/* Error */}
       {error && (
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none" role="alert">
-          <div style={{ textAlign: 'center', color: 'rgba(255,255,255,0.75)' }}>
-            <div style={{ fontSize: 13 }}>Impossible de lire la vidéo</div>
-            <div style={{ fontSize: 11, marginTop: 4, opacity: 0.65, maxWidth: 320, padding: '0 16px' }}>
-              {error} Réessaie, ou vérifie le fichier sur le serveur.
-            </div>
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none px-6" role="alert">
+          <div className="text-center text-white/90 max-w-[340px]">
+            <AlertTriangle size={28} strokeWidth={1.5} className="mx-auto mb-2 text-white/70" aria-hidden="true" />
+            <p className="text-[15px] font-semibold">Impossible de lire la vidéo</p>
+            <p className="text-[13px] mt-1 text-white/65">{error} Réessaie, ou vérifie le fichier sur le serveur.</p>
           </div>
         </div>
       )}
 
-      {/* Loading spinner (initial load, buffering, conversion starting) */}
+      {/* Loading (initial load, buffering, conversion starting) */}
       {loading && !error && (
-        <div
-          className="absolute inset-0 flex flex-col items-center justify-center gap-3 pointer-events-none"
-          style={{ bottom: 72 }}
-          role="status"
-          aria-live="polite"
-        >
-          <div
-            className="rounded-full animate-spin"
-            style={{
-              width: 'clamp(40px, 9vw, 56px)', height: 'clamp(40px, 9vw, 56px)',
-              border: '3px solid rgba(255,255,255,0.2)', borderTopColor: 'white',
-            }}
-          />
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 pointer-events-none" style={{ bottom: 96 }} role="status" aria-live="polite">
+          <span className="text-white"><Spinner size={36} label="Chargement de la vidéo" color="rgba(255,255,255,.9)" /></span>
           {converting && (
-            <span className="text-[12px] sm:text-[13px] font-medium px-3 py-1 rounded-full"
-              style={{ color: 'rgba(255,255,255,0.85)', background: 'rgba(0,0,0,0.45)' }}>
+            <span className="text-[13px] font-medium px-3 py-1 rounded-full text-white/90" style={{ background: 'rgba(30,30,30,.55)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)' }}>
               Préparation de la vidéo…
             </span>
           )}
         </div>
       )}
 
-      {/* Center play icon */}
+      {/* Centre play button (paused) */}
       {!playing && !error && !loading && (
-        <div
-          className="absolute inset-0 flex items-center justify-center pointer-events-none"
-          style={{ bottom: 72 }}
-        >
-          <div
-            className="flex items-center justify-center rounded-full"
-            style={{
-              width: 'clamp(52px, 12vw, 72px)', height: 'clamp(52px, 12vw, 72px)',
-              background: 'rgba(0,0,0,0.5)',
-              backdropFilter: 'blur(8px)',
-            }}
-          >
-            <Play size={32} fill="white" color="white" style={{ marginLeft: 4 }} />
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none" style={{ bottom: 96 }}>
+          <div className="grid place-items-center rounded-full" style={{ width: 'clamp(56px, 12vw, 76px)', height: 'clamp(56px, 12vw, 76px)', background: 'rgba(30,30,30,.5)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)' }}>
+            <Play size={30} fill="white" strokeWidth={0} style={{ marginLeft: 4 }} />
           </div>
         </div>
       )}
 
-      {/* Controls overlay */}
+      {/* Floating control bar (AVKit / QuickTime): appears on move / tap, fades out while playing */}
       <div
-        className="absolute left-0 right-0 bottom-0"
+        className="absolute left-2 right-2 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 sm:w-[min(640px,calc(100%-32px))]"
+        style={{ bottom: 'max(8px, env(safe-area-inset-bottom, 0px))', pointerEvents: showControls ? 'auto' : 'none' }}
+        onClick={(e) => e.stopPropagation()}
+      >
+      <div
+        className="text-white rounded-[14px] px-2 sm:px-4 py-0.5 sm:pt-2 sm:pb-2"
         style={{
-          opacity:       showControls ? 1 : 0,
-          transition:    'opacity 0.3s ease',
-          pointerEvents: showControls ? 'auto' : 'none',
-          background:    'linear-gradient(to top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0.2) 60%, transparent 100%)',
-          paddingTop:    32,
+          opacity: showControls ? 1 : 0,
+          transform: showControls ? 'none' : 'translateY(6px)',
+          transition: 'opacity 200ms var(--ease-out), transform 200ms var(--ease-out)',
+          background: 'rgba(30,30,30,.55)',
+          backdropFilter: 'saturate(180%) blur(24px)',
+          WebkitBackdropFilter: 'saturate(180%) blur(24px)',
+          boxShadow: '0 0 0 .5px rgba(255,255,255,.12), 0 8px 24px rgba(0,0,0,.3)',
         }}
       >
-        {/* Scrubber */}
-        <div className="px-3 sm:px-4 pb-1">
-          <div
-            ref={scrubberRef}
-            style={{ height: 28, display: 'flex', alignItems: 'center', cursor: 'pointer', position: 'relative', touchAction: 'none' }}
-            onPointerDown={onScrubStart}
-            onMouseEnter={() => setScrubHover(true)}
-            onMouseLeave={() => setScrubHover(false)}
-          >
-            {/* Track background */}
-            <div style={{
-              position: 'absolute', left: 0, right: 0,
-              height: thumbVisible ? 5 : 3,
-              background: 'rgba(255,255,255,0.25)',
-              borderRadius: 99,
-              transition: 'height 0.15s',
-            }} />
-            {/* Buffer */}
-            <div style={{
-              position: 'absolute', left: 0,
-              width: `${bufPct}%`,
-              height: thumbVisible ? 5 : 3,
-              background: 'rgba(255,255,255,0.35)',
-              borderRadius: 99,
-              transition: 'height 0.15s',
-            }} />
-            {/* Progress */}
-            <div style={{
-              position: 'absolute', left: 0,
-              width: `${pct}%`,
-              height: thumbVisible ? 5 : 3,
-              background: 'white',
-              borderRadius: 99,
-              transition: 'height 0.15s',
-            }} />
-            {/* Thumb */}
-            <div style={{
-              position: 'absolute',
-              left: `${pct}%`,
-              transform: 'translateX(-50%)',
-              width:  thumbVisible ? 14 : 0,
-              height: thumbVisible ? 14 : 0,
-              background: 'white',
-              borderRadius: '50%',
-              boxShadow: '0 1px 4px rgba(0,0,0,0.5)',
-              transition: 'width 0.15s, height 0.15s',
-              pointerEvents: 'none',
-            }} />
-          </div>
-        </div>
-
-        {/* Bottom bar */}
-        <div className="flex items-center gap-1 sm:gap-2 px-2 sm:px-4 pb-2 sm:pb-4" style={{ color: 'white' }}>
-          {/* Play/Pause */}
-          <button
-            style={{ width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0.9 }}
-            onMouseEnter={(e) => (e.currentTarget.style.opacity = '1')}
-            onMouseLeave={(e) => (e.currentTarget.style.opacity = '0.9')}
-            onClick={(e) => { e.stopPropagation(); togglePlay() }}
-            aria-label={playing ? 'Pause' : 'Lecture'}
-          >
-            {playing
-              ? <Pause size={22} fill="white" color="white" />
-              : <Play  size={22} fill="white" color="white" style={{ marginLeft: 2 }} />
-            }
+        <div className="hidden sm:flex items-center gap-2">
+          <button type="button" className="w-9 h-9 grid place-items-center rounded-full hover:bg-white/10 active:bg-white/20" onClick={() => seek(-10)} aria-label="Reculer de 10 secondes" title="Reculer de 10 s">
+            <RotateCcw size={18} strokeWidth={1.75} />
           </button>
-
-          {/* Rewind */}
-          <button
-            style={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0.9 }}
-            onClick={(e) => { e.stopPropagation(); seek(-10) }}
-            aria-label="Reculer de 10 secondes"
-          >
-            <RotateCcw size={18} color="white" />
+          <button type="button" className="w-10 h-10 grid place-items-center rounded-full hover:bg-white/10 active:bg-white/20" onClick={togglePlay} aria-label={playing ? 'Pause' : 'Lecture'}>
+            {playing ? <Pause size={22} fill="white" strokeWidth={0} /> : <Play size={22} fill="white" strokeWidth={0} style={{ marginLeft: 2 }} />}
           </button>
-
-          {/* Forward */}
-          <button
-            style={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0.9 }}
-            onClick={(e) => { e.stopPropagation(); seek(10) }}
-            aria-label="Avancer de 10 secondes"
-          >
-            <RotateCw size={18} color="white" />
+          <button type="button" className="w-9 h-9 grid place-items-center rounded-full hover:bg-white/10 active:bg-white/20" onClick={() => seek(10)} aria-label="Avancer de 10 secondes" title="Avancer de 10 s">
+            <RotateCw size={18} strokeWidth={1.75} />
           </button>
-
-          {/* Time */}
-          <span className="text-[11.5px] sm:text-[13px] whitespace-nowrap" style={{ fontVariantNumeric: 'tabular-nums', opacity: 0.85, marginLeft: 2 }}>
-            {fmt(current)} / {fmt(duration)}
-          </span>
-
-          <div style={{ flex: 1 }} />
-
-          {/* Volume */}
-          <button
-            style={{ width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0.9 }}
-            onClick={(e) => { e.stopPropagation(); toggleMute() }}
-            aria-label={muted ? 'Activer le son' : 'Couper le son'}
-          >
-            {muted || volume === 0 ? <VolumeX size={18} color="white" /> : <Volume2 size={18} color="white" />}
+          <div className="flex-1" />
+          <button type="button" className="w-9 h-9 grid place-items-center rounded-full hover:bg-white/10 active:bg-white/20" onClick={toggleMute} aria-label={muted ? 'Activer le son' : 'Couper le son'}>
+            {muted || volume === 0 ? <VolumeX size={18} strokeWidth={1.75} /> : <Volume2 size={18} strokeWidth={1.75} />}
           </button>
           <input
             type="range" min={0} max={1} step={0.02}
             value={muted ? 0 : volume}
             onChange={(e) => changeVolume(Number(e.target.value))}
-            onClick={(e) => e.stopPropagation()}
-            className="hidden sm:block"
+            className="hidden sm:block w-[84px]"
             aria-label="Volume"
-            style={{ width: 80, accentColor: 'white', cursor: 'pointer' }}
+            style={{ accentColor: 'white' }}
           />
-
-          {/* Fullscreen */}
-          <button
-            style={{ width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center', opacity: 0.9 }}
-            onClick={(e) => { e.stopPropagation(); toggleFullscreen() }}
-            aria-label={fullscreen ? 'Quitter le plein écran' : 'Plein écran'}
-          >
-            {fullscreen ? <Minimize size={18} color="white" /> : <Maximize size={18} color="white" />}
+          <button type="button" className="w-9 h-9 grid place-items-center rounded-full hover:bg-white/10 active:bg-white/20" onClick={toggleFullscreen} aria-label={fullscreen ? 'Quitter le plein écran' : 'Plein écran'}>
+            {fullscreen ? <Minimize size={17} strokeWidth={1.75} /> : <Maximize size={17} strokeWidth={1.75} />}
           </button>
         </div>
+
+        {/* Scrubber with elapsed / remaining time */}
+        <div className="flex items-center gap-2 sm:gap-2.5 text-[11px] text-white/80 tabular">
+          <button type="button" className="sm:hidden w-9 h-9 -ml-1 grid place-items-center rounded-full active:bg-white/20 text-white" onClick={togglePlay} aria-label={playing ? 'Pause' : 'Lecture'}>
+            {playing ? <Pause size={20} fill="white" strokeWidth={0} /> : <Play size={20} fill="white" strokeWidth={0} style={{ marginLeft: 2 }} />}
+          </button>
+          <span className="w-[40px] sm:w-[44px] text-right">{fmt(current)}</span>
+          <div
+            ref={scrubberRef}
+            className="relative flex-1 flex items-center"
+            style={{ height: 24, touchAction: 'none' }}
+            onPointerDown={onScrubStart}
+            onMouseEnter={() => setScrubHover(true)}
+            onMouseLeave={() => setScrubHover(false)}
+            role="slider"
+            aria-label="Position dans la vidéo"
+            aria-valuemin={0}
+            aria-valuemax={Math.round(duration)}
+            aria-valuenow={Math.round(current)}
+            aria-valuetext={`${fmt(current)} sur ${fmt(duration)}`}
+            tabIndex={0}
+            onKeyDown={(e) => { if (e.key === 'ArrowLeft') { seek(-5); e.preventDefault() } else if (e.key === 'ArrowRight') { seek(5); e.preventDefault() } }}
+          >
+            <div className="absolute inset-x-0 rounded-full" style={{ height: thumbVisible ? 6 : 4, background: 'rgba(255,255,255,.22)', transition: 'height 150ms' }} />
+            <div className="absolute left-0 rounded-full" style={{ width: `${bufPct}%`, height: thumbVisible ? 6 : 4, background: 'rgba(255,255,255,.32)', transition: 'height 150ms' }} />
+            <div className="absolute left-0 rounded-full bg-white" style={{ width: `${pct}%`, height: thumbVisible ? 6 : 4, transition: 'height 150ms' }} />
+            <div className="absolute rounded-full bg-white pointer-events-none" style={{ left: `${pct}%`, transform: 'translateX(-50%)', width: thumbVisible ? 12 : 0, height: thumbVisible ? 12 : 0, boxShadow: '0 1px 4px rgba(0,0,0,.4)', transition: 'width 150ms, height 150ms' }} />
+          </div>
+          <span className="w-[40px] sm:w-[44px]">-{fmt(Math.max(0, duration - current))}</span>
+          <button type="button" className="sm:hidden w-9 h-9 -mr-1 grid place-items-center rounded-full active:bg-white/20 text-white" onClick={toggleFullscreen} aria-label={fullscreen ? 'Quitter le plein écran' : 'Plein écran'}>
+            {fullscreen ? <Minimize size={17} strokeWidth={1.75} /> : <Maximize size={17} strokeWidth={1.75} />}
+          </button>
+        </div>
+      </div>
       </div>
     </div>
   )

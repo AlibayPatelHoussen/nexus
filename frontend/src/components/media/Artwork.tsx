@@ -2,9 +2,6 @@ import { useEffect, useState } from 'react'
 import { BookOpen, Film, Tv, Tv2 } from 'lucide-react'
 import type { MediaType } from '@/types'
 
-const TYPE_COLORS: Record<string, string> = {
-  film: 'var(--red)', serie: 'var(--blue)', anime: 'var(--teal)', manga: 'var(--purple)', webtoon: 'var(--orange)',
-}
 const TYPE_ICONS: Record<string, typeof Film> = { film: Film, serie: Tv, anime: Tv2, manga: BookOpen, webtoon: BookOpen }
 
 interface ArtworkProps {
@@ -40,13 +37,12 @@ export default function Artwork({
   const [failed, setFailed] = useState(false)
   useEffect(() => { setFailed(false) }, [src])
   const showImage = !!src && !failed
-  const color = TYPE_COLORS[type ?? ''] ?? 'var(--blue)'
   const Icon  = TYPE_ICONS[type ?? ''] ?? Film
 
   return (
     <div
       className={`relative overflow-hidden ${className}`}
-      style={{ aspectRatio: ratio, background: 'var(--surface2)' }}
+      style={{ aspectRatio: ratio, background: 'var(--fill)' }}
     >
       {showImage ? (
         <>
@@ -69,21 +65,10 @@ export default function Artwork({
           />
         </>
       ) : (
-        <div
-          className="absolute inset-0 flex flex-col justify-end p-2.5"
-          style={{ background: `linear-gradient(160deg, color-mix(in srgb, ${color} 35%, var(--surface2)), var(--surface3))` }}
-          role="img"
-          aria-label={alt}
-        >
-          <Icon size={22} strokeWidth={1.6} className="absolute top-2.5 left-2.5 opacity-60" style={{ color }} />
-          {title && (
-            <span className="text-[12px] sm:text-[13px] font-bold leading-tight line-clamp-4" style={{ color: 'var(--text)' }}>
-              {title}
-            </span>
-          )}
-          {subtitle != null && subtitle !== '' && (
-            <span className="text-[10px] font-mono mt-1" style={{ color: 'var(--text3)' }}>{subtitle}</span>
-          )}
+        <div className="absolute inset-0 flex flex-col justify-end p-2.5 bg-fill" role="img" aria-label={alt}>
+          <Icon size={22} strokeWidth={1.25} className="absolute top-2.5 left-2.5 text-label3" aria-hidden="true" />
+          {title && <span className="text-[12px] sm:text-[13px] font-semibold leading-tight line-clamp-4 text-label">{title}</span>}
+          {subtitle != null && subtitle !== '' && <span className="text-[11px] mt-1 text-label2 tabular">{subtitle}</span>}
         </div>
       )}
       {children}
