@@ -6,6 +6,8 @@ All notable changes to Nexus will be documented here.
 
 ### Changed — anime-sama search always live, catalogue rebuilt every day
 - anime-sama is asked at every search, so new titles appear right away; the local catalogue completes the results (close spellings the site's search misses) and answers alone when the site does not
+- The site's search had moved (old address 404, result cards without `title`): it now uses the site's own search box request, with the catalogue page as a second way; until now only the local catalogue answered
+- Other scans of a page carry the work's name: « One Piece — Scans (noir et blanc) »
 - The catalogue is rebuilt every day (`CATALOGUE_REFRESH_DAYS`, default 1) instead of every week; « Actualiser » still rebuilds it by hand. The date shown is the last full rebuild (`data/catalogue.updated`), searches adding titles no longer push the next rebuild back
 
 ### Added — anime-sama catalogue kept up to date

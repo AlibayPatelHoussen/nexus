@@ -1254,15 +1254,61 @@ def _poster_url(entry, info):
     return (info or {}).get("poster") or entry.get("poster")
 
 
+SITE_SEARCH = f"{BASE_URL}/template-php/defaut/fetch.php"   # what the site's search box calls
+
+
+def _parse_site_results(html):
+    """fetch.php answer: <a href=".../catalogue/slug" class="asn-search-result">…<h3 class="asn-search-result-title">"""
+    soup = BeautifulSoup(html, "html.parser")
+    out = []
+    for a in soup.select("a.asn-search-result[href], a[href*='/catalogue/']"):
+        slug = _slug_of(a.get("href", ""))
+        h = a.select_one(".asn-search-result-title, h1, h2, h3")
+        title = (h.get_text(" ", strip=True) if h else "") or a.get("title", "").strip()
+        if slug:
+            out.append({"title": title or slug.replace("-", " ").title(), "url": f"{BASE_URL}/catalogue/{slug}"})
+    return out
+
+
+def _parse_catalogue_cards(html, query):
+    """/catalogue/?search=…: cards without a title attribute, the name is in a heading / the image."""
+    soup = BeautifulSoup(html, "html.parser")
+    words = query.strip().lower().split()
+    out = []
+    for a in soup.select("a[href*='/catalogue/']"):
+        slug = _slug_of(a.get("href", ""))
+        if not slug or not re.fullmatch(r".*/catalogue/[^/?#]+/?", a["href"].split("?")[0]):
+            continue
+        h = a.select_one("h1, h2, h3, h4, .card-title")
+        img = a.select_one("img[alt]")
+        title = (a.get("title", "").strip() or (h.get_text(" ", strip=True) if h else "")
+                 or (img["alt"].strip() if img else "") or slug.replace("-", " ").title())
+        text = (title + " " + slug.replace("-", " ") + " " + a.get_text(" ", strip=True)).lower()
+        if all(w in text for w in words):
+            out.append({"title": title, "url": f"{BASE_URL}/catalogue/{slug}"})
+    return out
+
+
 def _live_search(query):
-    """The site's own search, for titles added after the catalogue was built."""
-    global _catalogue_cache
-    saved = _catalogue_cache
-    _catalogue_cache = []          # search() falls back to the site when the catalogue is empty
+    """Nexus: the site's own search, asked at every search (always up to date)."""
+    hits = []
     try:
-        return search(query)
-    finally:
-        _catalogue_cache = saved
+        r = SESSION.post(SITE_SEARCH, data={"query": query}, timeout=15,
+                         headers={"Referer": BASE_URL + "/", "X-Requested-With": "XMLHttpRequest"})
+        if r.status_code == 200:
+            hits = _parse_site_results(r.text)
+    except requests.RequestException as e:
+        print(f"live search: {e}")
+    if not hits:
+        r = get(CATALOGUE + "/", params={"search": query})
+        if r:
+            hits = _parse_catalogue_cards(r.text, query)
+    out, seen = [], set()
+    for h in hits:
+        if h["url"] not in seen:
+            seen.add(h["url"])
+            out.append(h)
+    return out
 
 
 def _add_to_catalogue(hits):
@@ -1366,10 +1412,13 @@ def _parse_id(id_):
 
 
 def _variant_title(title, v):
+    """« One Piece — Scans (noir et blanc) »: the work's name always comes first."""
     name = (v.get("name") or "").strip()
     if name.lower() in ("", "scans", "scan"):
-        return f"{title} ({v['seg'].replace('_', ' ').replace('-', ' ')[4:].strip() or 'scans'})"
-    return name
+        name = v["seg"].replace("_", " ").replace("-", " ")[4:].strip() or "scans"
+    if title.lower() in name.lower():
+        return name
+    return f"{title} — {name}"
 
 
 def _title_of(slug):

@@ -58,5 +58,32 @@ class Page(unittest.TestCase):
         self.assertEqual(len(ns["_parse_episodes_js"]("var eps1 = [];")), 0)
 
 
+    def test_site_search_answers(self):
+        try:
+            from bs4 import BeautifulSoup
+        except ImportError:
+            self.skipTest("bs4 missing")
+        ns = {"re": re, "BeautifulSoup": BeautifulSoup, "BASE_URL": "https://anime-sama.to"}
+        for name in ("_slug_of", "_parse_site_results", "_parse_catalogue_cards", "_variant_title"):
+            i = SRC.index(f"def {name}")
+            exec(SRC[i:SRC.index("\ndef ", i + 5)], ns)
+        fetch = ('<a href="https://anime-sama.to/catalogue/frieren" class="asn-search-result"><img src="x">'
+                 '<h3 class="asn-search-result-title"><mark>Frieren</mark></h3>'
+                 '<p class="asn-search-meta">Anime · Scans · 2023</p></a>')
+        self.assertEqual(ns["_parse_site_results"](fetch),
+                         [{"title": "Frieren", "url": "https://anime-sama.to/catalogue/frieren"}])
+        cards = ('<a class="as-carte-lien" href="https://anime-sama.to/catalogue/naruto/"><span>Anime</span>'
+                 '<span>Scans</span><img alt="Naruto" src="x"></a>'
+                 '<a class="as-carte-lien" href="/catalogue/bleach/"><img alt="Bleach"></a>'
+                 '<a href="/catalogue/naruto/saison1/vostfr/">ep</a>')
+        self.assertEqual(ns["_parse_catalogue_cards"](cards, "naruto"),
+                         [{"title": "Naruto", "url": "https://anime-sama.to/catalogue/naruto"}])
+        vt = ns["_variant_title"]
+        self.assertEqual(vt("One Piece", {"name": "Scans (noir et blanc)", "seg": "scan_noir-et-blanc"}),
+                         "One Piece — Scans (noir et blanc)")
+        self.assertEqual(vt("Naruto", {"name": "Naruto Gaiden", "seg": "scan_one_shot"}), "Naruto Gaiden")
+        self.assertEqual(vt("Naruto", {"name": "Scans", "seg": "scan_one_shot"}), "Naruto — one shot")
+
+
 if __name__ == "__main__":
     unittest.main()
