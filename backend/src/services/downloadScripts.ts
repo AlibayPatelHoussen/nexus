@@ -26,7 +26,8 @@ const SCRIPT_FILE: Record<Source, string> = {
 
 /** Id formats produced by the scripts, and the kinds they can have. */
 const ID_RULES: { source: Source; re: RegExp; kind: (m: RegExpMatchArray) => Kind }[] = [
-  { source: 'anisama', re: /^anisama:(anime|manga):[a-z0-9][a-z0-9-]{0,150}$/, kind: (m) => m[1] as Kind },
+  // manga:slug~scan_one_shot = other scans of the same page (one-shot, spin-off…)
+  { source: 'anisama', re: /^anisama:(anime|manga):[a-z0-9][a-z0-9-]{0,150}(~scan[a-z0-9_-]{1,80})?$/, kind: (m) => m[1] as Kind },
   { source: 'movix', re: /^movix:(tv|movie):\d{1,10}$/, kind: (m) => (m[1] === 'tv' ? 'serie' : 'film') },
   { source: 'films', re: /^films:[A-Za-z0-9_-]{4,2000}$/, kind: () => 'film' },
   { source: 'youtube', re: /^youtube:[A-Za-z0-9_-]{11}$/, kind: () => 'youtube' },
@@ -54,7 +55,7 @@ export function destFor(kind: Kind): string {
 }
 
 export const LANG_RE = /^[A-Z0-9]{2,8}$/
-export const SEASON_RE = /^(saison\d{1,3}(hs|-\d{1,3})?|film\d{0,2}|oav\d{0,2}|kai\d{0,2}|speciaux|specials?|\d{1,3})$/
+export const SEASON_RE = /^((saison\d{1,3}|kai\d{0,2}|film\d{0,2}|oav\d{0,2})(hs)?|saison\d{1,3}-\d{1,3}|speciaux|specials?|\d{1,3})$/
 
 /** A list of episode / chapter numbers -> compact text for the script ("1-3,7"). */
 export function selectionArg(list: unknown): string | null {

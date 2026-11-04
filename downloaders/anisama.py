@@ -1077,7 +1077,7 @@ def main():
 # ── Mode Nexus (--json) ───────────────────────────────────────────────────────
 # Everything below is only used with --json; the menus above are unchanged.
 
-ANIME_SEGMENT = re.compile(r"^(saison\d+(?:hs|-\d+)?|film\d*|oav\d*|speciaux|specials?|kai\d*)$")
+ANIME_SEGMENT = re.compile(r"^(?:(?:saison\d+|kai\d*|film\d*|oav\d*)(?:hs)?|saison\d+-\d+|speciaux|specials?)$")
 LANGS = ("vostfr", "vf", "va", "vj", "vcn", "vqc", "vkr", "vf1", "vf2")
 
 
@@ -1136,11 +1136,15 @@ def _page_info(slug):
             if p and p.get_text(strip=True):
                 desc = p.get_text(" ", strip=True)
             break
-    # Links like panneauAnime("Saison 1", "saison1/vostfr") or panneauScan("Scans", "scan/vf"),
-    # commented-out ones excluded
-    html_nc = re.sub(r"/\*.*?\*/", "", html, flags=re.S)
-    html_nc = re.sub(r"<!--.*?-->", "", html_nc, flags=re.S)
-    links = re.findall(r"panneau\w*\(\s*[\"']([^\"']*)[\"']\s*,\s*[\"']([a-z0-9-]+)/([a-z0-9]+)/?[\"']", html_nc, re.I)
+    # Links like panneauAnime("Saison 1", "saison1/vostfr") or panneauScan("Scans", "scan/vf").
+    # Every page also contains examples — panneauAnime("nom", "saison1/vostfr") — never real.
+    # (Removing /* comments */ is not safe: it also removed Naruto's real scan link.)
+    links = []
+    for name, seg, lang in re.findall(
+            r"panneau\w*\(\s*[\"']([^\"']*)[\"']\s*,\s*[\"']([a-z0-9_-]+)/([a-z0-9]+)/?[\"']", html, re.I):
+        if name.strip().lower() in ("", "nom", "url", "name") or seg.lower() == "url":
+            continue
+        links.append((name.strip(), seg, lang))
     return {"poster": poster, "description": desc, "links": links}
 
 
@@ -1155,9 +1159,8 @@ def _probe(urls):
 
 
 def _season_label(seg):
-    m = re.match(r"saison(\d+)hs$", seg)
-    if m:
-        return f"Saison {m.group(1)} (sans fillers)"
+    if seg.endswith("hs") and len(seg) > 2:
+        return f"{_season_label(seg[:-2])} (sans fillers)"
     m = re.match(r"saison(\d+)", seg)
     if m:
         return f"Saison {m.group(1)}"
@@ -1168,6 +1171,9 @@ def _season_label(seg):
 
 
 def _season_sort(seg):
+    if seg.endswith("hs") and len(seg) > 2:
+        base = _season_sort(seg[:-2])
+        return base[:2] + (base[2] + "~",)
     m = re.match(r"(saison|film|kai|oav)(\d*)", seg)
     if not m:
         return (9, 0, seg)
@@ -1178,35 +1184,35 @@ def _structure(slug, full_probe=False):
     """Anime seasons {seg: [langs]} and scan langs [..] of a title."""
     info = _page_info(slug)
     base = f"https://anime-sama.to/catalogue/{slug}"
-    seasons, scans = {}, set()
-    for _, seg, lang in info.get("links", []):
+    seasons, scans, variants = {}, set(), {}
+    for name, seg, lang in info.get("links", []):
         seg, lang = seg.lower(), lang.lower()
         if seg == "scan":
             scans.add(lang.upper())
+        elif seg.startswith("scan"):
+            # Other scans on the same page: one-shot, spin-off, black & white, sequel…
+            v = variants.setdefault(seg, {"seg": seg, "name": name, "langs": set()})
+            v["langs"].add(lang.upper())
         elif ANIME_SEGMENT.match(seg):
             seasons.setdefault(seg, set()).add(lang)
-    if not seasons and not scans or full_probe:
-        # Same probing as the menu (get_seasons / get_scan_langs)
+    if not seasons and not scans and not variants or full_probe:
+        # Same probing as the menu (get_seasons)
         segs = ([f"saison{i}" for i in range(1, 25)] + ["film"] + [f"film{i}" for i in range(1, 10)]
                 + ["oav", "oav1", "oav2", "speciaux", "special", "specials"])
         cand = {f"{base}/{seg}/{lang}/": (seg, lang) for seg in segs for lang in ("vostfr", "vf")}
-        cand.update({f"{base}/scan/{lang}/": ("scan", lang) for lang in ("vf", "vostfr")})
         for u in _probe(list(cand)):
             seg, lang = cand[u]
-            if seg == "scan":
+            seasons.setdefault(seg, set()).add(lang)
+        # Scan pages answer 200 even when there are none: only real chapters count
+        for lang in ("vf", "vostfr"):
+            if get_chapters(f"{base}/scan/{lang}/"):
                 scans.add(lang.upper())
-            else:
-                seasons.setdefault(seg, set()).add(lang)
     else:
         # The page often lists only VOSTFR; VF may exist next to it
         extra = {f"{base}/{seg}/vf/": seg for seg, langs in seasons.items() if "vf" not in langs}
-        # Scans: always checked (the page does not always list them where we read it — Naruto)
-        extra.update({f"{base}/scan/{l}/": "scan" for l in ("vf", "vostfr") if l.upper() not in scans})
         for u in _probe(list(extra)):
-            if extra[u] == "scan":
-                scans.add("VOSTFR" if "/vostfr/" in u else "VF")
-            else:
-                seasons[extra[u]].add("vf")
+            seasons[extra[u]].add("vf")
+    info["scan_variants"] = [{"seg": v["seg"], "name": v["name"], "langs": sorted(v["langs"])} for v in variants.values()]
     ordered = [{"id": seg, "label": _season_label(seg),
                 "langs": sorted((l.upper() for l in langs), key=lambda l: (l != "VOSTFR", l))}
                for seg, langs in sorted(seasons.items(), key=lambda kv: _season_sort(kv[0]))]
@@ -1291,6 +1297,9 @@ def json_search(query, limit):
             out.append({**base, "id": f"anisama:anime:{slug}", "kind": "anime", "seasons": seasons})
         if scans:
             out.append({**base, "id": f"anisama:manga:{slug}", "kind": "manga", "langs": scans})
+        for v in info.get("scan_variants", []):
+            out.append({**base, "id": f"anisama:manga:{slug}~{v['seg']}", "kind": "manga", "langs": v["langs"],
+                        "title": _variant_title(base["title"], v)})
         return out
     count = 0
     with ThreadPoolExecutor(max_workers=4) as pool:
@@ -1305,10 +1314,18 @@ def json_search(query, limit):
 
 
 def _parse_id(id_):
-    m = re.fullmatch(r"anisama:(anime|manga):([a-z0-9][a-z0-9-]*)", id_ or "")
+    """anisama:anime:slug, anisama:manga:slug, anisama:manga:slug~scan_one_shot (other scans of the page)."""
+    m = re.fullmatch(r"anisama:(anime|manga):([a-z0-9][a-z0-9-]*)(?:~(scan[a-z0-9_-]+))?", id_ or "")
     if not m:
         nexus_cli.fail(f"Identifiant invalide : {id_}")
-    return m.group(1), m.group(2)
+    return m.group(1), m.group(2), m.group(3)
+
+
+def _variant_title(title, v):
+    name = (v.get("name") or "").strip()
+    if name.lower() in ("", "scans", "scan"):
+        return f"{title} ({v['seg'].replace('_', ' ').replace('-', ' ')[4:].strip() or 'scans'})"
+    return name
 
 
 def _title_of(slug):
@@ -1326,10 +1343,15 @@ def _scan_pdf(title, lang, num):
 
 
 def json_details(id_):
-    kind, slug = _parse_id(id_)
+    kind, slug, scan_seg = _parse_id(id_)
     title = _title_of(slug)
     base = f"https://anime-sama.to/catalogue/{slug}"
     seasons, scans, info = _structure(slug)
+    if scan_seg:
+        variant = next((v for v in info.get("scan_variants", []) if v["seg"] == scan_seg), None)
+        if not variant:
+            nexus_cli.fail("Ces scans n'existent plus sur le site")
+        title, scans = _variant_title(title, variant), variant["langs"]
     if kind == "anime":
         def season_eps(season, lang):
             eps = get_episodes(f"{base}/{season['id']}/{lang.lower()}/")
@@ -1345,7 +1367,7 @@ def json_details(id_):
     else:
         langs = []
         for lang in scans:
-            chs = get_chapters(f"{base}/scan/{lang.lower()}/")
+            chs = get_chapters(f"{base}/{scan_seg or 'scan'}/{lang.lower()}/")
             langs.append({"lang": lang, "chapters": [
                 {"n": ch["num"], "pages": ch["nb_pages"], "downloaded": _scan_pdf(title, lang, ch["num"]).exists()}
                 for ch in chs]})
@@ -1457,8 +1479,13 @@ def _download_chapter_json(ch, title, lang, index, total):
 
 def json_download(args):
     global ANIME_DL_DIR, DOWNLOAD_DIR
-    kind, slug = _parse_id(args.download)
+    kind, slug, scan_seg = _parse_id(args.download)
     title = _title_of(slug)
+    if scan_seg:
+        variant = next((v for v in _structure(slug)[2].get("scan_variants", []) if v["seg"] == scan_seg), None)
+        if not variant:
+            nexus_cli.fail("Ces scans n'existent plus sur le site")
+        title = _variant_title(title, variant)
     base = f"https://anime-sama.to/catalogue/{slug}"
     lang = (args.lang or ("VOSTFR" if kind == "anime" else "VF")).upper()
     if not re.fullmatch(r"[A-Z0-9]{2,8}", lang):
@@ -1479,7 +1506,7 @@ def json_download(args):
     else:
         if args.dest:
             DOWNLOAD_DIR = Path(args.dest)
-        chapters = get_chapters(f"{base}/scan/{lang.lower()}/")
+        chapters = get_chapters(f"{base}/{scan_seg or 'scan'}/{lang.lower()}/")
         if not chapters:
             nexus_cli.fail("Aucun chapitre trouvé")
         by_num = {ch["num"]: ch for ch in chapters}
