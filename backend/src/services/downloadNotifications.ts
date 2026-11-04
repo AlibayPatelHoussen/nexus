@@ -1,3 +1,4 @@
+import path from 'path'
 import { query } from '../config/database'
 import { logger } from '../utils/logger'
 import { broadcast, onDownloadFinished, type DownloadRow } from './downloads'
@@ -55,16 +56,20 @@ export function message(row: DownloadRow) {
 }
 
 /** The library page of what was downloaded, else the queue. */
-async function urlOf(row: DownloadRow): Promise<string> {
+export async function urlOf(row: DownloadRow): Promise<string> {
   if (row.status !== 'done') return '/downloads?tab=queue'
   if (row.kind === 'youtube') return '/youtube'
   const files = ((row.progress as { files?: string[] }).files ?? []).filter((f) => typeof f === 'string').slice(-200)
   if (files.length) {
-    const { rows } = await query<{ id: string }>(
-      `SELECT id FROM media_items WHERE file_path = ANY($1::text[])
-       UNION ALL SELECT media_item_id FROM episodes WHERE file_path = ANY($1::text[])
-       UNION ALL SELECT media_item_id FROM chapters WHERE file_path = ANY($1::text[])
-       LIMIT 1`, [files])
+    // The file itself (film, episode), its chapter, or a folder holding it (series / manga folder)
+    const folders = new Set<string>()
+    for (const f of files) for (let d = path.dirname(f); d.length > 1 && folders.size < 600; d = path.dirname(d)) folders.add(d)
+    const { rows } = await query<{ id: string; rank: number }>(
+      `SELECT id, 0 AS rank FROM media_items WHERE file_path = ANY($1::text[])
+       UNION ALL SELECT media_item_id, 1 FROM episodes WHERE file_path = ANY($1::text[])
+       UNION ALL SELECT media_item_id, 2 FROM chapters WHERE folder_path = ANY($1::text[]) OR folder_path = ANY($2::text[])
+       UNION ALL SELECT id, 3 FROM media_items WHERE file_path = ANY($2::text[])
+       ORDER BY rank LIMIT 1`, [files, [...folders]])
     if (rows[0]) return `/media/${rows[0].id}`
   }
   return '/downloads?tab=queue'

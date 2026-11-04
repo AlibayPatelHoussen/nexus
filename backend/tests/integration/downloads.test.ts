@@ -414,6 +414,30 @@ describe('Signed image proxy', () => {
   })
 })
 
+describe('Download notification link', () => {
+  it('opens the film, the series of an episode or the manga of a chapter in the library', async () => {
+    const { urlOf } = await import('../../src/services/downloadNotifications')
+    const film = path.join(OUT, 'films', 'Notif (2024)', 'notif.mkv')
+    const show = path.join(OUT, 'series', 'Notif Show')
+    const manga = path.join(OUT, 'scans', 'Notif Manga')
+    const ins = async (type: string, title: string, p: string) => (await query<{ id: string }>(
+      `INSERT INTO media_items (type, title, file_path) VALUES ($1, $2, $3)
+       ON CONFLICT (file_path) DO UPDATE SET title = EXCLUDED.title RETURNING id`, [type, title, p])).rows[0].id
+    const f = await ins('film', 'Notif', film)
+    const s = await ins('serie', 'Notif Show', show)
+    const m = await ins('manga', 'Notif Manga', manga)
+    await query(`INSERT INTO episodes (media_item_id, season, episode_number, file_path) VALUES ($1, 1, 3, $2) ON CONFLICT DO NOTHING`,
+      [s, path.join(show, 'Release', 'Notif.Show.S01E03.mkv')])
+    const row = (kind: string, files: string[]) => ({ status: 'done', kind, progress: { files } }) as never
+    expect(await urlOf(row('film', [film]))).toBe(`/media/${f}`)
+    expect(await urlOf(row('serie', [path.join(show, 'Release', 'Notif.Show.S01E03.mkv')]))).toBe(`/media/${s}`)
+    expect(await urlOf(row('serie', [path.join(show, 'Other', 'new.mkv')]))).toBe(`/media/${s}`)        // not scanned yet: its folder
+    expect(await urlOf(row('manga', [path.join(manga, 'VF', 'Chapitre 1.pdf')]))).toBe(`/media/${m}`)
+    expect(await urlOf(row('film', ['/nowhere/x.mkv']))).toBe('/downloads?tab=queue')
+    expect(await urlOf({ status: 'failed', kind: 'film', progress: { files: [film] } } as never)).toBe('/downloads?tab=queue')
+  })
+})
+
 describe('anime-sama catalogue', () => {
   it('reports its size and date, and rebuilds on demand', async () => {
     const res = await request(app).post('/api/downloads/catalogue/refresh').set(admin)
