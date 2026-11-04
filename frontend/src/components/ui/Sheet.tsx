@@ -71,7 +71,7 @@ export default function Sheet({
           role={role}
           aria-modal="true"
           aria-labelledby={title != null ? titleId : undefined}
-          className={cn('absolute inset-x-0 bottom-0 flex flex-col bg-surface rounded-t-[14px] max-h-[92dvh]', className)}
+          className={cn('absolute inset-x-0 bottom-0 flex flex-col bg-surface rounded-t-sheet max-h-[92dvh]', className)}
           style={{
             boxShadow: 'var(--shadow-sheet)',
             paddingBottom: 'env(safe-area-inset-bottom, 0px)',

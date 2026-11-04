@@ -36,7 +36,7 @@ export default function SegmentedControl<T extends string>({ options, value, onC
       ref={box}
       role="radiogroup"
       aria-label={label}
-      className={cn('relative inline-flex p-[2px] gap-[2px] rounded-[8px] bg-fill', full && 'flex w-full', className)}
+      className={cn('relative inline-flex p-[2px] gap-[2px] rounded-pill bg-fill', full && 'flex w-full', className)}
       onKeyDown={(e) => {
         if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return
         const i = options.findIndex((o) => o.value === value)
@@ -48,7 +48,7 @@ export default function SegmentedControl<T extends string>({ options, value, onC
       {thumb && (
         <span
           aria-hidden="true"
-          className="absolute top-[2px] bottom-[2px] left-0 rounded-[6px] pointer-events-none"
+          className="absolute top-[2px] bottom-[2px] left-0 rounded-pill pointer-events-none"
           style={{
             width: thumb.w, transform: `translateX(${thumb.x}px)`,
             transition: thumb.animate ? 'transform 320ms var(--ease-sheet), width 320ms var(--ease-sheet)' : 'none',
@@ -68,7 +68,7 @@ export default function SegmentedControl<T extends string>({ options, value, onC
             title={o.title}
             onClick={() => onChange(o.value)}
             className={cn(
-              'relative min-h-[24px] px-3 rounded-[6px] text-body leading-none whitespace-nowrap transition-opacity duration-fast ease-out active:opacity-60',
+              'relative min-h-[24px] px-3.5 rounded-pill text-body leading-none whitespace-nowrap transition-opacity duration-fast ease-out active:opacity-60',
               'max-md:min-h-[30px]',
               full && 'flex-1',
               on ? 'font-medium' : 'text-label',

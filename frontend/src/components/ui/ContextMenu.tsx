@@ -90,8 +90,8 @@ function Popover({ x, y, items, title, onClose }: Omit<ContextMenuProps, 'open'>
       tabIndex={-1}
       onKeyDown={onKey}
       onContextMenu={(e) => e.preventDefault()}
-      className="fixed z-[120] min-w-[200px] max-w-[300px] p-[5px] rounded-[8px] material-bar text-body outline-none"
-      style={{ ...pos, boxShadow: 'var(--shadow-popover)', animation: 'nx-menu-in 220ms var(--ease-spring) both', transformOrigin: 'top left' }}
+      className="fixed z-[120] min-w-[200px] max-w-[300px] p-[6px] rounded-[16px] glass-strong text-body outline-none"
+      style={{ ...pos, animation: 'nx-menu-in 220ms var(--ease-spring) both', transformOrigin: 'top left' }}
     >
       {items.map((it, i) =>
         'separator' in it ? (
@@ -106,7 +106,7 @@ function Popover({ x, y, items, title, onClose }: Omit<ContextMenuProps, 'open'>
             onMouseLeave={() => setActive(-1)}
             onClick={() => { onClose(); it.onSelect() }}
             className={cn(
-              'w-full flex items-center gap-2 px-2.5 py-[3px] rounded-[4px] text-left disabled:opacity-40',
+              'w-full flex items-center gap-2 px-2.5 py-[5px] rounded-[10px] text-left disabled:opacity-40',
               active === i ? 'bg-accent text-white' : it.destructive ? 'text-danger-text' : 'text-label',
             )}
           >

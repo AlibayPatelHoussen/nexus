@@ -1,10 +1,17 @@
 import { useRef } from 'react'
 import { Link, useLocation } from 'react-router-dom'
+import { motion, LayoutGroup } from 'framer-motion'
 import { useAuthStore } from '@/stores/authStore'
+import { spring } from '@/design/motion'
 import { cn } from '@/utils'
 import { TABS, tabFor } from './nav'
 
-/** iOS tab bar: translucent, fixed at the bottom, above the home indicator. */
+/**
+ * iOS 26 tab bar (Apple's iOS 26 kit, "Tab Bar – iPhone"): a Liquid Glass
+ * capsule floating above the content, 62 pt tall (54 pt tabs + 4 pt inset),
+ * 25 pt from the screen sides. The selected tab sits in a lighter capsule that
+ * slides on a spring; only it is tinted.
+ */
 export default function TabBar() {
   const { pathname } = useLocation()
   const isAdmin = useAuthStore((s) => s.user?.role === 'admin')
@@ -18,26 +25,44 @@ export default function TabBar() {
   return (
     <nav
       aria-label="Onglets"
-      className="fixed inset-x-0 bottom-0 z-40 material-bar hairline-t"
-      style={{ paddingBottom: 'env(safe-area-inset-bottom, 0px)', paddingLeft: 'env(safe-area-inset-left, 0px)', paddingRight: 'env(safe-area-inset-right, 0px)' }}
+      className="fixed z-40 left-0 right-0 flex justify-center pointer-events-none"
+      style={{
+        bottom: 'var(--tabbar-bottom)',
+        paddingLeft: 'max(21px, env(safe-area-inset-left, 0px))',
+        paddingRight: 'max(21px, env(safe-area-inset-right, 0px))',
+      }}
     >
-      <ul className="grid h-[var(--tabbar-h)]" style={{ gridTemplateColumns: `repeat(${tabs.length}, minmax(0, 1fr))` }}>
-        {tabs.map((t) => {
-          const on = current?.to === t.to
-          return (
-            <li key={t.to} className="flex">
-              <Link
-                to={t.to}
-                aria-current={on ? 'page' : undefined}
-                className={cn('flex-1 flex flex-col items-center justify-center gap-[2px] pt-[3px] text-[10px] font-medium select-none no-press active:opacity-60', on ? 'text-accent' : 'text-label2')}
-              >
-                <t.icon size={25} strokeWidth={on ? 1.9 : 1.5} aria-hidden="true" style={on ? { animation: 'nx-tab-bounce 450ms var(--ease-out)' } : undefined} />
-                <span>{t.label}</span>
-              </Link>
-            </li>
-          )
-        })}
-      </ul>
+      <LayoutGroup id="tabbar">
+        <ul className="glass pointer-events-auto flex w-full max-w-[460px] h-[var(--tabbar-h)] p-1 rounded-pill">
+          {tabs.map((t) => {
+            const on = current?.to === t.to
+            return (
+              <li key={t.to} className="flex-1 flex min-w-0">
+                <Link
+                  to={t.to}
+                  aria-current={on ? 'page' : undefined}
+                  className={cn(
+                    'no-press relative flex-1 flex flex-col items-center justify-center gap-px pt-1.5 pb-[7px] rounded-pill select-none',
+                    'text-[10px] leading-3 font-[590] transition-[scale] duration-200 active:scale-95',
+                    on ? 'text-accent' : 'text-[color:var(--glass-label)]',
+                  )}
+                >
+                  {on && (
+                    <motion.span
+                      layoutId="tab-selection"
+                      transition={spring.selection}
+                      className="absolute inset-0 rounded-pill bg-[color:var(--glass-select)]"
+                      aria-hidden="true"
+                    />
+                  )}
+                  <t.icon size={23} strokeWidth={on ? 2.1 : 1.75} className="relative" aria-hidden="true" />
+                  <span className="relative truncate max-w-full px-0.5">{t.label}</span>
+                </Link>
+              </li>
+            )
+          })}
+        </ul>
+      </LayoutGroup>
     </nav>
   )
 }

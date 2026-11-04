@@ -126,7 +126,7 @@ function ConfirmView({ pending, pw, setPw, pwError, busy, onCancel, onAccept }: 
           className="absolute inset-x-2 flex flex-col gap-2"
           style={{ bottom: 'calc(env(safe-area-inset-bottom, 0px) + 8px)', animation: closing ? 'nx-sheet-up 200ms var(--ease-sheet) reverse both' : 'nx-sheet-up 300ms var(--ease-sheet) both' }}
         >
-          <div className="material-bar rounded-[14px] overflow-hidden text-center">
+          <div className="glass-strong rounded-[26px] overflow-hidden text-center">
             <div className="px-4 py-3.5 hairline-b">
               <h2 id={titleId} className="text-[13px] font-semibold text-label2">{p.title}</h2>
               {p.message && <div id={msgId} className="text-[13px] text-label2 mt-0.5">{p.message}</div>}
@@ -134,7 +134,7 @@ function ConfirmView({ pending, pw, setPw, pwError, busy, onCancel, onAccept }: 
             </div>
             <button ref={confirmRef} type="button" onClick={onAccept} className="w-full min-h-[57px] text-[20px] text-danger-text pressable">{confirmLabel}</button>
           </div>
-          <button ref={cancelRef} type="button" onClick={onCancel} className="w-full min-h-[57px] rounded-[14px] bg-surface text-[20px] font-semibold text-accent-text pressable">{cancelLabel}</button>
+          <button ref={cancelRef} type="button" onClick={onCancel} className="w-full min-h-[57px] rounded-pill glass-strong text-[20px] font-semibold text-accent-text pressable">{cancelLabel}</button>
         </div>
       </div>,
       document.body,
@@ -148,7 +148,7 @@ function ConfirmView({ pending, pw, setPw, pwError, busy, onCancel, onAccept }: 
         {backdrop}
         <div
           ref={ref} role="alertdialog" aria-modal="true" aria-labelledby={titleId} aria-describedby={p.message ? msgId : undefined}
-          className="relative w-full max-w-[290px] material-bar rounded-[14px] overflow-hidden text-center"
+          className="relative w-full max-w-[300px] glass-strong rounded-[34px] overflow-hidden text-center"
           style={{ animation: closing ? 'nx-pop 150ms var(--ease-out) reverse both' : 'nx-pop 200ms var(--ease-out) both' }}
         >
           <div className="px-4 pt-5 pb-4">
