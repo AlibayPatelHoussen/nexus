@@ -50,6 +50,15 @@ if ! command -v pdftoppm &> /dev/null; then
   fi
 fi
 
+# ── aria2 downloads the torrents of downloaders/oxtorrent.py ──
+if ! command -v aria2c &> /dev/null; then
+  echo "📦 Installing aria2 (OxTorrent downloads)..."
+  if ! sudo -n apt-get install -y aria2; then
+    echo "⚠️  aria2 could not be installed: OxTorrent downloads will fail."
+    echo "   Install it with: sudo apt-get install -y aria2"
+  fi
+fi
+
 # ── Install dependencies (including devDeps for build) ─
 echo "📦 Installing dependencies..."
 npm ci --include=dev

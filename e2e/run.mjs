@@ -794,7 +794,7 @@ test('youtube: videos of /media/youtube with channel, duration and thumbnail; pl
   await page.context().close()
 })
 
-test('downloads: one search over the four scripts, choose chapters, queue runs with live progress', async () => {
+test('downloads: one search over the five scripts, choose chapters, queue runs with live progress', async () => {
   const page = await newPage(admin, { width: 1280, height: 800 })
   await page.goto(`${B}/downloads`, { waitUntil: 'networkidle' })
   await page.fill('input[type=search]', 'one piece')
@@ -805,12 +805,12 @@ test('downloads: one search over the four scripts, choose chapters, queue runs w
   await page.locator('button', { hasText: 'Manga' }).filter({ hasText: 'One Piece' }).first().waitFor()
   await page.waitForSelector('text=One Piece Stampede', { timeout: 10000 })
   await page.waitForSelector('text=one piece — vidéo 1')
-  // Fixed order, whatever script answered first: anime, manga, films.py film, movix film, movix series, then YouTube
+  // Fixed order, whatever script answered first: anime, manga, OxTorrent, films.py film, movix film, movix series, then YouTube
   await page.waitForSelector('text=Recherche dans', { state: 'detached', timeout: 10000 })
   const order = await page.evaluate(() => [...document.querySelectorAll('button[aria-label]')]
     .map((b) => b.getAttribute('aria-label')).filter((l) => /, (anime|manga|film|serie)$|vidéo \d$/.test(l)))
-  eq(order, ['One Piece, anime', 'One Piece, manga', 'One Piece Stampede, film', 'One Piece Film - Red, film', 'One Piece, serie',
-    'one piece — vidéo 1', 'one piece — vidéo 2', 'one piece — vidéo 3'], 'results order')
+  eq(order, ['One Piece, anime', 'One Piece, manga', 'One Piece, serie', 'One Piece Stampede, film', 'One Piece Film - Red, film',
+    'One Piece, serie', 'one piece — vidéo 1', 'one piece — vidéo 2', 'one piece — vidéo 3'], 'results order')
   // Filter by type
   await page.click('[role=radio]:has-text("YouTube")')
   eq(await page.locator('text=One Piece Stampede').count(), 0, 'films hidden by the YouTube filter')
@@ -836,6 +836,15 @@ test('downloads: one search over the four scripts, choose chapters, queue runs w
   await page.click('button:has-text("Choisir")')
   await page.click('button:has-text("Télécharger 2 chapitres")')
   await page.waitForSelector('text=Déjà téléchargé ou en file : 5')
+  await page.keyboard.press('Escape')
+  // OxTorrent: a torrent is one job, no episode picker, its language / quality / size / seeds shown
+  await page.locator('button', { hasText: 'MULTI · 1080p · 12.4 GB · 40 seeds' }).first().click()
+  await page.waitForSelector('text=One.Piece.S01.MULTi.1080p.WEB.x264')
+  await page.waitForSelector('text=Source : OxTorrent')
+  eq(await page.locator('text=Tout sélectionner').count(), 0, 'no episode picker for a torrent')
+  eq(await page.locator('text=Télécharger automatiquement les nouveaux épisodes').count(), 0, 'no follow switch for a torrent')
+  await page.click('button:text-is("Télécharger")')
+  await page.waitForSelector('text=One Piece ajouté à la file')
   await page.context().close()
 })
 

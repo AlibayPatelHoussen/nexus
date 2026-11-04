@@ -31,7 +31,8 @@ let lastSearch: SearchState = { query: '', searchId: null, results: [], sources:
  * Order of the results: anime (anime-sama), manga (anime-sama), films (films.py),
  * films (movix), series (movix), YouTube videos.
  */
-const ORDER: string[] = ['anisama:anime', 'anisama:manga', 'films:film', 'movix:film', 'movix:serie', 'youtube:youtube']
+const ORDER: string[] = ['anisama:anime', 'anisama:manga', 'oxtorrent:film', 'oxtorrent:serie', 'oxtorrent:anime',
+  'films:film', 'movix:film', 'movix:serie', 'youtube:youtube']
 export function rank(r: Pick<SearchResult, 'source' | 'kind'>): number {
   const i = ORDER.indexOf(`${r.source}:${r.kind}`)
   return i < 0 ? ORDER.length : i
@@ -43,11 +44,19 @@ export function formatDuration(s?: number | null) {
   return h ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}` : `${m}:${String(sec).padStart(2, '0')}`
 }
 
+/** « MULTI · 2160p · 4.36 GB · 82 seeds » */
+export function torrentLine(r: Pick<SearchResult, 'langs' | 'quality' | 'size' | 'seeds' | 'season' | 'episode'>) {
+  const part = r.season && r.episode ? `S${r.season} · épisode ${r.episode}` : r.season ? `Saison ${r.season}` : r.episode ? `Épisode ${r.episode}` : null
+  return [part, r.langs?.join('/'), r.quality, r.size,
+    r.seeds != null ? `${r.seeds} seed${r.seeds > 1 ? 's' : ''}` : null].filter(Boolean).join(' · ')
+}
+
 function subtitleOf(r: SearchResult) {
   // Always say where it comes from: "2 saisons · anime-sama"
   const site = SOURCE_INFO[r.source]?.site
   let detail = ''
-  if (r.kind === 'youtube') detail = [r.channel, formatDuration(r.duration)].filter(Boolean).join(' · ')
+  if (r.source === 'oxtorrent') detail = torrentLine(r)
+  else if (r.kind === 'youtube') detail = [r.channel, formatDuration(r.duration)].filter(Boolean).join(' · ')
   else if ((r.kind === 'anime' || r.kind === 'serie') && r.seasons?.length) detail = `${r.seasons.length} saison${r.seasons.length > 1 ? 's' : ''}`
   else if (r.kind === 'manga' && r.langs?.length) detail = r.langs.join(', ')
   return [detail, r.kind === 'youtube' ? null : site].filter(Boolean).join(' · ')

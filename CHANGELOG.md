@@ -4,6 +4,13 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Added — OxTorrent in Téléchargements
+- New script `downloaders/oxtorrent.py`, made from the qBittorrent search plugin by CravateRouge, with the same `--json` protocol as films.py / movix.py / anisama.py (and a menu without `--json`). It searches OxTorrent (films, séries, animes; music, games and ebooks are left out), reads a torrent page (release, size, seeds, poster, synopsis) and downloads it with aria2
+- The site changes domain often: the current one is read from the portal https://ww1.click/oxtorrent/ (its iframe), remembered a day, and can be forced with `OXTORRENT_URL`
+- Results show language, quality, size and seeds (« MULTI · 2160p · 4.36 GB · 82 seeds »), right after anime-sama and before films.py / movix; a torrent is downloaded whole (no episode choice, no follow switch)
+- Files: films in `<films>/<Titre (Année)>/` (video and subtitles only, samples left out), séries and animes in `<séries|animes>/<Titre>/` as the torrent has them; the exact TMDB id is written next to them for the library. While downloading, everything stays in a hidden `.part-oxtorrent-<id>` folder (resumed after a pause); not enough free space is said before starting
+- `deploy.sh` installs aria2 when it is missing (`sudo apt-get install -y aria2`); migration 005 allows the new source in the queue
+
 ### Fixed — movix languages and recent episodes
 - movix.py only asked two sources (links, purstream) that know neither the language nor recent episodes: Georgie & Mandy saison 3, out in VOSTFR on movix, failed. It now asks fstream and wiflix (what movix's own player uses) and tries the players of the asked language first (uqload first). Tested on the server: S3E1 VOSTFR downloaded, 213 MB
 - The detail sheet only offers the languages that really exist: per season for series, per film; an episode missing in the chosen language is greyed out (« pas disponible en VF (seulement VOSTFR) »). Asking for it anyway fails right away with that message

@@ -155,7 +155,11 @@ function cleanInput(input: CreateInput) {
     options.season = season
   }
   const selection: { episodes?: number[]; chapters?: number[] } = {}
-  if (kind === 'anime' || kind === 'serie') {
+  if (source === 'oxtorrent') {
+    // A torrent is downloaded whole: no season / episode choice, its language is in its name
+    delete options.season
+    delete options.lang
+  } else if (kind === 'anime' || kind === 'serie') {
     if (!options.season) throw new ValidationError('Saison manquante')
     selectionArg(input.episodes)   // validates
     selection.episodes = (input.episodes as unknown[]).map(Number)

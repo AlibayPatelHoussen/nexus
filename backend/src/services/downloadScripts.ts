@@ -13,15 +13,15 @@ import { logger } from '../utils/logger'
  * variables they need, never Nexus' secrets.
  */
 
-export type Source = 'anisama' | 'films' | 'movix' | 'youtube'
+export type Source = 'anisama' | 'films' | 'movix' | 'oxtorrent' | 'youtube'
 export type Kind = 'anime' | 'manga' | 'film' | 'serie' | 'youtube'
-export const SOURCES: Source[] = ['anisama', 'movix', 'films', 'youtube']
+export const SOURCES: Source[] = ['anisama', 'movix', 'films', 'oxtorrent', 'youtube']
 
 export const scriptsDir = () => process.env.DOWNLOADERS_DIR || path.resolve(__dirname, '../../../downloaders')
 const python = () => process.env.PYTHON_BIN || 'python3'
 
 const SCRIPT_FILE: Record<Source, string> = {
-  anisama: 'anisama.py', films: 'films.py', movix: 'movix.py', youtube: 'youtube.py',
+  anisama: 'anisama.py', films: 'films.py', movix: 'movix.py', oxtorrent: 'oxtorrent.py', youtube: 'youtube.py',
 }
 
 /** Id formats produced by the scripts, and the kinds they can have. */
@@ -31,6 +31,8 @@ const ID_RULES: { source: Source; re: RegExp; kind: (m: RegExpMatchArray) => Kin
   { source: 'movix', re: /^movix:(tv|movie):\d{1,10}$/, kind: (m) => (m[1] === 'tv' ? 'serie' : 'film') },
   { source: 'films', re: /^films:[A-Za-z0-9_-]{4,2000}$/, kind: () => 'film' },
   { source: 'youtube', re: /^youtube:[A-Za-z0-9_-]{11}$/, kind: () => 'youtube' },
+  // oxtorrent:<kind>:<id of the site's detail page> — one torrent = one job (no episode choice)
+  { source: 'oxtorrent', re: /^oxtorrent:(film|serie|anime):\d{1,10}$/, kind: (m) => m[1] as Kind },
 ]
 
 export function parseSourceId(id: unknown): { source: Source; kind: Kind } {
@@ -78,7 +80,7 @@ export function selectionArg(list: unknown): string | null {
 
 /** Variables the scripts may see (no DB password, no JWT secret…). */
 function scriptEnv(): NodeJS.ProcessEnv {
-  const keep = ['PATH', 'HOME', 'LANG', 'LC_ALL', 'TZ', 'USER', 'TMDB_API_KEY', 'PLAYWRIGHT_BROWSERS_PATH',
+  const keep = ['PATH', 'HOME', 'LANG', 'LC_ALL', 'TZ', 'USER', 'TMDB_API_KEY', 'PLAYWRIGHT_BROWSERS_PATH', 'OXTORRENT_URL',
     'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY', 'http_proxy', 'https_proxy', 'no_proxy']
   const env: NodeJS.ProcessEnv = { PYTHONUNBUFFERED: '1', PYTHONIOENCODING: 'utf-8' }
   for (const k of keep) if (process.env[k]) env[k] = process.env[k]

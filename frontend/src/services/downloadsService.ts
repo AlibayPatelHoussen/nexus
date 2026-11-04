@@ -1,7 +1,7 @@
 import { api } from './api'
 
 export type DownloadKind = 'anime' | 'manga' | 'film' | 'serie' | 'youtube'
-export type DownloadSource = 'anisama' | 'movix' | 'films' | 'youtube'
+export type DownloadSource = 'anisama' | 'movix' | 'films' | 'oxtorrent' | 'youtube'
 export type DownloadStatus = 'queued' | 'running' | 'paused' | 'done' | 'failed' | 'cancelled'
 
 /** One search result card (fields sent by the scripts) */
@@ -18,6 +18,8 @@ export interface SearchResult {
   channel?:      string | null
   langs?:        string[]
   seasons?:      { id: string | number; label: string; langs?: string[]; episodes_count?: number }[]
+  /** oxtorrent: one torrent = one job */
+  release?: string; size?: string; seeds?: number; leech?: number; quality?: string | null; season?: number | null; episode?: number | null
 }
 
 export interface DetailEpisode { n: number; label: string; downloaded: boolean | string[]; available?: boolean; air_date?: string | null; langs?: string[] | null }
@@ -33,6 +35,8 @@ export interface Details {
   seasons?:     { id: string | number; lang?: string; langs?: string[]; label: string; episodes: DetailEpisode[] }[]
   /** manga: one entry per language; film: availability per language */
   langs?:       ({ lang: string; chapters?: DetailChapter[]; downloaded?: boolean; available?: boolean } | string)[]
+  /** oxtorrent */
+  release?: string; size?: string; seeds?: number; leech?: number; quality?: string | null; downloadable?: boolean
 }
 
 export interface DownloadProgress {
@@ -78,6 +82,7 @@ export const SOURCE_INFO: Record<DownloadSource, { site: string; script: string 
   anisama: { site: 'anime-sama', script: 'anisama.py' },
   movix:   { site: 'movix', script: 'movix.py' },
   films:   { site: 'wadrox', script: 'films.py' },
+  oxtorrent: { site: 'OxTorrent', script: 'oxtorrent.py' },
   youtube: { site: 'YouTube', script: 'youtube.py' },
 }
 
