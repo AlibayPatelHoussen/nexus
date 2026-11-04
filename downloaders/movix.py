@@ -771,7 +771,10 @@ def _ep_langs(info):
 
 async def _try_embeds(urls, output_file):
     """Each player of the right language, until one gives a complete file."""
-    for url in urls:
+    # Hosts that gave a stream in tests first; fsvid (Premium) often has none
+    order = ("uqload", "vidzy", "voe", "netu")
+    rank = lambda u: next((i for i, h in enumerate(order) if h in u), len(order) + ("fsvid" in u))
+    for url in sorted(urls, key=rank):
         step(f"Tentative : {url.split('/')[2] if '//' in url else url}...")
         try:
             if ".m3u8" in url:
