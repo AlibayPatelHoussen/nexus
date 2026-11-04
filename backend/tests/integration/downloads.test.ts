@@ -327,3 +327,24 @@ describe('Signed image proxy', () => {
     expect(forged.status).toBe(404)
   })
 })
+
+describe('Exact title hint for the library (.nexus.json)', () => {
+  it('writes the TMDB id of a movix download next to its files', async () => {
+    const { writeHints } = await import('../../src/services/downloads')
+    const dest = path.join(OUT, 'series-hint')
+    const ep = path.join(dest, 'One_Piece', 'VF', 'Saison_1', 'E01_-_Luffy.mp4')
+    fs.mkdirSync(path.dirname(ep), { recursive: true }); fs.writeFileSync(ep, 'x')
+    const film = path.join(OUT, 'films-hint', 'VF', 'One_Piece_Film_Red_2022.mp4')
+    fs.mkdirSync(path.dirname(film), { recursive: true }); fs.writeFileSync(film, 'x')
+    const base = { status: 'done', options: {}, selection: {}, error: null } as const
+    await writeHints({ ...base, source_id: 'movix:tv:37854', source_script: 'movix', kind: 'serie', title: 'One Piece',
+      dest_path: dest, progress: { files: [ep, '/etc/passwd'] } } as never)
+    await writeHints({ ...base, source_id: 'movix:movie:900667', source_script: 'movix', kind: 'film', title: 'Red',
+      dest_path: path.join(OUT, 'films-hint'), progress: { files: [film] } } as never)
+    expect(JSON.parse(fs.readFileSync(path.join(dest, 'One_Piece', '.nexus.json'), 'utf8'))).toEqual(
+      expect.objectContaining({ tmdb_id: 37854, media_type: 'tv' }))
+    expect(JSON.parse(fs.readFileSync(path.join(OUT, 'films-hint', 'VF', '.One_Piece_Film_Red_2022.mp4.nexus.json'), 'utf8')))
+      .toEqual(expect.objectContaining({ tmdb_id: 900667, media_type: 'movie' }))
+    expect(fs.existsSync('/etc/.nexus.json')).toBe(false)
+  })
+})
