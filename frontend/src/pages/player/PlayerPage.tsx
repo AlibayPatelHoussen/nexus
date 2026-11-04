@@ -139,7 +139,7 @@ export default function PlayerPage() {
       {/* Player area: always dark */}
       <div className="bg-black">
         <div className="flex items-center gap-2 min-h-[44px] px-2 text-white" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
-          <button type="button" className="flex items-center min-h-[44px] pr-2 text-[17px] md:text-body text-white/90 hover:text-white active:opacity-60" onClick={() => navigate(-1)}>
+          <button type="button" className="flex items-center h-9 my-1 pl-1.5 pr-3.5 rounded-pill glass-clear text-[15px] md:text-body font-medium text-white" onClick={() => navigate(-1)}>
             <ChevronLeft size={26} strokeWidth={2} className="md:w-5 md:h-5" aria-hidden="true" /> Retour
           </button>
           {media && (
@@ -183,8 +183,8 @@ export default function PlayerPage() {
           {showResume && resumeAt && (
             <div
               role="status"
-              className="relative mx-3 my-3 sm:m-0 sm:absolute sm:top-4 sm:right-4 z-30 flex flex-wrap items-center gap-3 rounded-[14px] px-4 py-3 text-white"
-              style={{ background: 'rgba(30,30,30,.6)', backdropFilter: 'saturate(180%) blur(24px)', WebkitBackdropFilter: 'saturate(180%) blur(24px)', boxShadow: '0 0 0 .5px rgba(255,255,255,.12)' }}
+              className="relative mx-3 my-3 sm:m-0 sm:absolute sm:top-4 sm:right-4 z-30 flex flex-wrap items-center gap-3 rounded-[22px] px-4 py-3 glass-media"
+              style={{ animation: 'nx-pop 380ms var(--ease-spring) both' }}
             >
               <div className="min-w-0">
                 <p className="text-[13px] font-semibold">Reprise à {formatDuration(resumeAt)}</p>

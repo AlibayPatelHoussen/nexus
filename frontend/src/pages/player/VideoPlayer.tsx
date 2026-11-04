@@ -437,7 +437,7 @@ export default function VideoPlayer({ filePath, streamToken, onTimeUpdate, onEnd
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 pointer-events-none" style={{ bottom: 96 }} role="status" aria-live="polite">
           <span className="text-white"><Spinner size={36} label="Chargement de la vidéo" color="rgba(255,255,255,.9)" /></span>
           {converting && (
-            <span className="text-[13px] font-medium px-3 py-1 rounded-full text-white/90" style={{ background: 'rgba(30,30,30,.55)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)' }}>
+            <span className="text-[13px] font-medium px-3.5 py-1.5 rounded-pill glass-media">
               Préparation de la vidéo…
             </span>
           )}
@@ -447,7 +447,7 @@ export default function VideoPlayer({ filePath, streamToken, onTimeUpdate, onEnd
       {/* Centre play button (paused) */}
       {!playing && !error && !loading && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none" style={{ bottom: 96 }}>
-          <div className="grid place-items-center rounded-full" style={{ width: 'clamp(56px, 12vw, 76px)', height: 'clamp(56px, 12vw, 76px)', background: 'rgba(30,30,30,.5)', backdropFilter: 'blur(20px)', WebkitBackdropFilter: 'blur(20px)' }}>
+          <div className="grid place-items-center rounded-full glass-media" style={{ width: 'clamp(60px, 12vw, 80px)', height: 'clamp(60px, 12vw, 80px)', animation: 'nx-pop 380ms var(--ease-spring) both' }}>
             <Play size={30} fill="white" strokeWidth={0} style={{ marginLeft: 4 }} />
           </div>
         </div>
@@ -455,20 +455,17 @@ export default function VideoPlayer({ filePath, streamToken, onTimeUpdate, onEnd
 
       {/* Floating control bar (AVKit / QuickTime): appears on move / tap, fades out while playing */}
       <div
-        className="absolute left-2 right-2 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 sm:w-[min(640px,calc(100%-32px))]"
+        className="absolute left-3 right-3 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 sm:w-[min(680px,calc(100%-32px))]"
         style={{ bottom: 'max(8px, env(safe-area-inset-bottom, 0px))', pointerEvents: showControls ? 'auto' : 'none' }}
         onClick={(e) => e.stopPropagation()}
       >
       <div
-        className="text-white rounded-[14px] px-2 sm:px-4 py-0.5 sm:pt-2 sm:pb-2"
+        // Liquid Glass control bar over the video: fades in / out, settles on a spring
+        className="glass-media rounded-[26px] px-2.5 sm:px-4 py-1 sm:pt-2 sm:pb-2.5"
         style={{
           opacity: showControls ? 1 : 0,
-          transform: showControls ? 'none' : 'translateY(6px)',
-          transition: 'opacity 200ms var(--ease-out), transform 200ms var(--ease-out)',
-          background: 'rgba(30,30,30,.55)',
-          backdropFilter: 'saturate(180%) blur(24px)',
-          WebkitBackdropFilter: 'saturate(180%) blur(24px)',
-          boxShadow: '0 0 0 .5px rgba(255,255,255,.12), 0 8px 24px rgba(0,0,0,.3)',
+          transform: showControls ? 'none' : 'translateY(8px) scale(0.98)',
+          transition: 'opacity 250ms var(--ease-out), transform 500ms var(--ease-spring)',
         }}
       >
         <div className="hidden sm:flex items-center gap-2">

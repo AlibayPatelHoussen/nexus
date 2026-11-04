@@ -4,6 +4,9 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Changed — Liquid Glass step 4: video player
+- The player's controls are clear Liquid Glass over the video (`.glass-media`: clear glass with the HIG's dimming for bright images): a 26 pt capsule control bar that fades in and settles on a spring, a round centre play button, the « Reprise à … » card and the « Retour » capsule
+
 ### Changed — Liquid Glass step 3b: title pages like the Apple TV app
 - Films, séries and animes open on an immersive header: the artwork fills the top of the window (16:9 up to 80 % of its height, portrait key art on iPhone), with parallax; title, facts and rating, the white « Lecture / Reprendre · S1 É2 » capsule and the round glass « + » (Ma liste) over it; the episode up next and the synopsis beside them (under the artwork on iPhone). The back button is a round clear-glass button over the artwork on iPhone
 - The clicked poster grows into that header (View Transitions API, Chrome / Safari 18), the rest cross-fades; the page shows at once with what the card knew, the rest arrives after
