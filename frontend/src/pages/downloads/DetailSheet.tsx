@@ -4,7 +4,7 @@ import { AlertTriangle, Check } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { isAxiosError } from 'axios'
 import {
-  downloadsService, originalImage, type DetailChapter, type DetailEpisode, type SearchResult,
+  SOURCE_INFO, downloadsService, originalImage, type DetailChapter, type DetailEpisode, type SearchResult,
 } from '@/services/downloadsService'
 import { useShell } from '@/components/shell/shellContext'
 import Sheet from '@/components/ui/Sheet'
@@ -207,6 +207,9 @@ export default function DetailSheet({ result, onClose }: { result: SearchResult 
               {video && r.channel && <span>{r.channel}</span>}
               {video && r.duration ? <span className="tabular">{formatDuration(r.duration)}</span> : null}
             </div>
+            <p className="text-caption text-label2">
+              Source : <span className="text-label">{SOURCE_INFO[r.source]?.site}</span> · script <span className="font-mono">{SOURCE_INFO[r.source]?.script}</span>
+            </p>
             {(details?.description || r.description) && (
               <p className="text-subhead text-label2 line-clamp-4">{details?.description || r.description}</p>
             )}

@@ -1,10 +1,12 @@
 import crypto from 'crypto'
+import fs from 'fs/promises'
+import path from 'path'
 import type { Namespace } from 'socket.io'
 import { query } from '../config/database'
 import { logger } from '../utils/logger'
 import { AppError, ConflictError, NotFoundError, ValidationError } from '../utils/errors'
 import { signedImage } from './images'
-import { MediaScanner } from './scanner'
+import { MediaScanner, hintFor } from './scanner'
 import {
   LANG_RE, SEASON_RE, SOURCES, collect, destFor, parseSourceId, runScript, selectionArg,
   type Kind, type RunHandle, type ScriptEvent, type Source,
@@ -322,7 +324,10 @@ async function launch(row: DownloadRow) {
   if (status === 'failed' || error) logger.warn(`Download ${row.id} (${row.title}) ${status}: ${error} — ${log.slice(-5).join(' | ')}`)
   const finished = await setStatus(row.id, status, { progress, error: error?.slice(0, 1000) ?? null })
   if (finished && (status === 'done' || status === 'failed')) {
-    if (status === 'done') rescanLibrary(row.kind)
+    if (status === 'done') {
+      await writeHints(finished).catch((err: Error) => logger.warn(`Download hint: ${err.message}`))
+      rescanLibrary(row.kind)
+    }
     for (const fn of finishListeners) {
       try { fn(finished) } catch (err) { logger.warn(`download listener: ${(err as Error).message}`) }
     }
@@ -352,6 +357,33 @@ export async function tick() {
   }
 }
 
+/**
+ * movix knows the exact TMDB title: leave it next to the files (.nexus.json)
+ * so the library scan does not look the title up by name and pick another one
+ * (« One Piece » 1999 anime vs the 2023 series).
+ */
+export async function writeHints(row: DownloadRow) {
+  const m = row.source_id.match(/^movix:(tv|movie):(\d+)$/)
+  const files = (row.progress.files as string[] | undefined) ?? []
+  if (!m || !files.length || !row.dest_path) return
+  const hint = JSON.stringify({ source: 'movix', media_type: m[1], tmdb_id: Number(m[2]), title: row.title }) + '\n'
+  const targets = new Set<string>()
+  for (const file of files) {
+    const rel = path.relative(row.dest_path, file)
+    if (!rel || rel.startsWith('..') || path.isAbsolute(rel)) continue
+    targets.add(m[1] === 'tv' ? hintFor.serie(path.join(row.dest_path, rel.split(path.sep)[0])) : hintFor.film(file))
+  }
+  for (const t of targets) {
+    try { await fs.access(path.dirname(t)); await fs.writeFile(t, hint) } catch { /* folder gone */ }
+  }
+}
+
+/** Hints for downloads finished before they existed (e.g. after an update). */
+async function backfillHints() {
+  const { rows } = await query<DownloadRow>(`SELECT * FROM downloads WHERE status = 'done' AND source_script = 'movix'`)
+  for (const row of rows) await writeHints(row).catch(() => {})
+}
+
 /** On startup, jobs left "running" (PM2 restart) go back to the queue. */
 export async function requeueInterrupted(): Promise<number> {
   const { rowCount } = await query(`UPDATE downloads SET status = 'queued', updated_at = NOW() WHERE status = 'running'`)
@@ -362,6 +394,7 @@ export async function startDownloadWorker() {
   if (started) return
   started = true
   await requeueInterrupted()
+  void backfillHints()
   setInterval(() => { void tick() }, 10_000).unref()
   await tick()
 }

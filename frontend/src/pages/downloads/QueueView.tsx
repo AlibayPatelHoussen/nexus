@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { isAxiosError } from 'axios'
 import { AlertTriangle, Download as DownloadIcon, MoreHorizontal, Pause, Play, RotateCw, Trash2, X } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { downloadsService, type Download } from '@/services/downloadsService'
+import { SOURCE_INFO, downloadsService, type Download } from '@/services/downloadsService'
 import { useShell } from '@/components/shell/shellContext'
 import { Group } from '@/components/ui/GroupedList'
 import Button from '@/components/ui/Button'
@@ -158,7 +158,7 @@ function Row({ d, onAction }: { d: Download; onAction: (d: Download, a: Action) 
           <span className={cn('truncate text-label', phone ? 'text-[17px]' : 'text-body font-medium')}>{d.title}</span>
           <KindBadge kind={d.kind} className="flex-shrink-0" />
         </div>
-        <p className="text-subhead text-label2 truncate">{describe(d) || (video ? 'Vidéo' : 'Film')}</p>
+        <p className="text-subhead text-label2 truncate">{[describe(d) || (video ? 'Vidéo' : 'Film'), SOURCE_INFO[d.source_script]?.site].filter(Boolean).join(' · ')}</p>
         {d.status === 'running' ? <ProgressLine d={d} /> : <p className="text-caption text-label2 truncate mt-0.5">{statusText(d)}</p>}
       </div>
       {!phone && (

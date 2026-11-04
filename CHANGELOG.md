@@ -4,6 +4,12 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Fixed — downloaded series shown as another title
+- A « One Piece » episode downloaded from movix (the 1999 anime, TMDB 37854) appeared in Séries as the 2023 live-action series: the library scan looked the folder name up on TMDB and took the most popular match. Downloads from movix now leave the exact TMDB id next to the files (`.nexus.json` in the series folder, `.<file>.nexus.json` for a film); the scan uses it instead of searching by name, and corrects a title already matched wrongly (metadata and episode titles). Hints are also written at startup for movix downloads finished before this update
+
+### Changed
+- Download results say where they come from: « 2 saisons · anime-sama », the detail sheet shows « Source : movix · script movix.py », and the queue shows the site of each job
+
 ### Fixed — push notifications refused by Apple
 - iPhone notifications never arrived: the server signed them as `mailto:admin@localhost`, which Apple rejects (403 BadJwtToken). The sender is now `VAPID_SUBJECT`, else the public https address of Nexus (`FRONTEND_URL`), never localhost
 - « Envoyer un test » says why a send failed (service and reason) instead of « Aucun appareil abonné »; opening Réglages sends this device's subscription to the server again, in case it was forgotten

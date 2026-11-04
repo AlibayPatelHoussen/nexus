@@ -73,6 +73,14 @@ export function originalImage(url: string | null | undefined): string | null {
   try { return new URL(url, window.location.origin).searchParams.get('u') } catch { return null }
 }
 
+/** Where a result comes from: the site and the script that downloads it */
+export const SOURCE_INFO: Record<DownloadSource, { site: string; script: string }> = {
+  anisama: { site: 'anime-sama', script: 'anisama.py' },
+  movix:   { site: 'movix', script: 'movix.py' },
+  films:   { site: 'wadrox', script: 'films.py' },
+  youtube: { site: 'YouTube', script: 'youtube.py' },
+}
+
 export interface Follow {
   id: string; source_id: string; kind: DownloadKind; title: string
   options: { lang?: string; season?: string }; enabled: boolean

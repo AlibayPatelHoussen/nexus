@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Download as DownloadIcon, Search, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import type { Socket } from 'socket.io-client'
-import { downloadsService, type DownloadKind, type DownloadSource, type SearchResult } from '@/services/downloadsService'
+import { SOURCE_INFO, downloadsService, type DownloadKind, type DownloadSource, type SearchResult } from '@/services/downloadsService'
 import { useShell } from '@/components/shell/shellContext'
 import SegmentedControl from '@/components/ui/SegmentedControl'
 import EmptyState from '@/components/ui/EmptyState'
@@ -18,7 +18,7 @@ const FILTERS: { value: Filter; label: string }[] = [
   { value: 'all', label: 'Tout' }, { value: 'anime', label: 'Animés' }, { value: 'manga', label: 'Mangas' },
   { value: 'film', label: 'Films' }, { value: 'serie', label: 'Séries' }, { value: 'youtube', label: 'YouTube' },
 ]
-const SOURCE_LABEL: Record<DownloadSource, string> = { anisama: 'anime-sama', movix: 'movix', films: 'films', youtube: 'YouTube' }
+const SOURCE_LABEL = Object.fromEntries(Object.entries(SOURCE_INFO).map(([k, v]) => [k, v.site])) as Record<DownloadSource, string>
 
 interface SourceState { done: boolean; count: number; error: string | null }
 interface SearchState { query: string; searchId: string | null; results: SearchResult[]; sources: Partial<Record<DownloadSource, SourceState>> }
@@ -33,11 +33,13 @@ export function formatDuration(s?: number | null) {
 }
 
 function subtitleOf(r: SearchResult) {
-  if (r.kind === 'youtube') return [r.channel, formatDuration(r.duration)].filter(Boolean).join(' · ')
-  if (r.kind === 'anime' && r.seasons?.length) return `${r.seasons.length} saison${r.seasons.length > 1 ? 's' : ''}`
-  if (r.kind === 'serie' && r.seasons?.length) return `${r.seasons.length} saison${r.seasons.length > 1 ? 's' : ''}`
-  if (r.kind === 'manga' && r.langs?.length) return r.langs.join(', ')
-  return ''
+  // Always say where it comes from: "2 saisons · anime-sama"
+  const site = SOURCE_INFO[r.source]?.site
+  let detail = ''
+  if (r.kind === 'youtube') detail = [r.channel, formatDuration(r.duration)].filter(Boolean).join(' · ')
+  else if ((r.kind === 'anime' || r.kind === 'serie') && r.seasons?.length) detail = `${r.seasons.length} saison${r.seasons.length > 1 ? 's' : ''}`
+  else if (r.kind === 'manga' && r.langs?.length) detail = r.langs.join(', ')
+  return [detail, r.kind === 'youtube' ? null : site].filter(Boolean).join(' · ')
 }
 
 export default function SearchView({ socket }: { socket: Socket | null }) {

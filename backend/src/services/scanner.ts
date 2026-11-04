@@ -413,6 +413,23 @@ async function getDirSize(dirPath: string): Promise<number> {
 // ─── SCANNER ─────────────────────────────────────────
 const LANG_FOLDER = /^(vf|vff|vfq|vostfr|vost|vo|multi|fr|en|truefrench)$/i
 
+/**
+ * Hint written by the Downloads section next to what it downloaded: the
+ * exact TMDB title, so "One Piece" (1999 anime) is not looked up again by
+ * name and confused with another title (the 2023 series).
+ *   series: <series folder>/.nexus.json   film: <folder>/.<file>.nexus.json
+ */
+async function readHint(file: string): Promise<{ tmdb_id?: number } | null> {
+  try {
+    const h = JSON.parse(await fs.readFile(file, 'utf8')) as { tmdb_id?: unknown }
+    return typeof h.tmdb_id === 'number' && h.tmdb_id > 0 ? { tmdb_id: h.tmdb_id } : null
+  } catch { return null }
+}
+export const hintFor = {
+  serie: (seriePath: string) => path.join(seriePath, '.nexus.json'),
+  film: (videoPath: string) => path.join(path.dirname(videoPath), `.${path.basename(videoPath)}.nexus.json`),
+}
+
 export class MediaScanner {
   private static running: string | null = null
 
@@ -473,21 +490,24 @@ export class MediaScanner {
         const { title, year } = parseFilename(isDir ? entry.name : path.basename(videoPath, path.extname(videoPath)))
 
         // Already indexed with metadata: only refresh size / scan date (no TMDB call)
-        const existing = await query<{ id: string; poster_path: string | null; title: string }>(
-          'SELECT id, poster_path, title FROM media_items WHERE file_path = $1', [videoPath],
+        const existing = await query<{ id: string; poster_path: string | null; title: string; tmdb_id: number | null }>(
+          'SELECT id, poster_path, title, tmdb_id FROM media_items WHERE file_path = $1', [videoPath],
         )
+        const hint = await readHint(hintFor.film(videoPath))
+        const hintDiffers = !!hint?.tmdb_id && existing.rows[0]?.tmdb_id !== hint.tmdb_id
         // (a row titled "VF" / "VOSTFR" comes from the old scan of a language folder: look it up again)
-        if (existing.rows[0]?.poster_path && !LANG_FOLDER.test(existing.rows[0].title)) {
+        if (existing.rows[0]?.poster_path && !LANG_FOLDER.test(existing.rows[0].title) && !hintDiffers) {
           await query('UPDATE media_items SET file_size = $1, last_scanned = NOW() WHERE id = $2',
             [await getFileSize(videoPath), existing.rows[0].id])
           count++
           continue
         }
 
-        const tmdb = await searchTMDB(title, year, 'movie')
+        const tmdb = hint?.tmdb_id ? null : await searchTMDB(title, year, 'movie')
 
         let details: TmdbResult | null = null
-        if (tmdb?.id) details = await getTMDBDetails(tmdb.id, 'movie')
+        const tmdbId = hint?.tmdb_id ?? tmdb?.id
+        if (tmdbId) details = await getTMDBDetails(tmdbId, 'movie')
 
         const item = details || tmdb
 
@@ -562,6 +582,29 @@ export class MediaScanner {
         const existing = await query<{ id: string; tmdb_id: number | null; poster_path: string | null }>(
           'SELECT id, tmdb_id, poster_path FROM media_items WHERE file_path = $1', [seriePath],
         )
+        const hint = await readHint(hintFor.serie(seriePath))
+        // Downloaded by Nexus with a known TMDB id that differs from what was guessed by name: fix the title
+        if (existing.rows[0] && hint?.tmdb_id && existing.rows[0].tmdb_id !== hint.tmdb_id) {
+          const meta = await getTMDBDetails(hint.tmdb_id, 'tv')
+          if (meta) {
+            await query(
+              `UPDATE media_items SET title = $2, original_title = $3, tmdb_id = $4, overview = $5, poster_path = $6,
+                 backdrop_path = $7, genres = $8, year = $9, rating = $10, vote_count = $11, status = $12, language = $13
+               WHERE id = $1`,
+              [
+                existing.rows[0].id, meta.name || title, meta.original_name || null, hint.tmdb_id, meta.overview || null,
+                meta.poster_path ? `${TMDB_IMG}/w500${meta.poster_path}` : null,
+                meta.backdrop_path ? `${TMDB_IMG}/w1280${meta.backdrop_path}` : null,
+                meta.genres?.map((g) => g.name) || [],
+                meta.first_air_date ? parseInt(meta.first_air_date.slice(0, 4)) : null,
+                meta.vote_average || null, meta.vote_count || null, meta.status || null, meta.original_language || null,
+              ],
+            )
+            // Episode titles / stills came from the wrong title: take them again
+            await query('UPDATE episodes SET title = NULL, overview = NULL, thumbnail_path = NULL, air_date = NULL WHERE media_item_id = $1', [existing.rows[0].id])
+            existing.rows[0].tmdb_id = hint.tmdb_id
+          }
+        }
         if (existing.rows[0]) {
           const row = existing.rows[0]
           let tmdbId = row.tmdb_id
@@ -604,8 +647,9 @@ export class MediaScanner {
           continue
         }
 
-        const tmdb    = await searchTMDB(title, undefined, 'tv')
-        const details = tmdb?.id ? await getTMDBDetails(tmdb.id, 'tv') : null
+        const tmdb    = hint?.tmdb_id ? null : await searchTMDB(title, undefined, 'tv')
+        const tvId    = hint?.tmdb_id ?? tmdb?.id
+        const details = tvId ? await getTMDBDetails(tvId, 'tv') : null
         const item    = details || tmdb
 
         const { rows } = await query(
