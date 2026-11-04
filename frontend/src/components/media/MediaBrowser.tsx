@@ -45,13 +45,14 @@ type View = 'grid' | 'list'
 const VIEW_KEY = 'nexus-media-view'
 const readView = (): View => { try { return localStorage.getItem(VIEW_KEY) === 'list' ? 'list' : 'grid' } catch { return 'grid' } }
 
-/** Pick a featured title that changes once a day (prefers artwork + synopsis). */
-function pickFeatured(items: MediaItem[]): MediaItem | undefined {
+/** Titles for the billboard: up to 6, with artwork + synopsis first, starting point changing each day. */
+function pickFeatured(items: MediaItem[]): MediaItem[] {
   const pool = items.filter((i) => i.backdropPath && i.overview)
-  const list = pool.length ? pool : items.filter((i) => i.posterPath || i.backdropPath)
-  if (!list.length) return items[0]
+  const list = pool.length >= 3 ? pool : items.filter((i) => i.posterPath || i.backdropPath)
+  if (!list.length) return items.slice(0, 1)
   const day = Math.floor(Date.now() / 86_400_000)
-  return list[day % list.length]
+  const start = day % list.length
+  return [...list.slice(start), ...list.slice(0, start)].slice(0, 6)
 }
 
 export const VIDEO_SECTIONS = [
@@ -123,12 +124,12 @@ export default function MediaBrowser({ title, tabs, yearFilter, emptyIcon, video
     .filter((w) => w.type === type)
     .map((w) => ({
       item: w as unknown as MediaItem, progress: w.progress, duration: w.duration ?? undefined,
-      subtitle: w.episodeNumber != null ? `S${w.season ?? 1} · É${w.episodeNumber}` : undefined,
+      subtitle: w.episodeNumber != null ? `S${w.season ?? 1}, É${w.episodeNumber}` : undefined,
     })), [continueW, type])
   const topRated = useMemo(() => items
     .filter((i) => i.rating != null && Number(i.rating) > 0)
     .sort((a, b) => Number(b.rating) - Number(a.rating))
-    .slice(0, 20), [items])
+    .slice(0, 10), [items])
   const genreRows = useMemo(() => {
     const counts = new Map<string, number>()
     for (const i of items) for (const g of i.genres ?? []) counts.set(g, (counts.get(g) ?? 0) + 1)
@@ -246,6 +247,8 @@ export default function MediaBrowser({ title, tabs, yearFilter, emptyIcon, video
     </div>
   )
 
+  const showHero = view === 'grid' && !hasFilters && !isError && featured.length > 0
+
   /* ── Content ────────────────────────────────────────────────────────── */
   let content: React.ReactNode
   if (isError) {
@@ -291,10 +294,9 @@ export default function MediaBrowser({ title, tabs, yearFilter, emptyIcon, video
   } else {
     content = (
       <>
-        {featured && <Hero item={featured} />}
-        {continueRow.length > 0 && <MediaRow title="Reprendre" items={continueRow} />}
+        {continueRow.length > 0 && <MediaRow title="Reprendre" items={continueRow} kind="wide" />}
         <MediaRow title="Ajouts récents" items={items.slice(0, 24)} isLoading={isLoading} />
-        {topRated.length >= 3 && <MediaRow title="Les mieux notés" items={topRated} />}
+        {topRated.length >= 3 && <MediaRow title="Top 10" items={topRated} kind="top10" />}
         {genreRows.map((r) => <MediaRow key={r.genre} title={r.genre} items={r.items} onSeeAll={() => showGenre(r.genre)} />)}
       </>
     )
@@ -306,6 +308,7 @@ export default function MediaBrowser({ title, tabs, yearFilter, emptyIcon, video
       subtitle={catalog ? `${catalog.total} titre${catalog.total > 1 ? 's' : ''}` : undefined}
       actions={phone ? phoneActions : desktopActions}
       accessory={accessory}
+      hero={showHero ? <Hero items={featured} /> : undefined}
     >
       {tmdbStatus && !tmdbStatus.tmdb && (
         <div className="flex items-start gap-2.5 mb-6 px-4 py-3 rounded-group bg-surface text-subhead" role="note">

@@ -4,6 +4,12 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Changed — Liquid Glass step 3a: Films / Séries / Animes like the Apple TV app
+- Billboard (values measured on tv.apple.com): full-bleed artwork, 16:9 up to 90 % of the window, under the floating sidebar too (portrait key art on iPhone); the same three-layer gradient; title, facts and synopsis bottom-left (centred on iPhone); a white « Lecture » capsule (40 px), round clear-glass « + » (favourites) and « i » (details); carousel of up to 6 titles with cross-fade, slow Ken Burns zoom and pagination dots (20 px pitch); parallax while scrolling; pauses on hover
+- The toolbar (desktop) and the large title (iPhone) float over the billboard in white, and become the glass bar once it has scrolled away
+- Shelves: 17 / 19 pt bold titles, the title with its chevron opens the full list; cards in a snapping horizontal grid whose count follows the real width (8 across 1440 px, 144 px posters on iPhone), 20 / 10 px gaps, 40 / 25 px gutters; arrows on hover
+- Cards: artwork only, 14 px corners and a hairline rim; on hover they lift on a spring with a stronger shadow and a light reflection that follows the pointer. « Reprendre » uses 16:9 cards with the progress bar and the episode written over the image; « Top 10 » with big ranks and the genre
+
 ### Changed — Liquid Glass design system (iOS 26 / macOS 26), step 1: tokens, controls, navigation
 - `CLAUDE.md`: the permanent design rules (Liquid Glass only, sources in order: Apple's Figma kits, HIG, Apple TV, skills; glass only for navigation; springs; accessibility; check every visual change with Playwright)
 - Tokens from Apple's official iOS 26 and macOS 26 Figma kits: iOS 26 blue, Liquid Glass materials (`.glass`, `.glass-strong`, `.glass-clear`: blur + saturation, the kit's thin side rim and specular light, light and dark), radii (capsule controls, 26 pt iOS groups, 34 pt large glass, 38 pt iPhone sheets), reduced transparency / increased contrast variants

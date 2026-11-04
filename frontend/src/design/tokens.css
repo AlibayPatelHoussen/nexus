@@ -98,6 +98,11 @@
   --r-sidebar: 18px;      /* floating sidebar, concentric with the window */
   --r-pill:    999px;     /* buttons, segmented controls, search fields, tab bar */
 
+  /* ── Page gutters ───────────────────────────────────── */
+  --page-x:  24px;        /* padding of a page's content */
+  --shelf-x: 40px;        /* Apple TV shelves / hero text (tv.apple.com --bodyGutter) */
+  --poster-rim: rgba(0, 0, 0, 0.08);
+
   /* ── Spacing (4 / 8 grid) ───────────────────────────── */
   --s-1: 4px;  --s-2: 8px;  --s-3: 12px; --s-4: 16px;
   --s-5: 20px; --s-6: 24px; --s-8: 32px; --s-12: 48px;
@@ -147,7 +152,7 @@
     --glass-rim-strong: 1.25px 0 0 -0.75px #a6a6a6, -1.25px 0 0 -0.75px #a6a6a6, 0 0 0 0.5px rgba(166, 166, 166, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.12);
     --glass-shadow: 0 8px 15px rgba(0, 0, 0, 0.18), 0 2px 6px rgba(0, 0, 0, 0.2);
     --glass-shadow-strong: 0 8px 48px rgba(0, 0, 0, 0.45);
-    --glass-select: rgba(255, 255, 255, 0.12); --glass-hover: rgba(255, 255, 255, 0.06); --glass-label: #f2f2f2; --glass-label-2: #8e8e93;
+    --poster-rim: rgba(255, 255, 255, 0.16); --glass-select: rgba(255, 255, 255, 0.12); --glass-hover: rgba(255, 255, 255, 0.06); --glass-label: #f2f2f2; --glass-label-2: #8e8e93;
     --shadow-sheet: 0 0 0 0.5px rgba(255, 255, 255, 0.12), 0 12px 40px rgba(0, 0, 0, 0.55);
     --shadow-popover: 0 0 0 0.5px rgba(255, 255, 255, 0.14), 0 6px 20px rgba(0, 0, 0, 0.45);
     --term-bg: #1e1e1e; --term-fg: #e5e5e7; --term-cursor: #e5e5e7; --term-select: rgba(10, 132, 255, 0.35);
@@ -171,11 +176,22 @@
   --glass-rim-strong: 1.25px 0 0 -0.75px #a6a6a6, -1.25px 0 0 -0.75px #a6a6a6, 0 0 0 0.5px rgba(166, 166, 166, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.12);
   --glass-shadow: 0 8px 15px rgba(0, 0, 0, 0.18), 0 2px 6px rgba(0, 0, 0, 0.2);
   --glass-shadow-strong: 0 8px 48px rgba(0, 0, 0, 0.45);
-  --glass-select: rgba(255, 255, 255, 0.12); --glass-hover: rgba(255, 255, 255, 0.06); --glass-label: #f2f2f2; --glass-label-2: #8e8e93;
+  --poster-rim: rgba(255, 255, 255, 0.16); --glass-select: rgba(255, 255, 255, 0.12); --glass-hover: rgba(255, 255, 255, 0.06); --glass-label: #f2f2f2; --glass-label-2: #8e8e93;
   --shadow-sheet: 0 0 0 0.5px rgba(255, 255, 255, 0.12), 0 12px 40px rgba(0, 0, 0, 0.55);
   --shadow-popover: 0 0 0 0.5px rgba(255, 255, 255, 0.14), 0 6px 20px rgba(0, 0, 0, 0.45);
   --term-bg: #1e1e1e; --term-fg: #e5e5e7; --term-cursor: #e5e5e7; --term-select: rgba(10, 132, 255, 0.35);
   color-scheme: dark;
+}
+
+/* ── Chrome over artwork (billboard, player): always the dark appearance ── */
+.scheme-dark {
+  --label: #ffffff; --label-2: rgba(255, 255, 255, 0.72); --label-3: rgba(255, 255, 255, 0.45);
+  --fill: rgba(255, 255, 255, 0.16); --fill-2: rgba(255, 255, 255, 0.1); --separator: rgba(255, 255, 255, 0.2);
+  --seg-on: rgba(255, 255, 255, 0.34); --surface: rgba(255, 255, 255, 0.14);
+  --accent-text: #ffffff; --accent: #ffffff;
+  --glass-label: #ffffff; --glass-label-2: rgba(255, 255, 255, 0.7); --glass-select: rgba(255, 255, 255, 0.18);
+  color-scheme: dark;
+  color: var(--label);
 }
 
 /* ── iPad: larger text and targets ───────────────────────── */
@@ -195,6 +211,8 @@
 @media (max-width: 767px) {
   :root {
     --r-group: 26px;      /* iOS 26 inset grouped lists */
+    --page-x: 16px;
+    --shelf-x: 25px;
     --r-sheet: 38px;      /* concentric with the iPhone corners */
     --text-largetitle: 34px;
     --text-title: 22px;
