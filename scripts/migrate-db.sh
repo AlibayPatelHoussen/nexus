@@ -41,4 +41,16 @@ for f in "${MIGRATIONS[@]}"; do
     | psql_su --single-transaction
 done
 
+# Tables created here belong to postgres: give them to the database owner (Nexus' user)
+psql_su <<'SQL'
+DO $$ DECLARE owner text;
+BEGIN
+  SELECT pg_get_userbyid(datdba) INTO owner FROM pg_database WHERE datname = current_database();
+  IF owner IS NOT NULL AND owner <> 'postgres' THEN
+    EXECUTE format('GRANT ALL ON ALL TABLES IN SCHEMA public TO %I', owner);
+    EXECUTE format('GRANT ALL ON ALL SEQUENCES IN SCHEMA public TO %I', owner);
+  END IF;
+END $$;
+SQL
+
 echo "✅ Database up to date"

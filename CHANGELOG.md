@@ -4,6 +4,14 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Added — downloads backend (step 4 of « Téléchargements »)
+- Table `downloads` (migration 003) and a queue worker: 2 jobs at a time (`DOWNLOADS_PARALLEL`), each runs the right script with `spawn` (arguments as an array, minimal environment without Nexus' secrets, own process group so pause / cancel also stop ffmpeg and the browser), reads its JSON Lines and saves the progress; jobs left running by a restart go back to the queue
+- Admin API: `POST /api/downloads/search` (the four scripts in parallel, results streamed over Socket.io `/downloads` as `download:search_result`, one `download:search_done` per script, timeout per script), `GET /api/downloads/details`, `POST /api/downloads`, `GET /api/downloads`, `POST /api/downloads/:id/pause|resume|cancel|retry`, `DELETE /api/downloads/:id`; live `download:status` / `download:progress`
+- Strict validation of ids, languages, seasons and episode / chapter lists; duplicates (same title and episodes / chapters already queued or done) answer 409 with the list instead of downloading again, unless forced
+- When a download finishes, the library of its type is rescanned so it appears at once
+- Search posters go through `/api/images/remote`, a cached image proxy that only serves URLs signed by the server
+- `migrate-db.sh` gives tables created by migrations to the database owner
+
 ### Added — download scripts usable by Nexus (step 1 of « Téléchargements »)
 - `downloaders/`: copies of the scripts of `/media/scripts` (anisama, films, movix, youtube; the originals stay untouched as a backup) with a non-interactive mode: `--json --search`, `--details`, `--download <id> [--season] [--lang] [--episodes|--chapters] --dest`. Output is JSON Lines (`result`, `details`, `item_start`, `progress`, `item_done`, `item_skipped`, `error`, `done`); without `--json` the menus work as before
 - anisama: one title gives an `anime` and/or a `manga` result (season links vs `scan/` links of the site), with poster and synopsis kept in its catalogue; fixed for the site's new video host (ansembed) and dead mirror domains (each request now sends its own site as Referer)
