@@ -5,6 +5,7 @@ import {
   actOn, createDownload, deleteDownload, getDetails, listDownloads, openTarget, startSearch, type CreateInput,
 } from '../services/downloads'
 import { ValidationError } from '../utils/errors'
+import { catalogueInfo, refreshCatalogue } from '../services/catalogue'
 import { checkDueFollows, followTarget, getFollow, listFollows, setFollow, type FollowInput } from '../services/follows'
 
 // « Téléchargements »: writes on the server, so admins only
@@ -38,6 +39,16 @@ router.put('/follows', asyncHandler(async (req: Request, res: Response) => {
 
 router.post('/follows/check', asyncHandler(async (_req: Request, res: Response) => {
   res.json({ success: true, data: { queued: await checkDueFollows(true) } })
+}))
+
+// anime-sama catalogue: size, last update, rebuild now
+router.get('/catalogue', asyncHandler(async (_req: Request, res: Response) => {
+  res.json({ success: true, data: await catalogueInfo() })
+}))
+
+router.post('/catalogue/refresh', asyncHandler(async (_req: Request, res: Response) => {
+  void refreshCatalogue()
+  res.status(202).json({ success: true, data: await catalogueInfo() })
 }))
 
 router.get('/', asyncHandler(async (_req: Request, res: Response) => {

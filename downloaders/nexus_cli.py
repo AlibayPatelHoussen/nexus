@@ -60,6 +60,7 @@ def parser(description: str) -> argparse.ArgumentParser:
     g.add_argument("--search", metavar="REQUÊTE")
     g.add_argument("--details", metavar="ID")
     g.add_argument("--download", metavar="ID")
+    g.add_argument("--refresh-catalogue", action="store_true", help="anisama: rebuild catalogue.json")
     p.add_argument("--episodes", metavar="1-12")
     p.add_argument("--chapters", metavar="1-50")
     p.add_argument("--season")

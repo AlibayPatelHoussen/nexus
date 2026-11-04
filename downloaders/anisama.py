@@ -1217,8 +1217,63 @@ def _poster_url(entry, info):
     return (info or {}).get("poster") or entry.get("poster")
 
 
+def _live_search(query):
+    """The site's own search, for titles added after the catalogue was built."""
+    global _catalogue_cache
+    saved = _catalogue_cache
+    _catalogue_cache = []          # search() falls back to the site when the catalogue is empty
+    try:
+        return search(query)
+    finally:
+        _catalogue_cache = saved
+
+
+def _add_to_catalogue(hits):
+    """Titles found live are added to catalogue.json (incremental update)."""
+    cat = _load_catalogue()
+    known = {e.get("slug") for e in cat}
+    added = []
+    for h in hits:
+        slug = _slug_of(h.get("url", ""))
+        if slug and slug not in known:
+            known.add(slug)
+            added.append({"title": h["title"], "url": f"https://anime-sama.to/catalogue/{slug}", "slug": slug})
+    if added:
+        cat.extend(added)
+        cat.sort(key=lambda x: x["title"].lower())
+        tmp = CATALOGUE_FILE.with_suffix(".tmp")
+        tmp.write_text(json.dumps(cat, ensure_ascii=False, indent=2), encoding="utf-8")
+        tmp.replace(CATALOGUE_FILE)
+
+
+def json_refresh_catalogue():
+    """Rebuilds catalogue.json from the site, keeping the posters / synopses already found."""
+    old = {e.get("slug"): e for e in _load_catalogue()}
+    data = build_catalogue(force=True)
+    if not data:
+        nexus_cli.fail("Catalogue d'anime-sama inaccessible")
+    for e in data:
+        prev = old.get(e["slug"]) or {}
+        for k in ("poster", "description"):
+            if prev.get(k) and not e.get(k):
+                e[k] = prev[k]
+    # Union with the old list: a page the site failed to send never makes titles disappear
+    fresh = {e["slug"] for e in data}
+    data += [e for slug, e in old.items() if slug and slug not in fresh]
+    data.sort(key=lambda x: x["title"].lower())
+    CATALOGUE_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    global _catalogue_cache
+    _catalogue_cache = data
+    new = [e["title"] for e in data if e["slug"] not in old]
+    nexus_cli.emit("catalogue", count=len(data), added=len(new), new_titles=new[:50])
+
+
 def json_search(query, limit):
     hits = search(query)[: (limit or 8)]
+    if not hits:
+        # Not in the local catalogue: ask the site (new titles), and remember them
+        hits = _live_search(query)[: (limit or 8)]
+        _add_to_catalogue(hits)
     if not hits:
         return 0
     def one(hit):
@@ -1438,7 +1493,10 @@ def json_download(args):
 def json_main():
     args = nexus_cli.parser("anisama.py — mode Nexus").parse_args()
     try:
-        if args.search is not None:
+        if args.refresh_catalogue:
+            json_refresh_catalogue()
+            nexus_cli.emit("done")
+        elif args.search is not None:
             json_search(args.search, args.limit)
             nexus_cli.emit("done")
         elif args.details:
