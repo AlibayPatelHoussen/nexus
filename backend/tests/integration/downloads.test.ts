@@ -61,6 +61,7 @@ elif '--details' in args:
             aired = 2
         out(type='details', id=arg('--details'), kind='serie', title='Série', langs=['VF', 'VOSTFR'], seasons=[
             {'id': 1, 'label': 'Saison 1', 'episodes': [{'n': n, 'label': f'E{n:02d}', 'downloaded': [], 'available': n <= aired,
+                                                         'langs': (['VF', 'VOSTFR'] if n < 4 else ['VOSTFR']) if n <= aired else None,
                                                          'air_date': '2026-01-01' if n <= aired else '2099-01-01'} for n in range(1, 5)]}])
     else:
         out(type='details', id=arg('--details'), kind='manga', title='One Piece', poster_url='https://cdn.example/op.jpg',
@@ -299,10 +300,11 @@ describe('Follow a title (automatic downloads, off by default)', () => {
     expect(on.body.data.known).toEqual([1, 2])
     expect(await checkDueFollows(true)).toBe(0)
     fs.writeFileSync(path.join(DIR, 'aired.txt'), '4')
-    expect(await checkDueFollows(true)).toBe(2)
+    // Episode 4 is out in VOSTFR only: not for this VF follow yet
+    expect(await checkDueFollows(true)).toBe(1)
     const { rows } = await query<{ selection: { episodes: number[] } }>(
       "SELECT selection FROM downloads WHERE source_id = $1 ORDER BY created_at DESC LIMIT 1", [id])
-    expect(rows[0].selection.episodes).toEqual([3, 4])
+    expect(rows[0].selection.episodes).toEqual([3])
     await request(app).put('/api/downloads/follows').set(admin).send({ id, enabled: false })
   })
 

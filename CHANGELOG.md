@@ -4,6 +4,11 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Fixed — movix languages and recent episodes
+- movix.py only asked two sources (links, purstream) that know neither the language nor recent episodes: Georgie & Mandy saison 3, out in VOSTFR on movix, failed. It now asks fstream and wiflix (what movix's own player uses) and tries the players of the asked language first (uqload first). Tested on the server: S3E1 VOSTFR downloaded, 213 MB
+- The detail sheet only offers the languages that really exist: per season for series, per film; an episode missing in the chosen language is greyed out (« pas disponible en VF (seulement VOSTFR) »). Asking for it anyway fails right away with that message
+- Follow switch: an episode out only in another language is not « known », so a VF follow gets it when the VF comes out
+
 ### Fixed — movix episodes not out yet
 - A series season announced on TMDB but not hosted on movix yet (Georgie & Mandy's First Marriage, saison 3) failed with « Aucune source n'a fonctionné » after a minute per episode. Episodes not out yet (TMDB date to come, or placeholder title « Épisode N ») are now greyed out with dashed borders in the detail sheet and cannot be selected (« prochain le … »)
 - When movix has no link for an episode, the job says « Épisode pas encore disponible sur movix (sortie le …) » right away instead of waiting 60 s for the web player
