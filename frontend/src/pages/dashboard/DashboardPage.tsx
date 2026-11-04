@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { Activity, Download, Folder, Wifi, WifiOff } from 'lucide-react'
+import { Activity, Folder, Wifi, WifiOff } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 import { useSystemStats } from '@/hooks/useSocket'
 import { useStatsHistory, type StatsHistory } from '@/hooks/useStatsHistory'
@@ -145,7 +145,6 @@ function PhoneOverview({ stats, history, services, servicesError }: OverviewProp
         <ListRow to="/services" icon={<Activity strokeWidth={1.75} />} iconTone="accent" title="Services"
           detail={servicesError ? 'Indisponible' : services ? (stopped ? `${stopped} arrêté${stopped > 1 ? 's' : ''}` : 'Tous actifs') : ''} accessory="chevron" />
         <ListRow to="/network" icon={<Wifi strokeWidth={1.75} />} iconTone="accent" title="Réseau" detail={stats?.network.ip} accessory="chevron" />
-        {isAdmin && <ListRow to="/downloads" icon={<Download strokeWidth={1.75} />} iconTone="accent" title="Téléchargements" accessory="chevron" />}
       </Group>
 
       <MediaStorage stats={stats} />

@@ -273,6 +273,30 @@ describe('Follow a title (automatic downloads, off by default)', () => {
     expect(await checkDueFollows(true)).toBe(0)
   })
 
+  it('finds the source of a library title: from its downloads, else by its name', async () => {
+    fs.writeFileSync(path.join(DIR, 'count.txt'), '3')
+    const lib = path.join(OUT, 'scans', 'One Piece')
+    const m = await query<{ id: string }>(
+      `INSERT INTO media_items (type, title, file_path) VALUES ('manga', 'One Piece', $1)
+       ON CONFLICT (file_path) DO UPDATE SET title = EXCLUDED.title RETURNING id`, [lib])
+    // The test job above wrote its files under OUT/scans, not inside this title's folder: found by name
+    let res = await request(app).get(`/api/downloads/follows/media/${m.rows[0].id}`).set(admin)
+    expect(res.status).toBe(200)
+    expect(res.body.data).toEqual(expect.objectContaining({ sourceId: 'anisama:manga:one-piece', lang: 'VF' }))
+    // A title the site does not have
+    const other = await query<{ id: string }>(
+      `INSERT INTO media_items (type, title, file_path) VALUES ('manga', 'Titre Inconnu', $1)
+       ON CONFLICT (file_path) DO UPDATE SET title = EXCLUDED.title RETURNING id`, [path.join(OUT, 'scans', 'Titre Inconnu')])
+    res = await request(app).get(`/api/downloads/follows/media/${other.rows[0].id}`).set(admin)
+    expect(res.status).toBe(404)
+    expect(res.body.error).toMatch(/introuvable/)
+    // Films cannot be followed
+    const film = await query<{ id: string }>(
+      `INSERT INTO media_items (type, title, file_path) VALUES ('film', 'Un film', $1)
+       ON CONFLICT (file_path) DO UPDATE SET title = EXCLUDED.title RETURNING id`, [path.join(OUT, 'film.mp4')])
+    expect((await request(app).get(`/api/downloads/follows/media/${film.rows[0].id}`).set(admin)).status).toBe(422)
+  })
+
   it('refuses films, videos and bad options', async () => {
     expect((await request(app).put('/api/downloads/follows').set(admin).send({ id: 'youtube:dQw4w9WgXcQ', title: 'x', enabled: true })).status).toBe(422)
     expect((await request(app).put('/api/downloads/follows').set(admin).send({ id: 'movix:movie:603', title: 'x', enabled: true })).status).toBe(422)

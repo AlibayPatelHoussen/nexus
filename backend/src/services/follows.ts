@@ -1,8 +1,9 @@
 import { query } from '../config/database'
 import { logger } from '../utils/logger'
-import { ValidationError } from '../utils/errors'
+import { AppError, NotFoundError, ValidationError } from '../utils/errors'
 import { LANG_RE, SEASON_RE, parseSourceId } from './downloadScripts'
 import { createDownload, getDetails } from './downloads'
+import { collect, type ScriptEvent } from './downloadScripts'
 
 /**
  * « Télécharger automatiquement les nouveautés »: off unless switched on in
@@ -129,4 +130,90 @@ export function startFollowChecker() {
   timer = setInterval(() => { void checkDueFollows().catch(() => {}) }, 3600_000)
   timer.unref()
   setTimeout(() => { void checkDueFollows().catch(() => {}) }, 5 * 60_000).unref()
+}
+
+// ─── From a title of the library ───────────────────────────────────────────
+
+export interface FollowTarget {
+  sourceId: string
+  title: string
+  poster_url: string | null
+  lang: string
+  season?: string
+  follow: FollowRow | null
+}
+
+const norm = (t: string) => t.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, ' ').trim()
+const targets = new Map<string, { at: number; target: Omit<FollowTarget, 'follow'> }>()
+
+/**
+ * Which script title a library item corresponds to: first the downloads that
+ * created its files, else a search by its title (same kind, same name).
+ * Season to follow: the one downloaded last, else the latest one.
+ */
+export async function followTarget(mediaId: string): Promise<FollowTarget> {
+  if (!/^[0-9a-f-]{36}$/i.test(mediaId)) throw new NotFoundError('Titre')
+  const { rows } = await query<{ type: string; title: string; file_path: string }>(
+    'SELECT type, title, file_path FROM media_items WHERE id = $1', [mediaId])
+  const media = rows[0]
+  if (!media) throw new NotFoundError('Titre')
+  const kind = media.type === 'webtoon' ? 'manga' : media.type
+  if (kind !== 'anime' && kind !== 'manga' && kind !== 'serie') throw new ValidationError('Seuls les animes, séries et mangas peuvent être suivis')
+
+  const cached = targets.get(mediaId)
+  if (cached && Date.now() - cached.at < 3600_000) return { ...cached.target, follow: await getFollow(cached.target.sourceId) }
+
+  let sourceId: string | null = null
+  let lang: string | undefined
+  let season: string | undefined
+  let poster: string | null = null
+  let title = media.title
+  const dl = await query<{ source_id: string; options: { lang?: string; season?: string }; title: string; poster_url: string | null }>(
+    `SELECT source_id, options, title, poster_url FROM downloads
+     WHERE kind = $1 AND source_script IN ('anisama', 'movix') AND EXISTS (
+       SELECT 1 FROM jsonb_array_elements_text(COALESCE(progress->'files', '[]'::jsonb)) f WHERE f LIKE $2 || '/%')
+     ORDER BY created_at DESC LIMIT 1`, [kind, media.file_path])
+  if (dl.rows[0]) {
+    ({ source_id: sourceId, title, poster_url: poster } = dl.rows[0])
+    lang = dl.rows[0].options.lang
+    season = dl.rows[0].options.season
+  } else {
+    const source = kind === 'serie' ? 'movix' : 'anisama'
+    const { events } = await collect(source, ['--search', media.title], 90_000)
+    const results = events.filter((e: ScriptEvent) => e.type === 'result' && e.kind === kind)
+    // Same name only (never another title that merely came first)
+    const want = norm(media.title)
+    const hit = results.find((e) => norm(String(e.title)) === want)
+      ?? results.find((e) => { const t = norm(String(e.title)); return t.startsWith(`${want} `) || want.startsWith(`${t} `) })
+    if (!hit) throw new AppError(`« ${media.title} » est introuvable sur ${source === 'movix' ? 'movix' : 'anime-sama'}`, 404)
+    sourceId = String(hit.id)
+    poster = typeof hit.poster_url === 'string' ? hit.poster_url : null
+    title = String(hit.title)
+  }
+
+  // Default language / latest season when not known from a download
+  if (!lang || (kind !== 'manga' && !season)) {
+    const d = await getDetails(sourceId) as {
+      seasons?: { id: string | number; lang?: string }[]
+      langs?: ({ lang: string } | string)[]
+    }
+    if (kind === 'manga') {
+      const langs = (d.langs ?? []).map((l) => (typeof l === 'string' ? l : l.lang))
+      lang ??= langs.includes('VF') ? 'VF' : langs[0]
+    } else if (kind === 'anime') {
+      const all = d.seasons ?? []
+      lang ??= all.some((x) => x.lang === 'VOSTFR') ? 'VOSTFR' : all[0]?.lang
+      season ??= [...all].reverse().find((x) => x.lang === lang && /^saison/.test(String(x.id)))?.id as string | undefined
+        ?? all.filter((x) => x.lang === lang).at(-1)?.id as string | undefined
+    } else {
+      lang ??= 'VF'
+      season ??= String(d.seasons?.at(-1)?.id ?? 1)
+    }
+  }
+  if (!lang) throw new AppError('Aucune langue disponible pour ce titre', 404)
+  // The proxy URL of a poster keeps the original address in ?u=
+  if (poster?.startsWith('/api/images/remote')) poster = new URL(poster, 'http://x').searchParams.get('u')
+  const target = { sourceId: sourceId!, title, poster_url: poster, lang, ...(season != null ? { season: String(season) } : {}) }
+  targets.set(mediaId, { at: Date.now(), target })
+  return { ...target, follow: await getFollow(target.sourceId) }
 }

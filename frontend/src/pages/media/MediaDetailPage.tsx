@@ -1,3 +1,4 @@
+import FollowGroup from '@/components/downloads/FollowGroup'
 import { useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
@@ -271,6 +272,13 @@ export default function MediaDetailPage() {
 
       {/* Chapters (manga / webtoon) */}
       {isReading && <ChaptersSection chapters={chapters} onRead={(chapterId) => play(undefined, chapterId)} onScan={scan} scanning={scanning} />}
+
+      {/* Automatic downloads of what comes next (off unless switched on) */}
+      {isAdmin && (media.type === 'anime' || media.type === 'serie' || media.type === 'manga' || media.type === 'webtoon') && (
+        <div className="max-w-[640px] mb-10">
+          <FollowGroup mediaId={media.id} kind={media.type === 'webtoon' ? 'manga' : media.type} />
+        </div>
+      )}
 
       {/* Information */}
       {(media.genres?.length > 0 || media.year || media.duration || media.status || media.language || media.fileSize) ? (

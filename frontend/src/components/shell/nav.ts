@@ -42,10 +42,10 @@ export interface Tab {
   adminOnly?: boolean
 }
 
-/** Tab Bar (phone). Files, services, network and downloads open from "Aperçu". */
+/** Tab Bar (phone). Files, services and network open from "Aperçu"; downloads from "Médias". */
 export const TABS: Tab[] = [
-  { to: '/dashboard', label: 'Aperçu',   icon: Gauge,          match: ['/dashboard', '/files', '/services', '/network', '/downloads'] },
-  { to: '/cinema',    label: 'Médias',   icon: Film,           match: ['/cinema', '/animes', '/youtube'] },
+  { to: '/dashboard', label: 'Aperçu',   icon: Gauge,          match: ['/dashboard', '/files', '/services', '/network'] },
+  { to: '/cinema',    label: 'Médias',   icon: Film,           match: ['/cinema', '/animes', '/youtube', '/downloads'] },
   { to: '/manga',     label: 'Manga',    icon: BookOpen,       match: ['/manga'] },
   { to: '/terminal',  label: 'Terminal', icon: SquareTerminal, match: ['/terminal'], adminOnly: true },
   { to: '/settings',  label: 'Réglages', icon: Settings,       match: ['/settings'] },
@@ -56,7 +56,7 @@ export const PHONE_PARENT: Record<string, { to: string; label: string }> = {
   '/files':    { to: '/dashboard', label: 'Aperçu' },
   '/services': { to: '/dashboard', label: 'Aperçu' },
   '/network':  { to: '/dashboard', label: 'Aperçu' },
-  '/downloads': { to: '/dashboard', label: 'Aperçu' },
+  '/downloads': { to: '/cinema', label: 'Médias' },
 }
 
 export function tabFor(pathname: string): Tab | undefined {

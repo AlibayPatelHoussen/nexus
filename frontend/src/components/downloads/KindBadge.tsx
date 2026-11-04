@@ -2,7 +2,7 @@ import type { DownloadKind } from '@/services/downloadsService'
 import { cn } from '@/utils'
 
 export const KIND_LABEL: Record<DownloadKind, string> = {
-  anime: 'Animé', manga: 'Manga', film: 'Film', serie: 'Série', youtube: 'YouTube',
+  anime: 'Animé/Série', manga: 'Manga', film: 'Film', serie: 'Série', youtube: 'YouTube',
 }
 
 // One discreet system colour per type

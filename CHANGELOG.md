@@ -4,6 +4,11 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Changed — downloads on iPhone, anime badge, follow switch in the library
+- iPhone: Téléchargements now lives in Médias (download button with the active count in the navigation bar of Films / Séries / Animes / YouTube; back goes to Médias) instead of Aperçu
+- The anime badge reads « Animé/Série »
+- The « Téléchargement automatique » switch is also on the library page of every anime, series and manga (off by default). Nexus finds the matching title on the site — from the downloads that created its files, else by its exact name — and follows the season / language downloaded last (else the latest season). `GET /api/downloads/follows/media/:id`
+
 ### Added — automatic downloads of new episodes / chapters (step 6, off by default)
 - In the detail sheet of an anime, a series or a manga: « Télécharger automatiquement les nouveaux épisodes / chapitres ». Off unless switched on; it follows the season and language chosen in the sheet. What exists when it is switched on is never downloaded by itself — only what comes out afterwards
 - Each followed title is checked once a day (one after the other, gentle with the sites); new episodes / chapters are added to the queue, so they get the usual progress and notifications. `GET|PUT /api/downloads/follows`, `POST /api/downloads/follows/check` (check now)

@@ -1,5 +1,5 @@
 """Fake download script for the E2E tests: same --json protocol as downloaders/, no internet."""
-import json, os, sys, time
+import json, os, re, sys, time
 args = sys.argv[1:]
 name = os.path.basename(sys.argv[0]).split('.')[0]
 IMG = 'http://localhost:4010/img'
@@ -9,7 +9,11 @@ def arg(k): return args[args.index(k) + 1] if k in args else None
 if '--search' in args:
     q = arg('--search')
     time.sleep({'anisama': 0.3, 'movix': 0.8, 'films': 1.5, 'youtube': 1.0}[name])
-    if name == 'anisama':
+    if name == 'anisama' and q.lower() != 'one piece':
+        slug = re.sub(r'[^a-z0-9]+', '-', q.lower()).strip('-')
+        out(type='result', id=f'anisama:anime:{slug}', source='anisama', kind='anime', title=q, poster_url=f'{IMG}/as/{slug}.png', seasons=[{'id': 'saison1', 'label': 'Saison 1', 'langs': ['VOSTFR']}])
+        out(type='result', id=f'anisama:manga:{slug}', source='anisama', kind='manga', title=q, poster_url=f'{IMG}/as/{slug}-scan.png', langs=['VF'])
+    elif name == 'anisama':
         out(type='result', id='anisama:anime:one-piece', source='anisama', kind='anime', title='One Piece', poster_url=f'{IMG}/as/one-piece.png',
             description='Monkey D. Luffy rêve de devenir le Roi des Pirates.', seasons=[{'id': 'saison1', 'label': 'Saison 1', 'langs': ['VOSTFR', 'VF']}, {'id': 'saison2', 'label': 'Saison 2', 'langs': ['VOSTFR']}])
         out(type='result', id='anisama:manga:one-piece', source='anisama', kind='manga', title='One Piece', poster_url=f'{IMG}/as/one-piece-scan.png', langs=['VF'])
