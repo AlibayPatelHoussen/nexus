@@ -31,8 +31,8 @@ let lastSearch: SearchState = { query: '', searchId: null, results: [], sources:
  * Order of the results: anime (anime-sama), manga (anime-sama), films (films.py),
  * films (movix), series (movix), YouTube videos.
  */
-const ORDER: string[] = ['anisama:anime', 'anisama:manga', 'films:film', 'movix:film', 'movix:serie',
-  'oxtorrent:film', 'oxtorrent:serie', 'oxtorrent:anime', 'youtube:youtube']
+const ORDER: string[] = ['anisama:anime', 'anisama:manga', 'oxtorrent:film', 'oxtorrent:serie', 'oxtorrent:anime',
+  'films:film', 'movix:film', 'movix:serie', 'youtube:youtube']
 export function rank(r: Pick<SearchResult, 'source' | 'kind'>): number {
   const i = ORDER.indexOf(`${r.source}:${r.kind}`)
   return i < 0 ? ORDER.length : i

@@ -805,11 +805,11 @@ test('downloads: one search over the five scripts, choose chapters, queue runs w
   await page.locator('button', { hasText: 'Manga' }).filter({ hasText: 'One Piece' }).first().waitFor()
   await page.waitForSelector('text=One Piece Stampede', { timeout: 10000 })
   await page.waitForSelector('text=one piece — vidéo 1')
-  // Fixed order, whatever script answered first: anime, manga, films.py film, movix film, movix series, then YouTube
+  // Fixed order, whatever script answered first: anime, manga, OxTorrent, films.py film, movix film, movix series, then YouTube
   await page.waitForSelector('text=Recherche dans', { state: 'detached', timeout: 10000 })
   const order = await page.evaluate(() => [...document.querySelectorAll('button[aria-label]')]
     .map((b) => b.getAttribute('aria-label')).filter((l) => /, (anime|manga|film|serie)$|vidéo \d$/.test(l)))
-  eq(order, ['One Piece, anime', 'One Piece, manga', 'One Piece Stampede, film', 'One Piece Film - Red, film', 'One Piece, serie',
+  eq(order, ['One Piece, anime', 'One Piece, manga', 'One Piece, serie', 'One Piece Stampede, film', 'One Piece Film - Red, film',
     'One Piece, serie', 'one piece — vidéo 1', 'one piece — vidéo 2', 'one piece — vidéo 3'], 'results order')
   // Filter by type
   await page.click('[role=radio]:has-text("YouTube")')
