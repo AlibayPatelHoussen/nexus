@@ -1,7 +1,26 @@
 import { Router, Request, Response } from 'express'
 import asyncHandler from 'express-async-handler'
 import { query } from '../config/database'
+import path from 'path'
 import { cachedImage, isRemote, validSignature } from '../services/images'
+import { isInsideDir } from '../services/files'
+
+const LOCAL_IMAGE = /\.(jpe?g|png|webp|gif|avif)$/i
+const libraryRoots = () => [process.env.MEDIA_ROOT || '/media', process.env.YOUTUBE_PATH, process.env.FILMS_PATH,
+  process.env.SERIES_PATH, process.env.ANIMES_PATH, process.env.MANGA_PATH].filter((v): v is string => !!v)
+
+/** A local image of the library (never anything else on the disk). */
+async function sendLocal(res: Response, file: string) {
+  if (!path.isAbsolute(file) || !LOCAL_IMAGE.test(file)) { res.status(404).end(); return }
+  for (const root of libraryRoots()) {
+    if (await isInsideDir(root, file)) {
+      res.setHeader('Cache-Control', 'public, max-age=604800, immutable')
+      res.sendFile(file, (err) => { if (err && !res.headersSent) res.status(404).end() })
+      return
+    }
+  }
+  res.status(404).end()
+}
 
 // Public on purpose: <img> tags cannot send an Authorization header, and only
 // artwork of titles already in the library (looked up by UUID) can be served.
@@ -10,6 +29,7 @@ const router = Router()
 const UUID = /^[0-9a-f-]{36}$/i
 
 async function send(res: Response, url: string | null | undefined, trusted = false) {
+  if (url && !trusted && url.startsWith('/') && !url.startsWith('/api/')) { await sendLocal(res, url); return }
   if (!url || !isRemote(url)) { res.status(404).end(); return }
   try {
     const { file, type } = await cachedImage(url, trusted)

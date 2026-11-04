@@ -4,6 +4,13 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Added — YouTube in Médias, push notifications (step 5, part 2)
+- Médias › YouTube, next to Films / Séries / Animes (same switch on Mac and iPhone; the switch now shows on every video page on Mac too): the videos of `/media/youtube` as 16:9 thumbnails with title, channel and duration, newest download first or by title, optionally grouped by channel; playing resumes where you stopped
+- The scanner indexes `/media/youtube` (`MediaScanner.scanYoutube`, `POST /api/media/scan/youtube`, part of full scans and of the rescan after a YouTube download): title, channel, duration and date from yt-dlp's `.info.json`, the `.jpg` next to the video as thumbnail (served by the image route, only from the library folders); old `/media/youtube/Titre.mp4` files are listed too
+- Films saved by movix in language folders (`/media/films/VF/Titre_2020.mp4`) are now one film each instead of a single title « VF »
+- PWA push notifications: Réglages › Notifications turns them on per device (iPhone: from the home-screen app); a notification when a download finishes or fails, opening the queue when tapped; « Envoyer un test ». VAPID keys generated once in `backend/data/vapid.json` (or `VAPID_*` in `.env`); devices that unsubscribed are forgotten
+- Migration 004: media type `youtube` + `channel`, tables `push_subscriptions` and `follows`
+
 ### Added — « Téléchargements » page (step 5, part 1)
 - New section Téléchargements (sidebar, ⌘K, and Aperçu on iPhone), admins only
 - One search field queries the four scripts at once; cards appear as each script answers, with a discreet line for the ones still searching or that failed. Poster grid like the TV app on Mac (YouTube in 16:9 with the duration), big thumbnails list on iPhone; type filter Tout / Animés / Mangas / Films / Séries / YouTube; badges with one system colour per type; images that fail show a neutral placeholder

@@ -411,6 +411,8 @@ async function getDirSize(dirPath: string): Promise<number> {
 }
 
 // ─── SCANNER ─────────────────────────────────────────
+const LANG_FOLDER = /^(vf|vff|vfq|vostfr|vost|vo|multi|fr|en|truefrench)$/i
+
 export class MediaScanner {
   private static running: string | null = null
 
@@ -435,13 +437,27 @@ export class MediaScanner {
     let count = 0
 
     try {
-      const entries = await fs.readdir(dir, { withFileTypes: true })
+      const top = await fs.readdir(dir, { withFileTypes: true })
+      // Language folders (/media/films/VF/Titre_2020.mp4, as movix.py saves them):
+      // every video inside is its own film, the folder is not a title
+      const entries: { name: string; fullPath: string; file: boolean; dir: boolean }[] = []
+      for (const e of top) {
+        if (e.name.startsWith('.')) continue
+        const full = path.join(dir, e.name)
+        if (e.isDirectory() && LANG_FOLDER.test(e.name)) {
+          for (const sub of await fs.readdir(full, { withFileTypes: true }).catch(() => [])) {
+            if (!sub.name.startsWith('.')) entries.push({ name: sub.name, fullPath: path.join(full, sub.name), file: sub.isFile(), dir: sub.isDirectory() })
+          }
+        } else {
+          entries.push({ name: e.name, fullPath: full, file: e.isFile(), dir: e.isDirectory() })
+        }
+      }
 
       for (const entry of entries) {
-        const fullPath = path.join(dir, entry.name)
+        const fullPath = entry.fullPath
 
-        const isVideoFile = entry.isFile() && VIDEO_EXTS.includes(path.extname(entry.name).toLowerCase())
-        const isDir       = entry.isDirectory()
+        const isVideoFile = entry.file && VIDEO_EXTS.includes(path.extname(entry.name).toLowerCase())
+        const isDir       = entry.dir
 
         if (!isVideoFile && !isDir) continue
 
@@ -457,10 +473,11 @@ export class MediaScanner {
         const { title, year } = parseFilename(isDir ? entry.name : path.basename(videoPath, path.extname(videoPath)))
 
         // Already indexed with metadata: only refresh size / scan date (no TMDB call)
-        const existing = await query<{ id: string; poster_path: string | null }>(
-          'SELECT id, poster_path FROM media_items WHERE file_path = $1', [videoPath],
+        const existing = await query<{ id: string; poster_path: string | null; title: string }>(
+          'SELECT id, poster_path, title FROM media_items WHERE file_path = $1', [videoPath],
         )
-        if (existing.rows[0]?.poster_path) {
+        // (a row titled "VF" / "VOSTFR" comes from the old scan of a language folder: look it up again)
+        if (existing.rows[0]?.poster_path && !LANG_FOLDER.test(existing.rows[0].title)) {
           await query('UPDATE media_items SET file_size = $1, last_scanned = NOW() WHERE id = $2',
             [await getFileSize(videoPath), existing.rows[0].id])
           count++
@@ -804,16 +821,76 @@ export class MediaScanner {
     return removed
   }
 
+  /**
+   * YouTube videos (/media/youtube/{Chaîne}/{Titre} [id].mp4, or directly in
+   * the folder): title, channel, duration and date from the .info.json written
+   * by yt-dlp, thumbnail = the .jpg with the same name. No internet lookup.
+   */
+  static async scanYoutube(): Promise<number> {
+    const dir = process.env.YOUTUBE_PATH || '/media/youtube'
+    const videos: string[] = []
+    const walk = async (d: string, depth: number) => {
+      let entries: import('fs').Dirent[]
+      try { entries = await fs.readdir(d, { withFileTypes: true }) } catch { return }
+      for (const e of entries) {
+        if (e.name.startsWith('.')) continue          // .part- files being downloaded
+        const full = path.join(d, e.name)
+        if (e.isDirectory() && depth < 2) await walk(full, depth + 1)
+        else if (e.isFile() && VIDEO_EXTS.includes(path.extname(e.name).toLowerCase())) videos.push(full)
+      }
+    }
+    await walk(dir, 0)
+    let count = 0
+    for (const video of videos) {
+      try {
+        const base = video.slice(0, -path.extname(video).length)
+        let info: Record<string, unknown> = {}
+        try { info = JSON.parse(await fs.readFile(`${base}.info.json`, 'utf8')) as Record<string, unknown> } catch { /* old downloads: no metadata */ }
+        let thumb: string | null = null
+        for (const ext of ['.jpg', '.webp', '.png', '.jpeg']) {
+          try { await fs.access(base + ext); thumb = base + ext; break } catch { /* next */ }
+        }
+        const fileName = path.basename(base)
+        const parent = path.dirname(video)
+        const title = (typeof info.title === 'string' && info.title)
+          || fileName.replace(/\s*\[[A-Za-z0-9_-]{11}\]$/, '').replace(/_/g, ' ')
+        const channel = (typeof info.channel === 'string' && info.channel) || (typeof info.uploader === 'string' && info.uploader)
+          || (parent !== dir ? path.basename(parent) : null)
+        const upload = typeof info.upload_date === 'string' ? info.upload_date : ''
+        const st = await fs.stat(video)
+        await query(
+          `INSERT INTO media_items (type, title, file_path, overview, poster_path, backdrop_path, year, duration, channel,
+             file_size, created_at, last_scanned)
+           VALUES ('youtube', $1, $2, $3, $4, $4, $5, $6, $7, $8, $9, NOW())
+           ON CONFLICT (file_path) DO UPDATE SET
+             title = EXCLUDED.title, overview = COALESCE(EXCLUDED.overview, media_items.overview),
+             poster_path = EXCLUDED.poster_path, backdrop_path = EXCLUDED.backdrop_path,
+             year = COALESCE(EXCLUDED.year, media_items.year), duration = COALESCE(EXCLUDED.duration, media_items.duration),
+             channel = EXCLUDED.channel, file_size = EXCLUDED.file_size, last_scanned = NOW()`,
+          [title, video, typeof info.description === 'string' ? info.description.slice(0, 2000) || null : null, thumb,
+            /^\d{4}/.test(upload) ? Number(upload.slice(0, 4)) : null,
+            typeof info.duration === 'number' ? Math.round(info.duration) : null,
+            channel, st.size, st.mtime],   // created_at = when it was downloaded (sorting)
+        )
+        count++
+      } catch (err) {
+        logger.warn(`YouTube scan: ${video}: ${(err as Error).message}`)
+      }
+    }
+    return count
+  }
+
   static async scanAll(): Promise<Record<string, number>> {
     logger.info('Starting full media scan…')
     const pruned = await this.pruneDeleted()
-    const [films, series, animes, manga] = await Promise.all([
+    const [films, series, animes, manga, youtube] = await Promise.all([
       this.scanFilms(),
       this.scanSeries(),
       this.scanAnimes(),
       this.scanManga(),
+      this.scanYoutube(),
     ])
-    logger.info(`Scan complete: ${films} films, ${series} series, ${animes} animes, ${manga} manga, ${pruned} pruned`)
-    return { films, series, animes, manga, pruned }
+    logger.info(`Scan complete: ${films} films, ${series} series, ${animes} animes, ${manga} manga, ${youtube} youtube, ${pruned} pruned`)
+    return { films, series, animes, manga, youtube, pruned }
   }
 }

@@ -54,3 +54,6 @@ temp/
 
 # Image proxy cache
 backend/cache/
+
+# Web Push keys generated on first start (VAPID)
+backend/data/

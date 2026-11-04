@@ -21,6 +21,8 @@ import mediaRoutes    from './routes/media'
 import chaptersRoutes from './routes/chapters'
 import servicesRoutes from './routes/services'
 import downloadsRoutes from './routes/downloads'
+import pushRoutes from './routes/push'
+import './services/downloadNotifications'
 import { startDownloadWorker } from './services/downloads'
 import terminalRoutes from './routes/terminal'
 import imagesRoutes   from './routes/images'
@@ -84,6 +86,7 @@ app.use('/api/media',    chaptersRoutes)
 app.use('/api/media',    mediaRoutes)
 app.use('/api/services', servicesRoutes)
 app.use('/api/downloads', downloadsRoutes)
+app.use('/api/push', pushRoutes)
 app.use('/api/terminal', terminalRoutes)
 app.get('/api/health',   (_req, res) => res.json({
   status:    'ok',

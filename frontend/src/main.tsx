@@ -4,7 +4,11 @@ import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { ConfirmProvider } from '@/components/ui/ConfirmDialog'
 import AppToaster from '@/components/ui/AppToaster'
 import App from './App'
+import { registerServiceWorker } from '@/services/pushService'
 import './index.css'
+
+// Push notifications (PWA): the service worker only handles notifications
+void registerServiceWorker()
 
 const queryClient = new QueryClient({
   defaultOptions: {

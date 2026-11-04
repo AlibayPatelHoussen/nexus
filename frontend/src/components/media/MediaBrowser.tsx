@@ -53,16 +53,26 @@ function pickFeatured(items: MediaItem[]): MediaItem | undefined {
   return list[day % list.length]
 }
 
-const VIDEO_SECTIONS = [
-  { value: 'films',  label: 'Films',  to: '/cinema' },
-  { value: 'series', label: 'Séries', to: '/cinema?type=series' },
-  { value: 'animes', label: 'Animes', to: '/animes' },
+export const VIDEO_SECTIONS = [
+  { value: 'films',   label: 'Films',   to: '/cinema' },
+  { value: 'series',  label: 'Séries',  to: '/cinema?type=series' },
+  { value: 'animes',  label: 'Animes',  to: '/animes' },
+  { value: 'youtube', label: 'YouTube', to: '/youtube' },
 ]
+
+/** Films / Séries / Animes / YouTube: one switch, same place on every video page. */
+export function VideoSectionSwitch({ value, full }: { value: string; full?: boolean }) {
+  const navigate = useNavigate()
+  return (
+    <SegmentedControl full={full} label="Section" value={value}
+      onChange={(v) => navigate(VIDEO_SECTIONS.find((s) => s.value === v)!.to)}
+      options={VIDEO_SECTIONS.map(({ value: v, label }) => ({ value: v, label }))} />
+  )
+}
 
 /** Library like the TV app: featured title, shelves; poster grid or detailed list. */
 export default function MediaBrowser({ title, tabs, yearFilter, emptyIcon, videoSwitch }: Props) {
   const qc = useQueryClient()
-  const navigate = useNavigate()
   const { device } = useShell()
   const phone = device === 'phone'
   const isAdmin = useAuthStore((s) => s.user?.role === 'admin')
@@ -217,20 +227,13 @@ export default function MediaBrowser({ title, tabs, yearFilter, emptyIcon, video
 
   const accessory = phone ? (
     <div className="flex flex-col gap-3">
-      {videoSwitch && (
-        <SegmentedControl
-          full
-          label="Section"
-          value={type === 'anime' ? 'animes' : tab.key}
-          onChange={(v) => navigate(VIDEO_SECTIONS.find((s) => s.value === v)!.to)}
-          options={VIDEO_SECTIONS.map(({ value, label }) => ({ value, label }))}
-        />
-      )}
+      {videoSwitch && <VideoSectionSwitch full value={type === 'anime' ? 'animes' : tab.key} />}
       {searchField}
     </div>
   ) : (
     <div className="flex flex-wrap items-center gap-2">
-      {tabs.length > 1 && (
+      {videoSwitch && <VideoSectionSwitch value={type === 'anime' ? 'animes' : tab.key} />}
+      {!videoSwitch && tabs.length > 1 && (
         <SegmentedControl label="Catégorie" value={tab.key}
           onChange={(k) => setParams(k === tabs[0].key ? {} : { type: k })}
           options={tabs.map((t) => ({ value: t.key, label: t.label }))} />

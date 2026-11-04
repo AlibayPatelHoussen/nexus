@@ -427,6 +427,7 @@ const SCANS: Partial<Record<Kind, [string, () => Promise<number>]>> = {
   manga: ['manga', () => MediaScanner.scanManga()],
   film: ['films', () => MediaScanner.scanFilms()],
   serie: ['series', () => MediaScanner.scanSeries()],
+  youtube: ['youtube', () => MediaScanner.scanYoutube()],
 }
 
 /** The finished file appears in the library at once (retries while another scan runs). */
