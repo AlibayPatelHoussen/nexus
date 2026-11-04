@@ -1265,9 +1265,24 @@ def _parse_site_results(html):
         slug = _slug_of(a.get("href", ""))
         h = a.select_one(".asn-search-result-title, h1, h2, h3")
         title = (h.get_text(" ", strip=True) if h else "") or a.get("title", "").strip()
+        alt = a.select_one(".asn-search-result-subtitle")
         if slug:
-            out.append({"title": title or slug.replace("-", " ").title(), "url": f"{BASE_URL}/catalogue/{slug}"})
+            out.append({"title": title or slug.replace("-", " ").title(), "url": f"{BASE_URL}/catalogue/{slug}",
+                        "alt": alt.get_text(" ", strip=True) if alt else ""})
     return out
+
+
+def _norm(text):
+    import unicodedata
+    text = unicodedata.normalize("NFKD", text or "").encode("ascii", "ignore").decode().lower()
+    return re.sub(r"[^a-z0-9]+", " ", text)
+
+
+def _relevant(hit, query):
+    """The site's search also returns loosely related titles: keep those naming every word."""
+    words = [w for w in _norm(query).split() if len(w) > 1] or _norm(query).split()
+    hay = " " + _norm(" ".join((hit.get("title", ""), _slug_of(hit.get("url", "")) or "", hit.get("alt", "")))) + " "
+    return all(w in hay for w in words)
 
 
 def _parse_catalogue_cards(html, query):
@@ -1305,7 +1320,7 @@ def _live_search(query):
             hits = _parse_catalogue_cards(r.text, query)
     out, seen = [], set()
     for h in hits:
-        if h["url"] not in seen:
+        if h["url"] not in seen and _relevant(h, query):
             seen.add(h["url"])
             out.append(h)
     return out

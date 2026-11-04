@@ -64,14 +64,21 @@ class Page(unittest.TestCase):
         except ImportError:
             self.skipTest("bs4 missing")
         ns = {"re": re, "BeautifulSoup": BeautifulSoup, "BASE_URL": "https://anime-sama.to"}
-        for name in ("_slug_of", "_parse_site_results", "_parse_catalogue_cards", "_variant_title"):
+        for name in ("_slug_of", "_parse_site_results", "_parse_catalogue_cards", "_variant_title", "_norm", "_relevant"):
             i = SRC.index(f"def {name}")
             exec(SRC[i:SRC.index("\ndef ", i + 5)], ns)
         fetch = ('<a href="https://anime-sama.to/catalogue/frieren" class="asn-search-result"><img src="x">'
                  '<h3 class="asn-search-result-title"><mark>Frieren</mark></h3>'
                  '<p class="asn-search-meta">Anime · Scans · 2023</p></a>')
         self.assertEqual(ns["_parse_site_results"](fetch),
-                         [{"title": "Frieren", "url": "https://anime-sama.to/catalogue/frieren"}])
+                         [{"title": "Frieren", "url": "https://anime-sama.to/catalogue/frieren", "alt": ""}])
+        rel = ns["_relevant"]
+        hit = lambda t, slug, alt="": {"title": t, "url": f"https://anime-sama.to/catalogue/{slug}", "alt": alt}
+        self.assertTrue(rel(hit("Kaiju N°8", "kaiju-n8"), "kaiju"))
+        self.assertFalse(rel(hit("Kaiji", "kaiji"), "kaiju"))
+        self.assertFalse(rel(hit("Les Enfants de la Mer", "les-enfants-de-la-mer"), "kaiju"))
+        self.assertTrue(rel(hit("Frieren", "frieren", "Sousou no Frieren"), "sousou frieren"))
+        self.assertTrue(rel(hit("Pokémon", "pokemon"), "pokemon"))
         cards = ('<a class="as-carte-lien" href="https://anime-sama.to/catalogue/naruto/"><span>Anime</span>'
                  '<span>Scans</span><img alt="Naruto" src="x"></a>'
                  '<a class="as-carte-lien" href="/catalogue/bleach/"><img alt="Bleach"></a>'
