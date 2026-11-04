@@ -1136,16 +1136,43 @@ def _page_info(slug):
             if p and p.get_text(strip=True):
                 desc = p.get_text(" ", strip=True)
             break
-    # Links like panneauAnime("Saison 1", "saison1/vostfr") or panneauScan("Scans", "scan/vf").
-    # Every page also contains examples — panneauAnime("nom", "saison1/vostfr") — never real.
-    # (Removing /* comments */ is not safe: it also removed Naruto's real scan link.)
+    # Links like panneauAnime("Saison 1", "saison1/vostfr") or panneauScan("Scans", "scan/vf"),
+    # read like a browser runs them: only inside <script> blocks that are not in an HTML
+    # comment, without the JavaScript comments (the site disables seasons / sections that
+    # way), and without the examples — panneauAnime("nom", "url").
     links = []
     for name, seg, lang in re.findall(
-            r"panneau\w*\(\s*[\"']([^\"']*)[\"']\s*,\s*[\"']([a-z0-9_-]+)/([a-z0-9]+)/?[\"']", html, re.I):
+            r"panneau\w*\(\s*[\"']([^\"']*)[\"']\s*,\s*[\"']([a-z0-9_-]+)/([a-z0-9]+)/?[\"']",
+            _active_scripts(html), re.I):
         if name.strip().lower() in ("", "nom", "url", "name") or seg.lower() == "url":
             continue
         links.append((name.strip(), seg, lang))
     return {"poster": poster, "description": desc, "links": links}
+
+
+def _active_scripts(html):
+    """JavaScript the browser really runs: <script> contents outside <!-- -->, minus JS comments."""
+    out, i, n = [], 0, len(html)
+    low = html.lower()
+    while i < n:
+        c = low.find("<!--", i)
+        sc = low.find("<script", i)
+        if sc < 0:
+            break
+        if 0 <= c < sc:                       # an HTML comment comes first: skip it whole
+            end = low.find("-->", c + 4)
+            i = n if end < 0 else end + 3
+            continue
+        start = low.find(">", sc)
+        end = low.find("</script", start)
+        if start < 0 or end < 0:
+            break
+        out.append(html[start + 1:end])
+        i = end + 9
+    code = "\n".join(out)
+    code = re.sub(r"/\*.*?\*/", "", code, flags=re.S)        # /* … */
+    code = re.sub(r"(?m)^\s*//.*$", "", code)                 # // … (whole line)
+    return code
 
 
 def _probe(urls):
