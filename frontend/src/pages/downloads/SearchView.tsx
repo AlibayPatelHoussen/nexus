@@ -206,7 +206,7 @@ function CatalogueLine() {
   const date = data.updatedAt ? new Date(data.updatedAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : null
   return (
     <p className="text-caption text-label2 text-center px-4">
-      Catalogue anime-sama : {data.count.toLocaleString('fr-FR')} titres{date ? `, mis à jour le ${date}` : ''} · actualisé chaque semaine
+      Catalogue anime-sama : {data.count.toLocaleString('fr-FR')} titres{date ? `, mis à jour le ${date}` : ''} · actualisé chaque jour
       {data.last?.added ? ` · ${data.last.added} nouveau${data.last.added > 1 ? 'x' : ''} titre${data.last.added > 1 ? 's' : ''}` : ''}
       {' · '}
       {data.refreshing

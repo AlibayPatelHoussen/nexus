@@ -5,12 +5,12 @@ import { collect, scriptsDir } from './downloadScripts'
 
 /**
  * anime-sama's catalogue (downloaders/data/catalogue.json): the list anisama.py
- * searches in. Rebuilt from the site every week (CATALOGUE_REFRESH_DAYS) or on
- * demand; between two rebuilds, titles missing from it are looked up live on the
- * site and added (anisama.py).
+ * searches in. Rebuilt from the site every day (CATALOGUE_REFRESH_DAYS) or on
+ * demand. Searches always ask the site too (anisama.py) and add the titles
+ * it finds; the catalogue completes them and answers alone if the site is down.
  */
 const file = () => path.join(scriptsDir(), 'data', 'catalogue.json')
-const maxAgeMs = () => (Number(process.env.CATALOGUE_REFRESH_DAYS) || 7) * 24 * 3600_000
+const maxAgeMs = () => (Number(process.env.CATALOGUE_REFRESH_DAYS) || 1) * 24 * 3600_000
 
 let running: Promise<CatalogueInfo> | null = null
 interface LastRefresh { at: string; added: number; error: string | null }
@@ -24,13 +24,22 @@ export interface CatalogueInfo {
   last: LastRefresh | null
 }
 
+/** Date of the last full rebuild, written by anisama.py --refresh-catalogue. */
+async function rebuiltAt(): Promise<Date | null> {
+  const stamp = await fs.readFile(path.join(path.dirname(file()), 'catalogue.updated'), 'utf8').catch(() => '')
+  const d = new Date(stamp.trim())
+  return Number.isNaN(d.getTime()) ? null : d
+}
+
 export async function catalogueInfo(): Promise<CatalogueInfo> {
   try {
     const st = await fs.stat(file())
     if (!countCache || countCache.mtime !== st.mtimeMs) {
       countCache = { mtime: st.mtimeMs, count: (JSON.parse(await fs.readFile(file(), 'utf8')) as unknown[]).length }
     }
-    return { count: countCache.count, updatedAt: st.mtime.toISOString(), refreshing: !!running, last: lastResult }
+    // catalogue.updated = last full rebuild (the json also changes when a search adds a title)
+    const updatedAt = (await rebuiltAt()) ?? st.mtime
+    return { count: countCache.count, updatedAt: updatedAt.toISOString(), refreshing: !!running, last: lastResult }
   } catch {
     return { count: 0, updatedAt: null, refreshing: !!running, last: lastResult }
   }
@@ -59,11 +68,11 @@ let timer: NodeJS.Timeout | null = null
 export function startCatalogueRefresher() {
   if (timer) return
   const check = async () => {
-    const info = await catalogueInfo()
-    const age = info.updatedAt ? Date.now() - new Date(info.updatedAt).getTime() : Infinity
+    const at = await rebuiltAt()   // never rebuilt by Nexus yet -> rebuild now
+    const age = at ? Date.now() - at.getTime() : Infinity
     if (age > maxAgeMs() && !running) await refreshCatalogue().catch(() => {})
   }
-  timer = setInterval(() => { void check() }, 6 * 3600_000)
+  timer = setInterval(() => { void check() }, 3600_000)
   timer.unref()
   setTimeout(() => { void check() }, 15 * 60_000).unref()
 }

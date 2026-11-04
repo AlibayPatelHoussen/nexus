@@ -1299,6 +1299,9 @@ def json_refresh_catalogue():
     data += [e for slug, e in old.items() if slug and slug not in fresh]
     data.sort(key=lambda x: x["title"].lower())
     CATALOGUE_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    # Date of the last full rebuild (catalogue.json itself also changes at each search)
+    CATALOGUE_FILE.with_name("catalogue.updated").write_text(
+        time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()) + "\n", encoding="utf-8")
     global _catalogue_cache
     _catalogue_cache = data
     new = [e["title"] for e in data if e["slug"] not in old]
@@ -1306,11 +1309,21 @@ def json_refresh_catalogue():
 
 
 def json_search(query, limit):
-    hits = search(query)[: (limit or 8)]
-    if not hits:
-        # Not in the local catalogue: ask the site (new titles), and remember them
-        hits = _live_search(query)[: (limit or 8)]
-        _add_to_catalogue(hits)
+    # Nexus: the site is asked at every search (always up to date); the local catalogue
+    # adds close matches the site's search misses, and answers alone if the site is down.
+    try:
+        live = _live_search(query)
+    except Exception as e:
+        print(f"live search: {e}")
+        live = []
+    _add_to_catalogue(live)
+    hits, seen = [], set()
+    for h in live + search(query):
+        slug = _slug_of(h.get("url", ""))
+        if slug and slug not in seen:
+            seen.add(slug)
+            hits.append(h)
+    hits = hits[: (limit or 8)]
     if not hits:
         return 0
     def one(hit):
