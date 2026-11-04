@@ -388,6 +388,7 @@ EMBED_DOMAINS = (
     "okru", "ok.ru", "vk.com", "streamtape", "yourupload",
     "vidbam", "vidoza", "voe.sx", "upstream", "doodstream",
     "filemoon", "vidplay", "mp4upload",
+    "ansembed", "embed4me", "smoothpre", "movearnpre",
 )
 
 def _is_embed_url(url: str) -> bool:
@@ -400,7 +401,7 @@ def _is_embed_url(url: str) -> bool:
         return False
     if any(d in url for d in EMBED_DOMAINS):
         return True
-    if re.search(r"/(embed|player|watch|video|stream)/", url):
+    if re.search(r"/(embed|player|watch|video|stream)[/-]", url):
         return True
     return False
 
@@ -430,7 +431,7 @@ def _parse_episodes_js(js_text: str) -> list:
             candidates.append((var_name, valid))
 
     PREF_ORDER = ["sibnet", "sendvid", "vk.com", "ok.ru", "dailymotion",
-                  "streamtape", "mp4upload", "vidmoly", "filemoon"]
+                  "streamtape", "mp4upload", "vidmoly", "filemoon", "ansembed"]
 
     def lecteur_score(item):
         name, urls = item
@@ -1123,12 +1124,17 @@ def _season_label(seg):
     m = re.match(r"saison(\d+)", seg)
     if m:
         return f"Saison {m.group(1)}"
+    m = re.match(r"(kai|film|oav)(\d+)$", seg)
+    if m:
+        return f"{ {'kai': 'Kai', 'film': 'Film', 'oav': 'OAV'}[m.group(1)] } {m.group(2)}"
     return {"film": "Film", "oav": "OAV", "speciaux": "Spéciaux", "special": "Spécial", "specials": "Spéciaux"}.get(seg, seg.capitalize())
 
 
 def _season_sort(seg):
-    m = re.match(r"saison(\d+)", seg)
-    return (0, int(m.group(1))) if m else (1, seg)
+    m = re.match(r"(saison|film|kai|oav)(\d*)", seg)
+    if not m:
+        return (9, 0, seg)
+    return ({"saison": 0, "film": 1, "kai": 2, "oav": 3}[m.group(1)], int(m.group(2) or 0), seg)
 
 
 def _structure(slug, full_probe=False):
