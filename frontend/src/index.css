@@ -40,6 +40,8 @@
   }
 
   input, textarea, select, button { font: inherit; color: inherit; letter-spacing: inherit; }
+  /* Our search fields draw their own clear button */
+  input[type="search"]::-webkit-search-cancel-button { -webkit-appearance: none; display: none; }
 
   /* Thin overlay-like scrollbars */
   * { scrollbar-width: thin; scrollbar-color: var(--fill) transparent; }

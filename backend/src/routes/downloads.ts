@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express'
 import asyncHandler from 'express-async-handler'
 import { authenticate, requireAdmin } from '../middleware/auth'
 import {
-  actOn, createDownload, deleteDownload, getDetails, listDownloads, startSearch, type CreateInput,
+  actOn, createDownload, deleteDownload, getDetails, listDownloads, openTarget, startSearch, type CreateInput,
 } from '../services/downloads'
 import { ValidationError } from '../utils/errors'
 
@@ -27,6 +27,10 @@ router.get('/', asyncHandler(async (_req: Request, res: Response) => {
 router.post('/', asyncHandler(async (req: Request, res: Response) => {
   const body = (req.body ?? {}) as CreateInput
   res.status(201).json({ success: true, data: await createDownload(body, req.user!.userId) })
+}))
+
+router.get('/:id/open', asyncHandler(async (req: Request, res: Response) => {
+  res.json({ success: true, data: await openTarget(req.params.id) })
 }))
 
 router.post('/:id/:action', asyncHandler(async (req: Request, res: Response) => {

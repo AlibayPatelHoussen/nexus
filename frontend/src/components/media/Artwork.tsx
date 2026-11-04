@@ -1,8 +1,8 @@
 import { useEffect, useState } from 'react'
-import { BookOpen, Film, Tv, Tv2 } from 'lucide-react'
+import { BookOpen, Film, Tv, Tv2, Youtube } from 'lucide-react'
 import type { MediaType } from '@/types'
 
-const TYPE_ICONS: Record<string, typeof Film> = { film: Film, serie: Tv, anime: Tv2, manga: BookOpen, webtoon: BookOpen }
+const TYPE_ICONS: Record<string, typeof Film> = { film: Film, serie: Tv, anime: Tv2, manga: BookOpen, webtoon: BookOpen, youtube: Youtube }
 
 interface ArtworkProps {
   src:        string | null | undefined

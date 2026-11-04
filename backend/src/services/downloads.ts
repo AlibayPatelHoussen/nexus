@@ -2,7 +2,7 @@ import crypto from 'crypto'
 import type { Namespace } from 'socket.io'
 import { query } from '../config/database'
 import { logger } from '../utils/logger'
-import { ConflictError, NotFoundError, ValidationError } from '../utils/errors'
+import { AppError, ConflictError, NotFoundError, ValidationError } from '../utils/errors'
 import { signedImage } from './images'
 import { MediaScanner } from './scanner'
 import {
@@ -400,6 +400,24 @@ export async function deleteDownload(id: string) {
   if (live) { live.stopAs = 'cancelled'; live.handle.kill() }
   await query('DELETE FROM downloads WHERE id = $1', [id])
   emit('download:removed', { id })
+}
+
+/** Where to open a finished download: player (video) or reader (manga). */
+export async function openTarget(id: string): Promise<{ mediaId: string; episodeId?: string; chapterId?: string; reader: 'player' | 'reader' }> {
+  const row = await getRow(id)
+  const files = [...((row.progress.files as string[] | undefined) ?? [])].reverse()
+  for (const file of files) {
+    const ep = await query<{ id: string; media_item_id: string }>('SELECT id, media_item_id FROM episodes WHERE file_path = $1 LIMIT 1', [file])
+    if (ep.rows[0]) return { mediaId: ep.rows[0].media_item_id, episodeId: ep.rows[0].id, reader: 'player' }
+    const ch = await query<{ id: string; media_item_id: string }>('SELECT id, media_item_id FROM chapters WHERE folder_path = $1 LIMIT 1', [file])
+    if (ch.rows[0]) return { mediaId: ch.rows[0].media_item_id, chapterId: ch.rows[0].id, reader: 'reader' }
+    const media = await query<{ id: string; type: string }>(
+      `SELECT id, type FROM media_items WHERE file_path = $1 OR $1 LIKE file_path || '/%' ORDER BY length(file_path) DESC LIMIT 1`, [file])
+    if (media.rows[0]) {
+      return { mediaId: media.rows[0].id, reader: ['manga', 'webtoon'].includes(media.rows[0].type) ? 'reader' : 'player' }
+    }
+  }
+  throw new AppError('Ce téléchargement n’est pas encore dans la bibliothèque', 404)
 }
 
 // ─── Library ───────────────────────────────────────────────────────────────
