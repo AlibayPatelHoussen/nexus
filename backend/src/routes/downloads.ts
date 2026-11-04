@@ -5,6 +5,7 @@ import {
   actOn, createDownload, deleteDownload, getDetails, listDownloads, openTarget, startSearch, type CreateInput,
 } from '../services/downloads'
 import { ValidationError } from '../utils/errors'
+import { checkDueFollows, getFollow, listFollows, setFollow, type FollowInput } from '../services/follows'
 
 // « Téléchargements »: writes on the server, so admins only
 const router = Router()
@@ -18,6 +19,20 @@ router.post('/search', asyncHandler(async (req: Request, res: Response) => {
 
 router.get('/details', asyncHandler(async (req: Request, res: Response) => {
   res.json({ success: true, data: await getDetails(req.query.id) })
+}))
+
+// « Télécharger automatiquement les nouveautés » (off unless switched on)
+router.get('/follows', asyncHandler(async (req: Request, res: Response) => {
+  if (req.query.id) { res.json({ success: true, data: await getFollow(req.query.id) }); return }
+  res.json({ success: true, data: await listFollows() })
+}))
+
+router.put('/follows', asyncHandler(async (req: Request, res: Response) => {
+  res.json({ success: true, data: await setFollow((req.body ?? {}) as FollowInput, req.user!.userId) })
+}))
+
+router.post('/follows/check', asyncHandler(async (_req: Request, res: Response) => {
+  res.json({ success: true, data: { queued: await checkDueFollows(true) } })
 }))
 
 router.get('/', asyncHandler(async (_req: Request, res: Response) => {

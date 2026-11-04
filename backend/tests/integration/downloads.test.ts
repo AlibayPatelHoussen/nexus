@@ -9,6 +9,7 @@ import { signedImage } from '../../src/services/images'
 import {
   requeueInterrupted, setDownloadsNamespace, startDownloadWorker, stopDownloadWorker,
 } from '../../src/services/downloads'
+import { checkDueFollows } from '../../src/services/follows'
 import { makeToken } from '../helpers'
 
 /**
@@ -43,8 +44,12 @@ if '--search' in args:
         out(type='result', id='youtube:dQw4w9WgXcQ', kind='youtube', title=q, thumbnail_url='https://i.ytimg.com/vi/x/hq.jpg', duration=212)
     out(type='done')
 elif '--details' in args:
+    try:
+        count = int(open(os.path.join(os.path.dirname(sys.argv[0]), 'count.txt')).read())
+    except Exception:
+        count = 2
     out(type='details', id=arg('--details'), kind='manga', title='One Piece', poster_url='https://cdn.example/op.jpg',
-        langs=[{'lang': 'VF', 'chapters': [{'n': 1, 'pages': 20, 'downloaded': True}, {'n': 2, 'pages': 18, 'downloaded': False}]}])
+        langs=[{'lang': 'VF', 'chapters': [{'n': n, 'pages': 20, 'downloaded': n == 1} for n in range(1, count + 1)]}])
     out(type='done')
 elif '--download' in args:
     ident = arg('--download')
@@ -240,6 +245,39 @@ describe('Downloads: queue', () => {
     expect(await requeueInterrupted()).toBeGreaterThanOrEqual(1)
     expect(await statusOf(rows[0].id)).toBe('queued')
     await query('DELETE FROM downloads WHERE id = $1', [rows[0].id])
+  })
+})
+
+describe('Follow a title (automatic downloads, off by default)', () => {
+  it('is off until switched on, then only queues what is new', async () => {
+    fs.writeFileSync(path.join(DIR, 'count.txt'), '3')
+    const id = 'anisama:manga:one-piece'
+    expect((await request(app).get('/api/downloads/follows').set(admin).query({ id })).body.data).toBeNull()
+    const on = await request(app).put('/api/downloads/follows').set(admin)
+      .send({ id, title: 'One Piece', lang: 'VF', enabled: true })
+    expect(on.status).toBe(200)
+    expect(on.body.data).toEqual(expect.objectContaining({ enabled: true, known: [1, 2, 3], options: { lang: 'VF' } }))
+    // Nothing new: nothing queued
+    const before = (await query<{ n: number }>('SELECT COUNT(*)::int AS n FROM downloads')).rows[0].n
+    expect(await checkDueFollows(true)).toBe(0)
+    // Two chapters come out on the site
+    fs.writeFileSync(path.join(DIR, 'count.txt'), '5')
+    expect(await checkDueFollows(true)).toBe(2)
+    const { rows } = await query<{ selection: { chapters: number[] }; status: string }>(
+      'SELECT selection, status FROM downloads ORDER BY created_at DESC LIMIT 1')
+    expect(rows[0].selection.chapters).toEqual([4, 5])
+    expect((await query('SELECT COUNT(*)::int AS n FROM downloads')).rows[0].n).toBe(before + 1)
+    // Switched off: no more checks
+    await request(app).put('/api/downloads/follows').set(admin).send({ id, enabled: false })
+    fs.writeFileSync(path.join(DIR, 'count.txt'), '7')
+    expect(await checkDueFollows(true)).toBe(0)
+  })
+
+  it('refuses films, videos and bad options', async () => {
+    expect((await request(app).put('/api/downloads/follows').set(admin).send({ id: 'youtube:dQw4w9WgXcQ', title: 'x', enabled: true })).status).toBe(422)
+    expect((await request(app).put('/api/downloads/follows').set(admin).send({ id: 'movix:movie:603', title: 'x', enabled: true })).status).toBe(422)
+    expect((await request(app).put('/api/downloads/follows').set(admin).send({ id: 'anisama:anime:x', title: 'x', lang: 'VF', season: '../', enabled: true })).status).toBe(422)
+    expect((await request(app).put('/api/downloads/follows').set(user).send({ id: 'anisama:manga:x', enabled: true })).status).toBe(403)
   })
 })
 

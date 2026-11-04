@@ -73,7 +73,16 @@ export function originalImage(url: string | null | undefined): string | null {
   try { return new URL(url, window.location.origin).searchParams.get('u') } catch { return null }
 }
 
+export interface Follow {
+  id: string; source_id: string; kind: DownloadKind; title: string
+  options: { lang?: string; season?: string }; enabled: boolean
+  last_checked_at: string | null; last_error: string | null
+}
+
 export const downloadsService = {
+  follow: async (id: string) => (await api.get<{ data: Follow | null }>('/downloads/follows', { params: { id } })).data.data,
+  setFollow: async (body: { id: string; title?: string; poster_url?: string | null; lang?: string; season?: string | number; enabled: boolean }) =>
+    (await api.put<{ data: Follow | null }>('/downloads/follows', body)).data.data,
   search: async (query: string) =>
     (await api.post<{ data: { searchId: string; sources: DownloadSource[] } }>('/downloads/search', { query })).data.data,
   details: async (id: string) => (await api.get<{ data: Details }>('/downloads/details', { params: { id } })).data.data,

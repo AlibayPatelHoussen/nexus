@@ -9,6 +9,7 @@ import {
 import { useShell } from '@/components/shell/shellContext'
 import Sheet from '@/components/ui/Sheet'
 import Button from '@/components/ui/Button'
+import Toggle from '@/components/ui/Toggle'
 import SegmentedControl from '@/components/ui/SegmentedControl'
 import EmptyState from '@/components/ui/EmptyState'
 import Skeleton from '@/components/ui/Skeleton'
@@ -88,6 +89,28 @@ export default function DetailSheet({ result, onClose }: { result: SearchResult 
   const [lang, setLang] = useState<string>('')
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [busy, setBusy] = useState(false)
+  const followable = !!r && (r.kind === 'anime' || r.kind === 'serie' || r.kind === 'manga')
+  const { data: follow, refetch: refetchFollow } = useQuery({
+    queryKey: ['dl-follow', r?.id], queryFn: () => downloadsService.follow(r!.id), enabled: followable, retry: false,
+  })
+  const [following, setFollowing] = useState(false)
+
+  async function toggleFollow(on: boolean) {
+    if (!r) return
+    setFollowing(true)
+    try {
+      await downloadsService.setFollow({
+        id: r.id, enabled: on, title: details?.title || r.title, poster_url: originalImage(r.poster_url), lang,
+        ...(r.kind !== 'manga' ? { season } : {}),
+      })
+      await refetchFollow()
+      toast.success(on ? 'Les nouveautés seront téléchargées automatiquement' : 'Téléchargement automatique désactivé')
+    } catch (err) {
+      toast.error(isAxiosError(err) ? err.response?.data?.error ?? 'Impossible de changer ce réglage.' : 'Impossible de changer ce réglage.')
+    } finally {
+      setFollowing(false)
+    }
+  }
 
   // Seasons (anime: one entry per season + language) / languages
   const seasonIds = useMemo(() => [...new Map((details?.seasons ?? []).map((s) => [String(s.id), s.label.split(' — ')[0]])).entries()], [details])
@@ -223,6 +246,20 @@ export default function DetailSheet({ result, onClose }: { result: SearchResult 
               ? <ItemPicker items={items} selected={selected} onChange={setSelected} noun={r.kind === 'manga' ? 'chapitre' : 'épisode'} />
               : <p className="text-subhead text-label2">Rien de disponible pour ce choix.</p>)}
             {filmDone && <p className="flex items-center gap-1.5 text-subhead text-ok-text"><Check size={14} strokeWidth={2.5} />Déjà téléchargé en {lang}</p>}
+            {followable && (
+              <div className="flex items-start justify-between gap-4 rounded-[10px] bg-fill2 px-3 py-2.5">
+                <div className="min-w-0">
+                  <p className="text-body text-label">Télécharger automatiquement les {r.kind === 'manga' ? 'nouveaux chapitres' : 'nouveaux épisodes'}</p>
+                  <p className="text-caption text-label2 mt-0.5">
+                    {follow?.enabled
+                      ? `${[follow.options.season ? seasonIds.find(([id]) => id === String(follow.options.season))?.[1] ?? follow.options.season : null, follow.options.lang].filter(Boolean).join(' · ')} · vérifié chaque jour${follow.last_error ? ` · dernier essai : ${follow.last_error}` : ''}`
+                      : 'Désactivé : rien ne se télécharge sans toi.'}
+                  </p>
+                </div>
+                <Toggle checked={!!follow?.enabled} disabled={following || !lang || (r.kind !== 'manga' && !season)}
+                  onChange={(v) => { void toggleFollow(v) }} label="Télécharger automatiquement les nouveautés" />
+              </div>
+            )}
           </div>
         )}
       </div>
