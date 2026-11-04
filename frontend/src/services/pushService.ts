@@ -49,4 +49,13 @@ export async function disablePush(): Promise<void> {
   await sub.unsubscribe()
 }
 
-export const testPush = async () => (await api.post<{ data: { sent: number } }>('/push/test')).data.data.sent
+export const testPush = async () =>
+  (await api.post<{ data: { devices: number; sent: number; errors: string[] } }>('/push/test')).data.data
+
+/** The server may have forgotten this device (reinstall, cleanup): send it again. */
+export async function resyncPush(): Promise<boolean> {
+  const sub = await currentSubscription()
+  if (!sub || Notification.permission !== 'granted') return false
+  await api.post('/push/subscribe', { subscription: sub.toJSON() }).catch(() => {})
+  return true
+}

@@ -3,7 +3,7 @@ import toast from 'react-hot-toast'
 import { Group, ListRow } from '@/components/ui/GroupedList'
 import Toggle from '@/components/ui/Toggle'
 import Button from '@/components/ui/Button'
-import { currentSubscription, disablePush, enablePush, pushSupport, testPush } from '@/services/pushService'
+import { disablePush, enablePush, pushSupport, resyncPush, testPush } from '@/services/pushService'
 
 /** Réglages › Notifications: this device receives a notification when a download ends. */
 export default function NotificationsGroup() {
@@ -13,7 +13,7 @@ export default function NotificationsGroup() {
 
   useEffect(() => {
     if (support !== 'ok') return
-    currentSubscription().then((s) => setOn(!!s && Notification.permission === 'granted')).catch(() => {})
+    resyncPush().then(setOn).catch(() => {})
   }, [support])
 
   async function toggle(next: boolean) {
@@ -45,7 +45,11 @@ export default function NotificationsGroup() {
       </ListRow>
       {on && (
         <ListRow title="Essayer">
-          <Button size="small" onClick={() => testPush().then((n) => (n ? toast.success('Notification envoyée') : toast.error('Aucun appareil abonné'))).catch(() => toast.error('Envoi impossible'))}>
+          <Button size="small" onClick={() => testPush().then((r) => {
+            if (r.sent) toast.success('Notification envoyée')
+            else if (!r.devices) toast.error('Aucun appareil abonné : désactive puis réactive l’interrupteur.')
+            else toast.error(`Le service de notifications a refusé l’envoi (${r.errors[0] ?? 'erreur inconnue'})`)
+          }).catch(() => toast.error('Envoi impossible'))}>
             Envoyer un test
           </Button>
         </ListRow>

@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express'
 import asyncHandler from 'express-async-handler'
 import { authenticate } from '../middleware/auth'
-import { deviceCount, publicKey, sendPush, subscribe, unsubscribe } from '../services/push'
+import { deviceCount, publicKey, sendPushDetailed, subscribe, unsubscribe } from '../services/push'
 
 const router = Router()
 router.use(authenticate)
@@ -21,8 +21,8 @@ router.post('/unsubscribe', asyncHandler(async (req: Request, res: Response) => 
 }))
 
 router.post('/test', asyncHandler(async (req: Request, res: Response) => {
-  const sent = await sendPush([req.user!.userId], { title: 'Nexus', body: 'Les notifications fonctionnent sur cet appareil.', url: '/settings', tag: 'test' })
-  res.json({ success: true, data: { sent } })
+  const result = await sendPushDetailed([req.user!.userId], { title: 'Nexus', body: 'Les notifications fonctionnent sur cet appareil.', url: '/settings', tag: 'test' })
+  res.json({ success: true, data: result })
 }))
 
 export default router
