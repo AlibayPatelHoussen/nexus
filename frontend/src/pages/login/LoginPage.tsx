@@ -88,7 +88,7 @@ export default function LoginPage() {
               />
               <button
                 type="button"
-                className="absolute right-1 top-1/2 -translate-y-1/2 w-10 h-10 grid place-items-center rounded-[8px] text-label2 hoverable"
+                className="absolute right-1 top-1/2 -translate-y-1/2 w-10 h-10 grid place-items-center rounded-full text-label2 hoverable"
                 onClick={() => setShowPass((s) => !s)}
                 aria-label={showPass ? 'Masquer le mot de passe' : 'Afficher le mot de passe'}
                 aria-pressed={showPass}

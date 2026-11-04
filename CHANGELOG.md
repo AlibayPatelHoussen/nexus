@@ -7,6 +7,8 @@ All notable changes to Nexus will be documented here.
 ### Changed — Liquid Glass steps 6–7: YouTube and every page's toolbar
 - YouTube like the Apple TV app: 16:9 thumbnails with 14 pt corners and a hairline rim, spring lift and pointer reflection on hover, the duration in a small clear-glass capsule, a white progress bar; channels as horizontal shelves
 - Every page's toolbar (desktop) and navigation bar (iPhone) uses the iOS 26 / macOS 26 scroll edge effect instead of the old flat bar with a hairline: the content fades and blurs softly under the bar
+- Search fields are one shared capsule component (`SearchField`, iOS 26 / macOS 26); toolbar icon buttons and pop-up menus are round / capsules
+- Fixed: a text colour combined with a type size (`text-label` + `text-body`) lost its colour (class merging didn't know Nexus's type scale)
 
 ### Changed — Liquid Glass step 5: Manga like Apple Books
 - Shelves of book covers: small 6 pt corners, a spine light and a soft shadow as if resting on a shelf, the title underneath; no billboard (« Nouveautés », « Les mieux notés », genres)

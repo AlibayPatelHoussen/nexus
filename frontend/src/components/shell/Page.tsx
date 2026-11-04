@@ -76,7 +76,7 @@ function DesktopPage({ title, subtitle, actions, accessory, back, bleed, narrow,
             <button
               type="button"
               onClick={toggleSidebar}
-              className="w-8 h-8 grid place-items-center rounded-[6px] text-label2 hoverable -ml-1"
+              className="w-8 h-8 grid place-items-center rounded-full text-label2 hoverable -ml-1"
               aria-label={sidebarOpen ? 'Masquer la barre latérale' : 'Afficher la barre latérale'}
               aria-controls="nexus-sidebar"
               aria-expanded={sidebarOpen}
@@ -85,7 +85,7 @@ function DesktopPage({ title, subtitle, actions, accessory, back, bleed, narrow,
             </button>
           )}
           {back && (
-            <Link to={back.to} className="w-8 h-8 grid place-items-center rounded-[6px] text-label2 hoverable -ml-1" aria-label={`Retour : ${back.label}`} title={back.label}>
+            <Link to={back.to} className="w-8 h-8 grid place-items-center rounded-full text-label2 hoverable -ml-1" aria-label={`Retour : ${back.label}`} title={back.label}>
               <ChevronLeft size={20} strokeWidth={1.75} />
             </Link>
           )}

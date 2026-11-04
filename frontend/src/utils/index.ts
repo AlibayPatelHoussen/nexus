@@ -1,5 +1,16 @@
 import { clsx, type ClassValue } from 'clsx'
-import { twMerge } from 'tailwind-merge'
+import { extendTailwindMerge } from 'tailwind-merge'
+
+// Our type scale (tailwind.config fontSize) must be known as font sizes,
+// otherwise `text-body` is taken for a colour and drops `text-label`.
+const twMerge = extendTailwindMerge({
+  extend: {
+    classGroups: {
+      'font-size': [{ text: ['largetitle', 'title', 'headline', 'body', 'callout', 'subhead', 'caption'] }],
+      rounded: [{ rounded: ['card', 'group', 'control', 'sheet', 'glass', 'sidebar', 'pill'] }],
+    },
+  },
+})
 
 export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs))
