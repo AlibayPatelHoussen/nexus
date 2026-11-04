@@ -252,7 +252,7 @@ export default function MediaDetailPage() {
           title={media.title}
           subtitle={media.year}
           loading="eager"
-          className={cn('flex-shrink-0 rounded-[10px]', media.posterPath || !media.backdropPath
+          className={cn('flex-shrink-0 rounded-[6px] shadow-[0_14px_34px_-10px_rgba(0,0,0,0.45)]', media.posterPath || !media.backdropPath
             ? 'w-[52vw] max-w-[220px] md:w-[200px] lg:w-[240px] md:max-w-none'
             : 'w-full max-w-[420px] md:w-[360px]')}
         />

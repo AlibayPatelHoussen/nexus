@@ -170,8 +170,7 @@ export default function MangaReaderPage() {
       return URL.createObjectURL(b)
     })
 
-  const glass = { background: 'rgba(28,28,30,.72)', backdropFilter: 'saturate(180%) blur(24px)', WebkitBackdropFilter: 'saturate(180%) blur(24px)' } as const
-  const barBtn = 'w-9 h-9 grid place-items-center rounded-[8px] text-white/80 hover:text-white hover:bg-white/10 active:bg-white/20'
+  const barBtn = 'w-9 h-9 grid place-items-center rounded-full text-white/85 hover:text-white hover:bg-white/10 active:bg-white/20'
   const chapterLabel = (c: Chapter) => c.title || `Chapitre ${c.chapterNumber}`
   const current = filteredChapters[currentChapterIndex]
   const pill = 'px-3.5 min-h-[32px] rounded-full text-[13px] font-medium'
@@ -213,8 +212,9 @@ export default function MangaReaderPage() {
     >
       {/* Top bar: appears on move / tap, fades while reading */}
       <div
-        className="fixed top-0 inset-x-0 z-30 flex items-center gap-2 px-2 text-white transition-opacity duration"
-        style={{ ...glass, paddingTop: 'env(safe-area-inset-top, 0px)', minHeight: 'calc(48px + env(safe-area-inset-top, 0px))', opacity: showUI ? 1 : 0, pointerEvents: showUI ? 'auto' : 'none', boxShadow: 'inset 0 -0.5px 0 rgba(255,255,255,.12)' }}
+        // Apple Books: the reading chrome floats in clear glass and fades away while reading
+        className="fixed z-30 left-2.5 right-2.5 flex items-center gap-2 px-2 min-h-[48px] rounded-[26px] glass-media transition-[opacity,transform] duration-300"
+        style={{ top: 'calc(env(safe-area-inset-top, 0px) + 8px)', opacity: showUI ? 1 : 0, transform: showUI ? 'none' : 'translateY(-6px)', pointerEvents: showUI ? 'auto' : 'none' }}
         onClick={(e) => e.stopPropagation()}
       >
         <button type="button" className="flex items-center min-h-[44px] pr-2 text-[17px] md:text-body text-white/90 hover:text-white min-w-0" onClick={() => navigate(`/media/${id}`)} aria-label="Retour">
@@ -302,11 +302,11 @@ export default function MangaReaderPage() {
           )}
           {isDesktop && (
             <>
-              <button type="button" className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 grid place-items-center rounded-full text-white disabled:opacity-0 transition-opacity" style={{ ...glass, opacity: showUI ? 1 : 0 }}
+              <button type="button" className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 grid place-items-center rounded-full glass-media disabled:opacity-0 transition-opacity" style={{ opacity: showUI ? 1 : 0 }}
                 onClick={(e) => { e.stopPropagation(); setCurrentPage((p) => Math.max(0, p - 1)) }} disabled={currentPage === 0} aria-label="Page précédente">
                 <ChevronLeft size={20} strokeWidth={1.75} />
               </button>
-              <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 grid place-items-center rounded-full text-white disabled:opacity-0 transition-opacity" style={{ ...glass, opacity: showUI ? 1 : 0 }}
+              <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 grid place-items-center rounded-full glass-media disabled:opacity-0 transition-opacity" style={{ opacity: showUI ? 1 : 0 }}
                 onClick={(e) => { e.stopPropagation(); setCurrentPage((p) => Math.min(pages.length - 1, p + 1)) }} disabled={currentPage >= pages.length - 1} aria-label="Page suivante">
                 <ChevronRight size={20} strokeWidth={1.75} />
               </button>
@@ -318,8 +318,8 @@ export default function MangaReaderPage() {
       {/* Bottom bar (page modes): position, page count, chapters */}
       {mode !== 'vertical' && pages.length > 0 && (
         <div
-          className="fixed bottom-0 inset-x-0 z-30 text-white transition-opacity duration"
-          style={{ ...glass, opacity: showUI ? 1 : 0, pointerEvents: showUI ? 'auto' : 'none', padding: '10px 16px max(10px, env(safe-area-inset-bottom))', boxShadow: 'inset 0 0.5px 0 rgba(255,255,255,.12)' }}
+          className="fixed z-30 left-2.5 right-2.5 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 sm:w-[min(640px,calc(100%-32px))] rounded-[26px] glass-media px-4 pt-2.5 pb-3 transition-[opacity,transform] duration-300"
+          style={{ bottom: 'max(10px, env(safe-area-inset-bottom))', opacity: showUI ? 1 : 0, transform: showUI ? 'none' : 'translateY(6px)', pointerEvents: showUI ? 'auto' : 'none' }}
           onClick={(e) => e.stopPropagation()}
         >
           <input
@@ -345,8 +345,8 @@ export default function MangaReaderPage() {
       {isDesktop && filteredChapters.length > 0 && (
         <aside
           aria-label="Chapitres"
-          className="fixed right-0 bottom-0 w-60 z-20 overflow-y-auto text-white transition-transform duration-slow ease-sheet"
-          style={{ ...glass, top: 48, transform: showUI ? 'none' : 'translateX(100%)', boxShadow: 'inset 0.5px 0 0 rgba(255,255,255,.12)' }}
+          className="fixed right-2.5 bottom-2.5 w-60 z-20 overflow-y-auto rounded-[26px] glass-media transition-transform duration-slow ease-sheet"
+          style={{ top: 66, transform: showUI ? 'none' : 'translateX(calc(100% + 16px))' }}
           onClick={(e) => e.stopPropagation()}
         >
           <p className="px-4 pt-4 pb-2 text-caption font-semibold text-white/60">Chapitres · {filteredChapters.length}</p>

@@ -5,6 +5,7 @@ export default function MangaPage() {
   return (
     <MediaBrowser
       title="Manga"
+      books
       emptyIcon={<BookOpen strokeWidth={1.25} />}
       tabs={[{ key: 'manga', label: 'Manga', type: 'manga', scanType: 'manga', noun: 'un manga' }]}
     />

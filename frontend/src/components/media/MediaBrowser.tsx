@@ -39,6 +39,8 @@ interface Props {
   emptyIcon?:  React.ReactNode
   /** Phone: Films · Séries · Animes switch at the top of the "Médias" tab */
   videoSwitch?: boolean
+  /** Apple Books presentation (manga): no billboard, book covers with their title */
+  books?: boolean
 }
 
 type View = 'grid' | 'list'
@@ -73,7 +75,7 @@ export function VideoSectionSwitch({ value, full }: { value: string; full?: bool
 }
 
 /** Library like the TV app: featured title, shelves; poster grid or detailed list. */
-export default function MediaBrowser({ title, tabs, yearFilter, emptyIcon, videoSwitch }: Props) {
+export default function MediaBrowser({ title, tabs, yearFilter, emptyIcon, videoSwitch, books }: Props) {
   const qc = useQueryClient()
   const { device } = useShell()
   const phone = device === 'phone'
@@ -247,7 +249,8 @@ export default function MediaBrowser({ title, tabs, yearFilter, emptyIcon, video
     </div>
   )
 
-  const showHero = view === 'grid' && !hasFilters && !isError && featured.length > 0
+  const showHero = !books && view === 'grid' && !hasFilters && !isError && featured.length > 0
+  const shelf = books ? 'book' as const : undefined
 
   /* ── Content ────────────────────────────────────────────────────────── */
   let content: React.ReactNode
@@ -295,9 +298,9 @@ export default function MediaBrowser({ title, tabs, yearFilter, emptyIcon, video
     content = (
       <>
         {continueRow.length > 0 && <MediaRow title="Reprendre" items={continueRow} kind="wide" />}
-        <MediaRow title="Ajouts récents" items={items.slice(0, 24)} isLoading={isLoading} />
-        {topRated.length >= 3 && <MediaRow title="Top 10" items={topRated} kind="top10" />}
-        {genreRows.map((r) => <MediaRow key={r.genre} title={r.genre} items={r.items} onSeeAll={() => showGenre(r.genre)} />)}
+        <MediaRow title={books ? 'Nouveautés' : 'Ajouts récents'} items={items.slice(0, 24)} isLoading={isLoading} kind={shelf} />
+        {topRated.length >= 3 && <MediaRow title={books ? 'Les mieux notés' : 'Top 10'} items={topRated} kind={books ? 'book' : 'top10'} />}
+        {genreRows.map((r) => <MediaRow key={r.genre} title={r.genre} items={r.items} onSeeAll={() => showGenre(r.genre)} kind={shelf} />)}
       </>
     )
   }

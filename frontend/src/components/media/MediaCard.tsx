@@ -15,8 +15,8 @@ interface MediaCardProps {
   duration?:  number
   /** Episode / chapter label (e.g. "S1, É3") */
   subtitle?:  string
-  /** poster (2:3, Apple TV shelves and grids) · wide (16:9 "Reprendre") */
-  shape?:     'poster' | 'wide'
+  /** poster (2:3, Apple TV shelves and grids) · wide (16:9 "Reprendre") · book (Apple Books cover) */
+  shape?:     'poster' | 'wide' | 'book'
   /** Top 10 rank drawn over the artwork */
   rank?:      number
   /** Line over the bottom of the artwork (genre, like Apple TV's Top 10) */
@@ -40,7 +40,8 @@ export default function MediaCard({ item, progress, duration, subtitle, shape = 
   const ref = useRef<HTMLButtonElement>(null)
   const pct = progress && duration ? Math.min(100, Math.round((progress / duration) * 100)) : 0
   const wide = shape === 'wide'
-  const grid = showTitle ?? variant === 'grid'
+  const book = shape === 'book'
+  const grid = showTitle ?? (variant === 'grid' || book)
   const remaining = duration && progress ? Math.max(0, Math.round((duration - progress) / 60)) : null
 
   // Poster → title page: the artwork grows into the page header (View Transitions API,
@@ -90,10 +91,13 @@ export default function MediaCard({ item, progress, duration, subtitle, shape = 
           title={item.title}
           subtitle={item.year}
           cover={wide}
-          className="w-full rounded-card transition-shadow duration-300 group-hover:shadow-[0_18px_40px_-12px_rgba(0,0,0,0.55)] group-focus-visible:shadow-[0_18px_40px_-12px_rgba(0,0,0,0.55)]"
+          className={book
+            // Apple Books: a printed cover, small corners, resting on the shelf with a soft shadow
+            ? 'w-full rounded-[6px] shadow-[0_6px_16px_-4px_rgba(0,0,0,0.35)] transition-shadow duration-300 group-hover:shadow-[0_18px_36px_-10px_rgba(0,0,0,0.5)]'
+            : 'w-full rounded-card transition-shadow duration-300 group-hover:shadow-[0_18px_40px_-12px_rgba(0,0,0,0.55)] group-focus-visible:shadow-[0_18px_40px_-12px_rgba(0,0,0,0.55)]'}
         >
-          {/* Hairline rim (tv.apple.com: 1 px white @16 % + 0.5 px inner shadow) */}
-          <span className="absolute inset-0 rounded-card pointer-events-none shadow-[inset_0_0_0_1px_var(--poster-rim)]" aria-hidden="true" />
+          {/* Hairline rim (tv.apple.com: 1 px white @16 % + 0.5 px inner shadow); a book's spine light */}
+          <span className={book ? 'absolute inset-0 rounded-[6px] pointer-events-none bg-[linear-gradient(90deg,rgba(255,255,255,0.18),transparent_5%,rgba(0,0,0,0.12)_7%,transparent_10%)]' : 'absolute inset-0 rounded-card pointer-events-none shadow-[inset_0_0_0_1px_var(--poster-rim)]'} aria-hidden="true" />
           {/* Specular reflection following the pointer */}
           <span
             className="absolute inset-0 rounded-card pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-300"

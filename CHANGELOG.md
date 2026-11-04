@@ -4,6 +4,11 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Changed — Liquid Glass step 5: Manga like Apple Books
+- Shelves of book covers: small 6 pt corners, a spine light and a soft shadow as if resting on a shelf, the title underneath; no billboard (« Nouveautés », « Les mieux notés », genres)
+- Title page: the whole cover with its shadow, title and capsule buttons
+- Reader: the chrome is floating clear glass (a capsule at the top with the chapter, a capsule at the bottom with the page slider), page arrows in glass, the chapters panel in glass; everything fades away while reading
+
 ### Changed — Liquid Glass step 4: video player
 - The player's controls are clear Liquid Glass over the video (`.glass-media`: clear glass with the HIG's dimming for bright images): a 26 pt capsule control bar that fades in and settles on a spring, a round centre play button, the « Reprise à … » card and the « Retour » capsule
 
