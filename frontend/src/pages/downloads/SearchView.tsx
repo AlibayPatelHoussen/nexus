@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
+import { useQuery } from '@tanstack/react-query'
 import { Download as DownloadIcon, Search, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import type { Socket } from 'socket.io-client'
@@ -140,8 +141,13 @@ export default function SearchView({ socket }: { socket: Socket | null }) {
 
   let body: React.ReactNode
   if (!state.searchId) {
-    body = <EmptyState icon={<DownloadIcon strokeWidth={1.25} />} title="Rechercher un titre"
-      message="Une seule recherche interroge anime-sama, movix, le site de films et YouTube en même temps." />
+    body = (
+      <div className="flex flex-col items-center gap-2">
+        <EmptyState icon={<DownloadIcon strokeWidth={1.25} />} title="Rechercher un titre"
+          message="Une seule recherche interroge anime-sama, movix, le site de films et YouTube en même temps." />
+        <CatalogueLine />
+      </div>
+    )
   } else if (shown.length === 0 && pending.length) {
     body = phone
       ? <div className="flex flex-col gap-3">{Array.from({ length: 4 }).map((_, i) => <Skeleton key={i} className="h-[108px] rounded-[12px]" />)}</div>
@@ -188,6 +194,25 @@ export default function SearchView({ socket }: { socket: Socket | null }) {
       {body}
       <DetailSheet result={open} onClose={() => setOpen(null)} />
     </div>
+  )
+}
+
+/** anime-sama's catalogue: how many titles, when it was rebuilt, rebuild now. */
+function CatalogueLine() {
+  const { data, refetch } = useQuery({
+    queryKey: ['dl-catalogue'], queryFn: downloadsService.catalogue, refetchInterval: (q) => (q.state.data?.refreshing ? 5000 : false),
+  })
+  if (!data) return null
+  const date = data.updatedAt ? new Date(data.updatedAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : null
+  return (
+    <p className="text-caption text-label2 text-center px-4">
+      Catalogue anime-sama : {data.count.toLocaleString('fr-FR')} titres{date ? `, mis à jour le ${date}` : ''} · actualisé chaque semaine
+      {data.last?.added ? ` · ${data.last.added} nouveau${data.last.added > 1 ? 'x' : ''} titre${data.last.added > 1 ? 's' : ''}` : ''}
+      {' · '}
+      {data.refreshing
+        ? <span className="inline-flex items-center gap-1 align-middle"><Spinner size={10} />Actualisation…</span>
+        : <button type="button" className="text-accent-text font-medium" onClick={() => downloadsService.refreshCatalogue().then(() => refetch()).catch(() => toast.error('Actualisation impossible'))}>Actualiser</button>}
+    </p>
   )
 }
 

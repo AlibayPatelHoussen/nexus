@@ -31,7 +31,12 @@ def out(**o):
 def arg(k):
     return args[args.index(k) + 1] if k in args else None
 print("human message on stderr", file=sys.stderr)
-if '--search' in args:
+if '--refresh-catalogue' in args:
+    d = os.path.join(os.path.dirname(sys.argv[0]), 'data'); os.makedirs(d, exist_ok=True)
+    json.dump([{'title': 'A', 'slug': 'a'}, {'title': 'B', 'slug': 'b'}, {'title': 'Naruto', 'slug': 'naruto'}], open(os.path.join(d, 'catalogue.json'), 'w'))
+    out(type='catalogue', count=3, added=1, new_titles=['Naruto'])
+    out(type='done')
+elif '--search' in args:
     q = arg('--search')
     if name == 'films':
         time.sleep(30)                      # never answers in time
@@ -325,6 +330,20 @@ describe('Signed image proxy', () => {
     expect(ok.headers['content-type']).toBe('image/png')
     const forged = await request(app).get(`/api/images/remote?u=${encodeURIComponent(`${base}/other.png`)}&s=AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA`)
     expect(forged.status).toBe(404)
+  })
+})
+
+describe('anime-sama catalogue', () => {
+  it('reports its size and date, and rebuilds on demand', async () => {
+    const res = await request(app).post('/api/downloads/catalogue/refresh').set(admin)
+    expect(res.status).toBe(202)
+    const info = await waitFor(async () => {
+      const r = (await request(app).get('/api/downloads/catalogue').set(admin)).body.data
+      return !r.refreshing && r.last ? r : null
+    })
+    expect(info).toEqual(expect.objectContaining({ count: 3, last: expect.objectContaining({ added: 1, error: null }) }))
+    expect(info.updatedAt).toBeTruthy()
+    expect((await request(app).post('/api/downloads/catalogue/refresh').set(user)).status).toBe(403)
   })
 })
 

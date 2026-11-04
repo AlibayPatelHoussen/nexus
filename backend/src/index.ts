@@ -25,6 +25,7 @@ import pushRoutes from './routes/push'
 import './services/downloadNotifications'
 import { startDownloadWorker } from './services/downloads'
 import { startFollowChecker } from './services/follows'
+import { startCatalogueRefresher } from './services/catalogue'
 import terminalRoutes from './routes/terminal'
 import imagesRoutes   from './routes/images'
 import { registerSocketHandlers } from './socket'
@@ -144,6 +145,7 @@ if (require.main === module) {
     logger.info(`Nexus backend ${BUILD_INFO.commit} running on port ${PORT} [${process.env.NODE_ENV}]`)
     startDownloadWorker().catch((err: Error) => logger.error(`Download worker: ${err.message}`))
     startFollowChecker()
+    startCatalogueRefresher()
   })
 }
 

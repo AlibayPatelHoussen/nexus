@@ -87,7 +87,11 @@ export interface Follow {
   last_checked_at: string | null; last_error: string | null
 }
 
+export interface CatalogueInfo { count: number; updatedAt: string | null; refreshing: boolean; last: { at: string; added: number; error: string | null } | null }
+
 export const downloadsService = {
+  catalogue: async () => (await api.get<{ data: CatalogueInfo }>('/downloads/catalogue')).data.data,
+  refreshCatalogue: async () => (await api.post<{ data: CatalogueInfo }>('/downloads/catalogue/refresh')).data.data,
   follow: async (id: string) => (await api.get<{ data: Follow | null }>('/downloads/follows', { params: { id } })).data.data,
   setFollow: async (body: { id: string; title?: string; poster_url?: string | null; lang?: string; season?: string | number; enabled: boolean }) =>
     (await api.put<{ data: Follow | null }>('/downloads/follows', body)).data.data,
