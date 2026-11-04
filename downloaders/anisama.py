@@ -450,7 +450,11 @@ def _parse_episodes_js(js_text: str) -> list:
             except Exception:
                 pass
         if not urls:
-            urls = re.findall(r'["\'](https?://[^"\'\s]+)["\']', raw)
+            quoted = re.findall(r'["\'](https?://[^"\'\s]+)["\']', raw)
+            # Nexus copy: the site sometimes forgets closing quotes ('https://…html,),
+            # which hides those links from the regex above — keep the longer list.
+            loose = re.findall(r"https?://[^'\"\s\],]+", raw)
+            urls = loose if len(loose) > len(quoted) else quoted
         valid = [u.strip() for u in urls if isinstance(u, str) and _is_embed_url(u.strip())]
         if valid:
             candidates.append((var_name, valid))

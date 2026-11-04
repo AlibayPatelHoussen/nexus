@@ -4,6 +4,18 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Added — anime-sama catalogue kept up to date
+- The anime-sama catalogue (list of titles used by the search) is rebuilt from the site every week (`CATALOGUE_REFRESH_DAYS`, default 7); titles are only ever added, posters and descriptions already known are kept
+- A search that finds nothing in the catalogue asks anime-sama directly and adds the new titles found
+- Téléchargements: under the search field, « Catalogue anime-sama : N titres, mis à jour le … » with an « Actualiser » button (admin)
+
+### Fixed — anime-sama pages read like a browser (audit of 88 titles)
+- The page is read as the browser runs it: seasons the site disables with `/* */` or `//` comments and whole sections hidden in `<!-- -->` are ignored, real lines next to them are no longer lost (cause of the missing Naruto manga)
+- The site's example links (`panneau("nom", "url")`) no longer create phantom seasons; a scan page answering 200 is no longer taken as proof that scans exist (fake manga results)
+- Other scans of a page (one-shot, spin-off: `scan_one_shot`, `scan-boruto-…`) appear as their own manga
+- « Sans fillers » for every season kind (`kaihs`, `film…hs`)
+- Episode lists written by the site without closing quotes (Hunter x Hunter sans fillers, Star Butterfly saison 3 VF) are read in full
+
 ### Fixed — Naruto manga missing from anime-sama results
 - anisama: the scans of a title are now always checked (2 quick requests) instead of only when the title page listed them where the script read it — the « Naruto » manga (700+ chapters) was missing
 - anisama: the chapter list is asked with the title exactly as the site writes it (« Naruto  » with its spaces); the trimmed title answered « not found » and made the script fail. API errors no longer crash it

@@ -45,6 +45,18 @@ class Page(unittest.TestCase):
         for s in ("url", "scan", "scan_one_shot", "nom"):
             self.assertFalse(ok.match(s), s)
 
+    def test_episode_links_without_closing_quotes(self):
+        ns = {"re": re, "json": __import__("json")}
+        for name in ("_is_embed_url", "_parse_episodes_js"):
+            i = SRC.index(f"def {name}")
+            exec(SRC[i:SRC.index("\ndef ", i + 5)], ns)
+        ns["EMBED_DOMAINS"] = eval("(" + re.search(r"EMBED_DOMAINS = \((.*?)\)\n", SRC, re.S).group(1) + ")")
+        js = ("var eps1 = [\n 'https://ansembed.net/embed-7no7mzi6fpyl.html,\n"
+              " 'https://ansembed.net/embed-fpohgbitel2s.html,\n"
+              " 'https://ansembed.net/embed-c9ckj48zs3lj.html'\n];")
+        self.assertEqual(len(ns["_parse_episodes_js"](js)), 3)
+        self.assertEqual(len(ns["_parse_episodes_js"]("var eps1 = [];")), 0)
+
 
 if __name__ == "__main__":
     unittest.main()
