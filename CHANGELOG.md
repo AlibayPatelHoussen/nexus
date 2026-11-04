@@ -4,6 +4,11 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Fixed — Naruto manga missing from anime-sama results
+- anisama: the scans of a title are now always checked (2 quick requests) instead of only when the title page listed them where the script read it — the « Naruto » manga (700+ chapters) was missing
+- anisama: the chapter list is asked with the title exactly as the site writes it (« Naruto  » with its spaces); the trimmed title answered « not found » and made the script fail. API errors no longer crash it
+- anisama: « Sans fillers » seasons (`saison1hs`) are listed and downloadable
+
 ### Changed
 - Download search results always come in the same order, whatever site answers first: anime (anime-sama), manga (anime-sama), films (films.py), films (movix), series (movix), then YouTube videos
 
