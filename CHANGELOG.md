@@ -4,6 +4,9 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Changed
+- Download search results always come in the same order, whatever site answers first: anime (anime-sama), manga (anime-sama), films (films.py), films (movix), series (movix), then YouTube videos
+
 ### Fixed — downloaded series shown as another title
 - A « One Piece » episode downloaded from movix (the 1999 anime, TMDB 37854) appeared in Séries as the 2023 live-action series: the library scan looked the folder name up on TMDB and took the most popular match. Downloads from movix now leave the exact TMDB id next to the files (`.nexus.json` in the series folder, `.<file>.nexus.json` for a film); the scan uses it instead of searching by name, and corrects a title already matched wrongly (metadata and episode titles). Hints are also written at startup for movix downloads finished before this update
 
