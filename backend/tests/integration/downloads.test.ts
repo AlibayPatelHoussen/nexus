@@ -34,6 +34,7 @@ print("human message on stderr", file=sys.stderr)
 if '--refresh-catalogue' in args:
     d = os.path.join(os.path.dirname(sys.argv[0]), 'data'); os.makedirs(d, exist_ok=True)
     json.dump([{'title': 'A', 'slug': 'a'}, {'title': 'B', 'slug': 'b'}, {'title': 'Naruto', 'slug': 'naruto'}], open(os.path.join(d, 'catalogue.json'), 'w'))
+    open(os.path.join(d, 'catalogue.updated'), 'w').write('2026-01-02T03:04:05Z\\n')
     out(type='catalogue', count=3, added=1, new_titles=['Naruto'])
     out(type='done')
 elif '--search' in args:
@@ -342,7 +343,7 @@ describe('anime-sama catalogue', () => {
       return !r.refreshing && r.last ? r : null
     })
     expect(info).toEqual(expect.objectContaining({ count: 3, last: expect.objectContaining({ added: 1, error: null }) }))
-    expect(info.updatedAt).toBeTruthy()
+    expect(info.updatedAt).toBe('2026-01-02T03:04:05.000Z')   // date of the rebuild, not of the file
     expect((await request(app).post('/api/downloads/catalogue/refresh').set(user)).status).toBe(403)
   })
 })

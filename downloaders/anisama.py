@@ -1254,15 +1254,76 @@ def _poster_url(entry, info):
     return (info or {}).get("poster") or entry.get("poster")
 
 
+SITE_SEARCH = f"{BASE_URL}/template-php/defaut/fetch.php"   # what the site's search box calls
+
+
+def _parse_site_results(html):
+    """fetch.php answer: <a href=".../catalogue/slug" class="asn-search-result">…<h3 class="asn-search-result-title">"""
+    soup = BeautifulSoup(html, "html.parser")
+    out = []
+    for a in soup.select("a.asn-search-result[href], a[href*='/catalogue/']"):
+        slug = _slug_of(a.get("href", ""))
+        h = a.select_one(".asn-search-result-title, h1, h2, h3")
+        title = (h.get_text(" ", strip=True) if h else "") or a.get("title", "").strip()
+        alt = a.select_one(".asn-search-result-subtitle")
+        if slug:
+            out.append({"title": title or slug.replace("-", " ").title(), "url": f"{BASE_URL}/catalogue/{slug}",
+                        "alt": alt.get_text(" ", strip=True) if alt else ""})
+    return out
+
+
+def _norm(text):
+    import unicodedata
+    text = unicodedata.normalize("NFKD", text or "").encode("ascii", "ignore").decode().lower()
+    return re.sub(r"[^a-z0-9]+", " ", text)
+
+
+def _relevant(hit, query):
+    """The site's search also returns loosely related titles: keep those naming every word."""
+    words = [w for w in _norm(query).split() if len(w) > 1] or _norm(query).split()
+    hay = " " + _norm(" ".join((hit.get("title", ""), _slug_of(hit.get("url", "")) or "", hit.get("alt", "")))) + " "
+    return all(w in hay for w in words)
+
+
+def _parse_catalogue_cards(html, query):
+    """/catalogue/?search=…: cards without a title attribute, the name is in a heading / the image."""
+    soup = BeautifulSoup(html, "html.parser")
+    words = query.strip().lower().split()
+    out = []
+    for a in soup.select("a[href*='/catalogue/']"):
+        slug = _slug_of(a.get("href", ""))
+        if not slug or not re.fullmatch(r".*/catalogue/[^/?#]+/?", a["href"].split("?")[0]):
+            continue
+        h = a.select_one("h1, h2, h3, h4, .card-title")
+        img = a.select_one("img[alt]")
+        title = (a.get("title", "").strip() or (h.get_text(" ", strip=True) if h else "")
+                 or (img["alt"].strip() if img else "") or slug.replace("-", " ").title())
+        text = (title + " " + slug.replace("-", " ") + " " + a.get_text(" ", strip=True)).lower()
+        if all(w in text for w in words):
+            out.append({"title": title, "url": f"{BASE_URL}/catalogue/{slug}"})
+    return out
+
+
 def _live_search(query):
-    """The site's own search, for titles added after the catalogue was built."""
-    global _catalogue_cache
-    saved = _catalogue_cache
-    _catalogue_cache = []          # search() falls back to the site when the catalogue is empty
+    """Nexus: the site's own search, asked at every search (always up to date)."""
+    hits = []
     try:
-        return search(query)
-    finally:
-        _catalogue_cache = saved
+        r = SESSION.post(SITE_SEARCH, data={"query": query}, timeout=15,
+                         headers={"Referer": BASE_URL + "/", "X-Requested-With": "XMLHttpRequest"})
+        if r.status_code == 200:
+            hits = _parse_site_results(r.text)
+    except requests.RequestException as e:
+        print(f"live search: {e}")
+    if not hits:
+        r = get(CATALOGUE + "/", params={"search": query})
+        if r:
+            hits = _parse_catalogue_cards(r.text, query)
+    out, seen = [], set()
+    for h in hits:
+        if h["url"] not in seen and _relevant(h, query):
+            seen.add(h["url"])
+            out.append(h)
+    return out
 
 
 def _add_to_catalogue(hits):
@@ -1299,6 +1360,9 @@ def json_refresh_catalogue():
     data += [e for slug, e in old.items() if slug and slug not in fresh]
     data.sort(key=lambda x: x["title"].lower())
     CATALOGUE_FILE.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
+    # Date of the last full rebuild (catalogue.json itself also changes at each search)
+    CATALOGUE_FILE.with_name("catalogue.updated").write_text(
+        time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()) + "\n", encoding="utf-8")
     global _catalogue_cache
     _catalogue_cache = data
     new = [e["title"] for e in data if e["slug"] not in old]
@@ -1306,11 +1370,21 @@ def json_refresh_catalogue():
 
 
 def json_search(query, limit):
-    hits = search(query)[: (limit or 8)]
-    if not hits:
-        # Not in the local catalogue: ask the site (new titles), and remember them
-        hits = _live_search(query)[: (limit or 8)]
-        _add_to_catalogue(hits)
+    # Nexus: the site is asked at every search (always up to date); the local catalogue
+    # adds close matches the site's search misses, and answers alone if the site is down.
+    try:
+        live = _live_search(query)
+    except Exception as e:
+        print(f"live search: {e}")
+        live = []
+    _add_to_catalogue(live)
+    hits, seen = [], set()
+    for h in live + search(query):
+        slug = _slug_of(h.get("url", ""))
+        if slug and slug not in seen:
+            seen.add(slug)
+            hits.append(h)
+    hits = hits[: (limit or 8)]
     if not hits:
         return 0
     def one(hit):
@@ -1353,10 +1427,13 @@ def _parse_id(id_):
 
 
 def _variant_title(title, v):
+    """« One Piece — Scans (noir et blanc) »: the work's name always comes first."""
     name = (v.get("name") or "").strip()
     if name.lower() in ("", "scans", "scan"):
-        return f"{title} ({v['seg'].replace('_', ' ').replace('-', ' ')[4:].strip() or 'scans'})"
-    return name
+        name = v["seg"].replace("_", " ").replace("-", " ")[4:].strip() or "scans"
+    if title.lower() in name.lower():
+        return name
+    return f"{title} — {name}"
 
 
 def _title_of(slug):
