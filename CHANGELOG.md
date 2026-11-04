@@ -4,6 +4,13 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Changed — Liquid Glass step 3b: title pages like the Apple TV app
+- Films, séries and animes open on an immersive header: the artwork fills the top of the window (16:9 up to 80 % of its height, portrait key art on iPhone), with parallax; title, facts and rating, the white « Lecture / Reprendre · S1 É2 » capsule and the round glass « + » (Ma liste) over it; the episode up next and the synopsis beside them (under the artwork on iPhone). The back button is a round clear-glass button over the artwork on iPhone
+- The clicked poster grows into that header (View Transitions API, Chrome / Safari 18), the rest cross-fades; the page shows at once with what the card knew, the rest arrives after
+- Episodes: Apple TV row of 16:9 stills (« ÉPISODE 3 », title, synopsis, duration / date, progress, « Vu » badge, play button on hover); seasons as a capsule segmented control
+- Loading: a skeleton instead of a spinner; a missing artwork shows a clean placeholder
+- The page and its shelves share Apple TV's 40 / 25 px gutter. Manga keeps its whole cover (Apple Books, next step)
+
 ### Changed — Liquid Glass step 3a: Films / Séries / Animes like the Apple TV app
 - Billboard (values measured on tv.apple.com): full-bleed artwork, 16:9 up to 90 % of the window, under the floating sidebar too (portrait key art on iPhone); the same three-layer gradient; title, facts and synopsis bottom-left (centred on iPhone); a white « Lecture » capsule (40 px), round clear-glass « + » (favourites) and « i » (details); carousel of up to 6 titles with cross-fade, slow Ken Burns zoom and pagination dots (20 px pitch); parallax while scrolling; pauses on hover
 - The toolbar (desktop) and the large title (iPhone) float over the billboard in white, and become the glass bar once it has scrolled away

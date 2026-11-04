@@ -1,4 +1,5 @@
 import { useRef } from 'react'
+import { flushSync } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { Play } from 'lucide-react'
@@ -42,6 +43,20 @@ export default function MediaCard({ item, progress, duration, subtitle, shape = 
   const grid = showTitle ?? variant === 'grid'
   const remaining = duration && progress ? Math.max(0, Math.round((duration - progress) / 60)) : null
 
+  // Poster → title page: the artwork grows into the page header (View Transitions API,
+  // a plain navigation where the browser has none or reduced motion is on)
+  const open = () => {
+    const to = wide ? `/player/${item.id}` : `/media/${item.id}`
+    const doc = document as Document & { startViewTransition?: (cb: () => void) => unknown }
+    const art = ref.current?.querySelector<HTMLElement>('[data-art]')
+    if (wide || !doc.startViewTransition || !art || window.matchMedia('(prefers-reduced-motion: reduce)').matches) { navigate(to); return }
+    art.style.viewTransitionName = 'media-art'
+    doc.startViewTransition(() => {
+      art.style.viewTransitionName = ''
+      flushSync(() => navigate(to))
+    })
+  }
+
   // Reflection position (CSS variables, no re-render)
   const onMove = (e: React.PointerEvent) => {
     const el = ref.current
@@ -57,7 +72,7 @@ export default function MediaCard({ item, progress, duration, subtitle, shape = 
         ref={ref}
         type="button"
         className="no-press group relative block w-full text-left rounded-card focus-visible:outline-offset-4"
-        onClick={() => navigate(wide ? `/player/${item.id}` : `/media/${item.id}`)}
+        onClick={() => open()}
         onPointerMove={onMove}
         whileHover={{ scale: 1.045, y: -2 }}
         whileFocus={{ scale: 1.045 }}
@@ -67,6 +82,7 @@ export default function MediaCard({ item, progress, duration, subtitle, shape = 
         {...menu.bind(actions(item), item.title)}
       >
         <Artwork
+          data-art
           src={wide ? (item.backdropPath || item.posterPath) : item.posterPath}
           alt=""
           ratio={wide ? '16 / 9' : '2 / 3'}

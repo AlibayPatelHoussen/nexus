@@ -4,6 +4,7 @@
  *
  *   node e2e/shots.mjs                      every page
  *   node e2e/shots.mjs cinema settings      only these pages
+ *   node e2e/shots.mjs serie=/media/<id>    any page
  *   THEMES=dark node e2e/shots.mjs cinema   one theme
  *
  * Needs the E2E environment (bash e2e/setup.sh); after a frontend change,
@@ -27,7 +28,9 @@ const PAGES = {
   settings: '/settings', login: '/login',
 }
 const wanted = process.argv.slice(2).filter((a) => !a.startsWith('-'))
-const pages = Object.entries(PAGES).filter(([k]) => !wanted.length || wanted.includes(k))
+// "name=/path" captures any page (e.g. serie=/media/<id>)
+const extra = wanted.filter((a) => a.includes('=')).map((a) => a.split(/=(.*)/s).slice(0, 2))
+const pages = [...Object.entries(PAGES).filter(([k]) => !wanted.length || wanted.includes(k)), ...extra]
 const themes = (process.env.THEMES || 'dark,light').split(',')
 const VIEWPORTS = [
   { name: '1440', options: { viewport: { width: 1440, height: 900 }, deviceScaleFactor: 1 } },

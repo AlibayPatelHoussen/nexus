@@ -137,6 +137,12 @@
 .nx-img { transition: opacity 300ms var(--ease-out); }
 .nx-img[data-loaded="false"] { opacity: 0; }
 
+/* Poster → title page (View Transitions): the artwork morphs on a spring-like curve, the rest cross-fades */
+::view-transition-group(media-art) { animation-duration: 480ms; animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1); }
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: 260ms; }
+::view-transition-image-pair(media-art) { isolation: auto; }
+::view-transition-old(media-art), ::view-transition-new(media-art) { height: 100%; object-fit: cover; }
+
 /* ── Apple TV shelves (tv.apple.com): rows of cards that snap, page gutter 40 / 25 px ──
    The number of cards across follows the width the shelf really has (container query). */
 .shelf { container-type: inline-size; margin-inline: calc(-1 * var(--page-x)); margin-bottom: 34px; }

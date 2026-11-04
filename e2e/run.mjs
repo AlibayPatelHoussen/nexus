@@ -383,7 +383,7 @@ test('UI: "Ma liste" toggles a favourite', async () => {
   const id = sql(`SELECT id FROM media_items WHERE file_path LIKE '%Marty%'`)
   const page = await newPage(admin)
   await page.goto(`${B}/media/${id}`, { waitUntil: 'networkidle' })
-  await page.click('button:has-text("Ma liste")')
+  await page.click('button[aria-label="Ajouter à ma liste"]')   // round « + » of the Apple TV header
   await page.waitForSelector('text=Ajouté à ma liste', { timeout: 10000 })
   admin = await login('admin', 'Admin1234') // access tokens only live 40 s in this environment
   const favs = (await api('/api/media/favorites', { token: admin.accessToken })).json.data

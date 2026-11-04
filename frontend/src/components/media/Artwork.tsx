@@ -5,6 +5,8 @@ import type { MediaType } from '@/types'
 const TYPE_ICONS: Record<string, typeof Film> = { film: Film, serie: Tv, anime: Tv2, manga: BookOpen, webtoon: BookOpen, youtube: Youtube }
 
 interface ArtworkProps {
+  /** Marks the frame for the poster → title page transition */
+  'data-art'?: boolean
   src:        string | null | undefined
   alt:        string
   /** Frame ratio, e.g. "2 / 3" for posters, "16 / 9" for episode stills */
@@ -32,7 +34,7 @@ interface ArtworkProps {
  */
 export default function Artwork({
   src, alt, ratio = '2 / 3', type, title, subtitle, className = '', imgClassName = '',
-  loading = 'lazy', cover = false, children,
+  loading = 'lazy', cover = false, children, 'data-art': dataArt,
 }: ArtworkProps) {
   const [failed, setFailed] = useState(false)
   const [loaded, setLoaded] = useState(false)
@@ -44,6 +46,7 @@ export default function Artwork({
 
   return (
     <div
+      data-art={dataArt || undefined}
       className={`relative overflow-hidden ${className}`}
       style={{ aspectRatio: ratio, background: 'var(--fill)' }}
     >
