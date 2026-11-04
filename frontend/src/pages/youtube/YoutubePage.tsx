@@ -1,4 +1,6 @@
-import { useMemo, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
+import { motion } from 'framer-motion'
+import { spring } from '@/design/motion'
 import { useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import { AlertTriangle, Youtube } from 'lucide-react'
@@ -16,7 +18,7 @@ import { formatDuration } from '@/pages/downloads/SearchView'
 import DownloadsButton from '@/components/downloads/DownloadsButton'
 
 type Sort = 'recent' | 'title'
-const GRID = 'grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] max-sm:grid-cols-1 gap-x-4 gap-y-6'
+const GRID = 'grid grid-cols-[repeat(auto-fill,minmax(250px,1fr))] max-sm:grid-cols-1 gap-x-5 gap-y-7'
 
 /** "il y a 3 j", like the TV app */
 function ago(iso: string) {
@@ -27,26 +29,47 @@ function ago(iso: string) {
   return new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
+/** Apple TV style video card: 16:9 still, lift + reflection on hover, duration in a glass capsule. */
 function VideoTile({ v, progress }: { v: MediaItem; progress?: number }) {
   const navigate = useNavigate()
+  const ref = useRef<HTMLButtonElement>(null)
+  const onMove = (e: React.PointerEvent) => {
+    const el = ref.current
+    if (!el || e.pointerType !== 'mouse') return
+    const r = el.getBoundingClientRect()
+    el.style.setProperty('--mx', `${((e.clientX - r.left) / r.width) * 100}%`)
+    el.style.setProperty('--my', `${((e.clientY - r.top) / r.height) * 100}%`)
+  }
   return (
-    <button type="button" className="group flex flex-col self-start text-left min-w-0 press-soft rounded-[10px]" onClick={() => navigate(`/player/${v.id}`)} aria-label={v.title}>
+    <motion.button
+      ref={ref}
+      type="button"
+      className="no-press group flex flex-col self-start text-left min-w-0 snap-start rounded-card"
+      onClick={() => navigate(`/player/${v.id}`)}
+      onPointerMove={onMove}
+      whileHover={{ scale: 1.035, y: -2 }} whileFocus={{ scale: 1.035 }} whileTap={{ scale: 0.97 }}
+      transition={spring.lift}
+      aria-label={v.title}
+    >
       <Artwork src={v.posterPath} alt="" ratio="16 / 9" type="youtube" title={v.title} cover
-        className="w-full rounded-[10px] transition-transform duration ease-out lg:group-hover:scale-[1.02]">
+        className="w-full rounded-card transition-shadow duration-300 group-hover:shadow-[0_18px_40px_-12px_rgba(0,0,0,0.55)]">
+        <span className="absolute inset-0 rounded-card pointer-events-none shadow-[inset_0_0_0_1px_var(--poster-rim)]" aria-hidden="true" />
+        <span className="absolute inset-0 rounded-card pointer-events-none opacity-0 group-hover:opacity-100 transition-opacity duration-300"
+          style={{ background: 'radial-gradient(circle at var(--mx, 50%) var(--my, 0%), rgba(255,255,255,0.26), rgba(255,255,255,0.05) 38%, transparent 62%)' }} aria-hidden="true" />
         {v.duration ? (
-          <span className="absolute right-1.5 bottom-1.5 px-1.5 py-[1px] rounded-[4px] text-[11px] font-semibold text-white tabular" style={{ background: 'rgba(0,0,0,.75)' }}>
+          <span className="absolute right-2 bottom-2 px-2 py-0.5 rounded-pill text-[11px] font-semibold tabular glass-media">
             {formatDuration(v.duration)}
           </span>
         ) : null}
         {progress ? (
-          <span className="absolute inset-x-0 bottom-0 h-[3px]" style={{ background: 'rgba(255,255,255,.35)' }}>
-            <span className="block h-full" style={{ width: `${Math.min(100, progress)}%`, background: 'var(--red)' }} />
+          <span className="absolute left-2.5 right-16 bottom-3 h-[3px] rounded-full overflow-hidden bg-white/35">
+            <span className="block h-full rounded-full bg-white" style={{ width: `${Math.min(100, progress)}%` }} />
           </span>
         ) : null}
       </Artwork>
-      <span className="block mt-2 text-subhead font-medium text-label line-clamp-2">{v.title}</span>
-      <span className="block mt-0.5 text-caption text-label2 truncate">{[v.channel, ago(v.createdAt)].filter(Boolean).join(' · ')}</span>
-    </button>
+      <span className="block mt-2.5 px-0.5 text-subhead font-semibold text-label line-clamp-2">{v.title}</span>
+      <span className="block mt-0.5 px-0.5 text-caption text-label2 truncate">{[v.channel, ago(v.createdAt)].filter(Boolean).join(' · ')}</span>
+    </motion.button>
   )
 }
 
@@ -96,17 +119,18 @@ export default function YoutubePage() {
   if (isError) {
     body = <EmptyState tone="error" icon={<AlertTriangle strokeWidth={1.25} />} title="Vidéos indisponibles" message="Le serveur n’a pas répondu." />
   } else if (isLoading) {
-    body = <div className={GRID}>{Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="aspect-video rounded-[10px]" />)}</div>
+    body = <div className={GRID}>{Array.from({ length: 8 }).map((_, i) => <Skeleton key={i} className="aspect-video rounded-card" />)}</div>
   } else if (!videos.length) {
     body = <EmptyState icon={<Youtube strokeWidth={1.25} />} title="Aucune vidéo"
       message="Les vidéos téléchargées depuis Téléchargements, ou placées dans /media/youtube, apparaîtront ici." />
   } else if (byChannel) {
     body = (
-      <div className="flex flex-col gap-8">
+      // One Apple TV shelf per channel
+      <div className="flex flex-col">
         {groups.map(([channel, list]) => (
-          <section key={channel} aria-label={channel}>
-            <h2 className="text-headline text-label mb-3">{channel} <span className="text-label2 font-normal tabular">{list.length}</span></h2>
-            <div className={GRID}>{list.map((v) => <VideoTile key={v.id} v={v} progress={progress.get(v.id)} />)}</div>
+          <section key={channel} aria-label={channel} className="shelf shelf--wide">
+            <h2 className="shelf__title text-[17px] md:text-[19px] font-bold text-label">{channel} <span className="text-label2 font-normal tabular">{list.length}</span></h2>
+            <div className="shelf__scroller scrollbar-none">{list.map((v) => <VideoTile key={v.id} v={v} progress={progress.get(v.id)} />)}</div>
           </section>
         ))}
       </div>

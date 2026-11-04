@@ -66,8 +66,8 @@ function DesktopPage({ title, subtitle, actions, accessory, back, bleed, narrow,
       <header
         className={cn(
           'sticky top-0 z-30 flex-shrink-0 transition-[background-color,box-shadow,color] duration-300',
-          hero ? 'order-1 -mb-[var(--hero-bar-h)] h-[var(--hero-bar-h)]' : 'material-bar hairline-b',
-          hero && (onMedia ? 'scheme-dark bg-transparent' : 'material-bar hairline-b'),
+          hero ? 'order-1 -mb-[var(--hero-bar-h)] h-[var(--hero-bar-h)]' : 'edge-bar',
+          hero && (onMedia ? 'scheme-dark bg-transparent' : 'edge-bar'),
         )}
         style={{ paddingTop: 'env(safe-area-inset-top, 0px)', ['--hero-bar-h' as string]: accessory ? '96px' : '52px' }}
       >
@@ -130,7 +130,7 @@ function PhonePage({ title, actions, accessory, back, bleed, largeTitle = true, 
       <div className="flex flex-col min-h-full">
         <header
           className={cn('sticky top-0 z-30 transition-[background-color,box-shadow] duration-300 -mb-[calc(var(--navbar-h)+env(safe-area-inset-top,0px))]',
-            barSolid ? 'material-bar hairline-b' : 'scheme-dark bg-transparent')}
+            barSolid ? 'edge-bar' : 'scheme-dark bg-transparent')}
           style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
         >
           <div className="grid grid-cols-[1fr_auto_1fr] items-center h-[var(--navbar-h)] safe-x" style={{ ['--gutter' as string]: '8px' }}>
@@ -166,7 +166,7 @@ function PhonePage({ title, actions, accessory, back, bleed, largeTitle = true, 
   return (
     <div className={cn('flex flex-col', bleed ? 'h-full' : 'min-h-full')}>
       <header
-        className={cn('sticky top-0 z-30 transition-[background-color,box-shadow] duration-fast', compact ? 'material-bar hairline-b' : 'bg-bg')}
+        className={cn('sticky top-0 z-30 transition-[background-color,box-shadow] duration-fast', compact ? 'edge-bar' : 'bg-bg')}
         style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
       >
         <div className="grid grid-cols-[1fr_auto_1fr] items-center h-[var(--navbar-h)] safe-x" style={{ ['--gutter' as string]: '8px' }}>
