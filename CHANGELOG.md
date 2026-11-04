@@ -4,6 +4,15 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Changed — Liquid Glass design system (iOS 26 / macOS 26), step 1: tokens, controls, navigation
+- `CLAUDE.md`: the permanent design rules (Liquid Glass only, sources in order: Apple's Figma kits, HIG, Apple TV, skills; glass only for navigation; springs; accessibility; check every visual change with Playwright)
+- Tokens from Apple's official iOS 26 and macOS 26 Figma kits: iOS 26 blue, Liquid Glass materials (`.glass`, `.glass-strong`, `.glass-clear`: blur + saturation, the kit's thin side rim and specular light, light and dark), radii (capsule controls, 26 pt iOS groups, 34 pt large glass, 38 pt iPhone sheets), reduced transparency / increased contrast variants
+- Springs with framer-motion (`src/design/motion.ts`), off when the system asks for reduced motion
+- Desktop: the sidebar is a floating Liquid Glass panel 8 px inside the window (macOS 26 kit: 240 px, 32 px rows, 13 pt medium labels, bold section headers); the selection is a capsule that slides on a spring. Same sections as before
+- iPhone: the tab bar is the iOS 26 floating glass capsule (62 pt, 54 pt tabs, selection capsule sliding on a spring)
+- Buttons, segmented controls, search fields: capsules. Switch: the iOS 26 64 × 28 switch whose knob turns into clear glass while pressed. Menus, alerts, action sheets and toasts in Liquid Glass
+- `e2e/shots.mjs`: screenshots of every page at 1440 and 390 px, dark and light
+
 ### Changed — OxTorrent: one card per film and per series
 - Every release (720p, 1080p, 4K, VF, VOSTFR, MULTI…) used to be its own result. OxTorrent results are now grouped: one card per film (« 5 versions ») and per series (« 22 épisodes · 1 pack »). Release names are read with guessit when installed (deploy installs `python3-guessit`), with the script's own rules otherwise. Titles are compared without accents, punctuation or « the », and « and » == « & » (« Georgie.and.Mandys » and « Georgie & Mandy's » are one series). A release listed twice is kept once, up to 4 result pages are read, and the group gets its poster, year, synopsis and episode titles from TMDB
 - Film sheet: every version with resolution, language, source, codec, size and seeders, sorted by quality then seeders, « Recommandé » on the best (1080p, well shared, reasonable size), versions nobody shares greyed out at the bottom, Résolution / Langue filters

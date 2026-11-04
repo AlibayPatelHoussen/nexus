@@ -20,13 +20,14 @@ const VARIANTS: Record<ButtonVariant, string> = {
   'destructive-plain': 'bg-transparent text-danger-text active:opacity-50',
 }
 
+// iOS 26 / macOS 26: every push button is a capsule
 const SIZES = {
-  small:   'min-h-[24px] px-2 text-subhead rounded-[6px]',
-  regular: 'min-h-control px-3 text-body rounded-control',
-  large:   'min-h-[50px] w-full px-5 text-[17px] font-semibold rounded-[12px]',
+  small:   'min-h-[24px] px-2.5 text-subhead rounded-pill',
+  regular: 'min-h-control px-3.5 text-body rounded-pill',
+  large:   'min-h-[50px] w-full px-5 text-[17px] font-semibold rounded-pill',
 }
 
-/** Push button, styled like AppKit / UIKit buttons. */
+/** Push button, styled like AppKit / UIKit buttons (Liquid Glass generation). */
 const Button = forwardRef<HTMLButtonElement, ButtonProps>(function Button(
   { variant = 'secondary', size = 'regular', icon, loading, className, children, disabled, type = 'button', ...rest },
   ref,

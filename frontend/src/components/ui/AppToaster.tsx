@@ -13,16 +13,17 @@ export default function AppToaster() {
         duration: 3000,
         style: {
           // Inline: react-hot-toast sets a white background inline otherwise
-          background: 'var(--material-bar)',
-          backdropFilter: 'var(--material-blur)',
-          WebkitBackdropFilter: 'var(--material-blur)',
+          // Liquid Glass capsule (iOS 26 notifications / HUDs)
+          background: 'var(--glass-fill-strong)',
+          backdropFilter: 'var(--glass-filter-strong)',
+          WebkitBackdropFilter: 'var(--glass-filter-strong)',
           color: 'var(--label)',
-          borderRadius: 12,
+          borderRadius: 999,
           fontSize: 'var(--text-body)',
           fontFamily: 'var(--font)',
-          padding: '10px 14px',
+          padding: '10px 18px',
           maxWidth: 380,
-          boxShadow: 'var(--shadow-popover)',
+          boxShadow: 'var(--glass-rim-strong), var(--glass-shadow-strong)',
         },
         success: { iconTheme: { primary: 'var(--green)', secondary: '#fff' } },
         error:   { iconTheme: { primary: 'var(--red)', secondary: '#fff' }, duration: 6000 },

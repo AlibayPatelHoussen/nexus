@@ -30,10 +30,10 @@ const TextField = forwardRef<HTMLInputElement, TextFieldProps>(function TextFiel
           aria-invalid={!!error || undefined}
           aria-describedby={describedBy}
           className={cn(
-            'w-full min-h-control px-2.5 rounded-[7px] bg-surface text-label placeholder:text-label3',
+            'w-full min-h-control px-3 rounded-control bg-surface text-label placeholder:text-label3',
             'border-[0.5px] border-separator outline-none transition-[box-shadow,border-color] duration-fast',
             'focus:border-accent focus:shadow-[0_0_0_3px_color-mix(in_srgb,var(--accent)_35%,transparent)]',
-            'max-md:text-[17px] max-md:min-h-[44px] max-md:rounded-[10px]',
+            'max-md:text-[17px] max-md:min-h-[44px] max-md:rounded-pill max-md:px-4',
             error && 'border-danger',
             trailing ? 'pr-9' : '',
           )}

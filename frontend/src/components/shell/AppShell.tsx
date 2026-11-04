@@ -71,7 +71,8 @@ export default function AppShell() {
     return (
       <ShellContext.Provider value={shell}>
         {/* clip: a sliding page must not make the document scroll sideways */}
-        <div ref={phoneRef} className="min-h-[100dvh] bg-bg overflow-x-clip" style={{ paddingBottom: 'calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px))' }}>
+        {/* Content clears the floating tab bar (bar + its gap + 16) */}
+        <div ref={phoneRef} className="min-h-[100dvh] bg-bg overflow-x-clip" style={{ paddingBottom: 'calc(var(--tabbar-h) + var(--tabbar-bottom) + 16px)' }}>
           <VersionBanner />
           <Outlet />
         </div>
@@ -83,9 +84,14 @@ export default function AppShell() {
 
   return (
     <ShellContext.Provider value={shell}>
-      <div className="flex h-[100dvh] overflow-hidden bg-bg">
+      {/* The content takes the whole window; the glass sidebar floats above it, 8 px inside
+          the window (macOS 26). Pages leave --content-left free; heroes may bleed under the glass. */}
+      <div className="relative h-[100dvh] overflow-hidden bg-bg"
+        style={{ '--content-left': device === 'desktop' && sidebarOpen ? 'calc(var(--sidebar-w) + var(--sidebar-inset))' : '0px' } as React.CSSProperties}>
         {device === 'desktop' && sidebarOpen && (
-          <div className="flex-shrink-0 h-full"><Sidebar onSearch={() => setSearch(true)} onLogout={handleLogout} /></div>
+          <div className="absolute z-30" style={{ top: 'var(--sidebar-inset)', bottom: 'var(--sidebar-inset)', left: 'var(--sidebar-inset)' }}>
+            <Sidebar onSearch={() => setSearch(true)} onLogout={handleLogout} />
+          </div>
         )}
         {device === 'tablet' && (
           <>
@@ -96,15 +102,15 @@ export default function AppShell() {
               aria-hidden="true"
             />
             <div
-              className="fixed inset-y-0 left-0 z-50 transition-transform duration-slow ease-sheet"
-              style={{ transform: panelOpen ? 'none' : 'translateX(-100%)', boxShadow: panelOpen ? 'var(--shadow-sheet)' : 'none' }}
+              className="fixed z-50 transition-transform duration-slow ease-sheet"
+              style={{ top: 'var(--sidebar-inset)', bottom: 'var(--sidebar-inset)', left: 'var(--sidebar-inset)', transform: panelOpen ? 'none' : 'translateX(calc(-100% - 16px))' }}
               {...(panelOpen ? {} : { inert: '' })}
             >
               <Sidebar onSearch={() => setSearch(true)} onLogout={handleLogout} onNavigate={() => setPanelOpen(false)} />
             </div>
           </>
         )}
-        <main ref={mainRef} className="flex-1 min-w-0 h-full overflow-y-auto overflow-x-hidden" id="main">
+        <main ref={mainRef} className="h-full overflow-y-auto overflow-x-hidden" id="main" style={{ paddingLeft: 'var(--content-left)' }}>
           <VersionBanner />
           <Outlet />
         </main>

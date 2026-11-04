@@ -53,7 +53,7 @@ export default function ActionSheet({ open, onClose, title, message, actions, ca
             animation: closing ? 'nx-sheet-up 220ms var(--ease-sheet) reverse both' : 'nx-sheet-up 300ms var(--ease-sheet) both',
           }}
         >
-          <div className="material-bar rounded-[14px] overflow-hidden text-center">
+          <div className="glass-strong rounded-[26px] overflow-hidden text-center">
             {(title || message) && (
               <div className="px-4 py-3.5 hairline-b">
                 {title && <p id={titleId} className="text-[13px] font-semibold text-label2">{title}</p>}
@@ -76,7 +76,7 @@ export default function ActionSheet({ open, onClose, title, message, actions, ca
               </button>
             ))}
           </div>
-          <button type="button" onClick={onClose} className="w-full min-h-[57px] rounded-[14px] bg-surface text-[20px] font-semibold text-accent-text pressable">
+          <button type="button" onClick={onClose} className="w-full min-h-[57px] rounded-pill glass-strong text-[20px] font-semibold text-accent-text pressable">
             {cancelLabel}
           </button>
         </div>

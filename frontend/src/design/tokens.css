@@ -1,6 +1,7 @@
 /*
- * Nexus design tokens — the only place where colours, radii, spacing,
- * typography and motion are defined. Components read these variables
+ * Nexus design tokens — iOS 26 / macOS 26 "Liquid Glass" (values from Apple's
+ * official iOS & macOS UI kits on Figma, then the HIG). The only place where
+ * colours, materials, radii, spacing, typography and motion are defined. Components read these variables
  * (directly or through the Tailwind theme), never literal values.
  *
  * Appearance: <html data-theme="light|dark"> forces a mode; without the
@@ -27,7 +28,7 @@
   --on-accent:   #ffffff;
 
   /* ── Colour: the one accent ─────────────────────────── */
-  --accent:      #007aff;               /* shapes: icons, selection, toggles, charts, focus */
+  --accent:      #0088ff;               /* iOS 26 systemBlue: icons, selection, toggles, charts, focus */
   --accent-text: #0066cc;               /* links / text buttons (AA 5.6:1) */
   --accent-fill: #0071e3;               /* filled buttons with white text (AA 4.7:1) */
   --accent-soft: rgba(0, 122, 255, 0.12);
@@ -42,6 +43,28 @@
   --material-sidebar: rgba(236, 236, 238, 0.78);
   --material-bar:     rgba(255, 255, 255, 0.8);
   --material-blur:    saturate(180%) blur(24px);
+
+  /* ── Liquid Glass (Figma kit "Liquid Glass – Regular") ──
+     Only for the navigation layer: sidebar, tab bar, toolbars, floating
+     buttons, sheets, menus. Content stays opaque. */
+  --glass-fill:        rgba(250, 250, 250, 0.62);   /* small UI: buttons, bars */
+  --glass-fill-strong: rgba(255, 255, 255, 0.72);   /* large UI: sidebar, sheets, menus */
+  --glass-filter:      blur(14px) saturate(190%) brightness(1.04);
+  --glass-filter-strong: blur(40px) saturate(180%);
+  /* Rim: a thin bright edge, stronger on the sides (kit: 1.25px 0 0 -0.75px) + specular top light */
+  --glass-rim: 1.25px 0 0 -0.75px #d0d0d0, -1.25px 0 0 -0.75px #d0d0d0, 0 0 0 0.5px #e8e8e8,
+               inset 0 1px 0 rgba(255, 255, 255, 0.8), inset 0 -1px 1px rgba(255, 255, 255, 0.35);
+  --glass-rim-strong: 1.25px 0 0 -0.75px #dbdbdb, -1.25px 0 0 -0.75px #dbdbdb, 0 0 0 0.5px #dbdbdb,
+               inset 0 1px 0 rgba(255, 255, 255, 0.85);
+  --glass-shadow:        0 8px 15px rgba(0, 0, 0, 0.04), 0 2px 6px rgba(0, 0, 0, 0.06);
+  --glass-shadow-strong: 0 8px 48px rgba(0, 0, 0, 0.25);
+  --glass-select:      rgba(0, 0, 0, 0.07);          /* selection capsule inside glass (vibrant tertiary fill) */
+  --glass-hover:       rgba(0, 0, 0, 0.04);
+  --glass-label:       #1a1a1a;                      /* vibrant primary label on glass */
+  --glass-label-2:     #727272;                      /* vibrant secondary (sidebar section headers) */
+  /* Clear glass: controls floating over media (player, hero) */
+  --glass-clear:       rgba(255, 255, 255, 0.14);
+  --glass-clear-rim:   inset 0 1px 0 rgba(255, 255, 255, 0.45), 0 0 0 0.5px rgba(255, 255, 255, 0.28);
 
   /* ── Elevation: sheets and menus only ───────────────── */
   --shadow-sheet:   0 0 0 0.5px rgba(0, 0, 0, 0.12), 0 12px 40px rgba(0, 0, 0, 0.16);
@@ -66,12 +89,14 @@
   --text-subhead:    12px;
   --text-caption:    11px;
 
-  /* ── Shape ──────────────────────────────────────────── */
-  --r-card:    12px;
-  --r-group:   10px;
-  --r-control: 7px;
-  --r-sheet:   12px;
-  --r-pill:    999px;
+  /* ── Shape (continuous corners; concentric: inner = outer − inset) ── */
+  --r-card:    14px;      /* posters, thumbnails, cards */
+  --r-group:   12px;      /* grouped boxes (macOS) */
+  --r-control: 8px;       /* text fields, rows, menus items (macOS 26) */
+  --r-sheet:   26px;      /* sheets / dialogs (macOS 26 window radius) */
+  --r-glass:   34px;      /* large glass (kit: Liquid Glass Large) */
+  --r-sidebar: 18px;      /* floating sidebar, concentric with the window */
+  --r-pill:    999px;     /* buttons, segmented controls, search fields, tab bar */
 
   /* ── Spacing (4 / 8 grid) ───────────────────────────── */
   --s-1: 4px;  --s-2: 8px;  --s-3: 12px; --s-4: 16px;
@@ -81,8 +106,10 @@
   --row-h:      32px;     /* list row */
   --control-h:  28px;     /* button, field, segmented */
   --toolbar-h:  52px;
-  --sidebar-w:  232px;
-  --tabbar-h:   49px;     /* + safe area */
+  --sidebar-w:  240px;    /* kit: macOS 26 sidebar */
+  --sidebar-inset: 8px;   /* the sidebar floats 8 px inside the window */
+  --tabbar-h:   62px;     /* kit: iOS 26 floating tab bar (54 tabs + 4 inset) */
+  --tabbar-bottom: max(calc(env(safe-area-inset-bottom, 0px) - 8px), 14px);
   --navbar-h:   44px;
   --hit:        28px;     /* minimum pointer target (44px on touch) */
 
@@ -95,6 +122,8 @@
   /* Release of a pressed control: a light spring that settles without wobbling */
   --ease-spring: linear(0, 0.157, 0.438, 0.676, 0.844, 0.949, 1.006, 1.031, 1.035, 1.028, 1.017, 1.007, 1.001, 0.998, 0.998, 1);
   --press-scale: 0.96;
+  /* Springs (JS: src/design/motion.ts) */
+  --spring-snappy: linear(0, 0.29, 0.66, 0.9, 1.01, 1.04, 1.03, 1.01, 1);   /* selection capsule, no overshoot to speak of */
 
   color-scheme: light;
 }
@@ -106,12 +135,19 @@
     --fill: rgba(120, 120, 128, 0.24); --fill-2: rgba(120, 120, 128, 0.16);
     --separator: rgba(84, 84, 88, 0.6); --overlay: rgba(0, 0, 0, 0.45); --seg-on: #636366;
     --label: #f5f5f7; --label-2: #98989d; --label-3: #636366;
-    --accent: #0a84ff; --accent-text: #0a84ff; --accent-fill: #0071e3; --accent-soft: rgba(10, 132, 255, 0.2);
+    --accent: #0091ff; --accent-text: #3ba4ff; --accent-fill: #0071e3; --accent-soft: rgba(0, 145, 255, 0.2);
     --green: #30d158; --green-text: #30d158; --green-soft: rgba(48, 209, 88, 0.18);
     --orange: #ff9f0a; --orange-text: #ff9f0a; --orange-soft: rgba(255, 159, 10, 0.18);
     --red: #ff453a; --red-text: #ff453a; --red-soft: rgba(255, 69, 58, 0.18);
     --purple: #bf5af2; --purple-text: #da8fff; --purple-soft: rgba(191, 90, 242, 0.2);
     --material-sidebar: rgba(40, 40, 42, 0.72); --material-bar: rgba(30, 30, 32, 0.8);
+    --glass-fill: rgba(28, 28, 30, 0.58); --glass-fill-strong: rgba(26, 26, 26, 0.72);
+    --glass-filter: blur(14px) saturate(190%) brightness(0.92); --glass-filter-strong: blur(40px) saturate(170%);
+    --glass-rim: 1.25px 0 0 -0.75px rgba(255, 255, 255, 0.32), -1.25px 0 0 -0.75px rgba(255, 255, 255, 0.32), 0 0 0 0.5px rgba(255, 255, 255, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.16);
+    --glass-rim-strong: 1.25px 0 0 -0.75px #a6a6a6, -1.25px 0 0 -0.75px #a6a6a6, 0 0 0 0.5px rgba(166, 166, 166, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+    --glass-shadow: 0 8px 15px rgba(0, 0, 0, 0.18), 0 2px 6px rgba(0, 0, 0, 0.2);
+    --glass-shadow-strong: 0 8px 48px rgba(0, 0, 0, 0.45);
+    --glass-select: rgba(255, 255, 255, 0.12); --glass-hover: rgba(255, 255, 255, 0.06); --glass-label: #f2f2f2; --glass-label-2: #8e8e93;
     --shadow-sheet: 0 0 0 0.5px rgba(255, 255, 255, 0.12), 0 12px 40px rgba(0, 0, 0, 0.55);
     --shadow-popover: 0 0 0 0.5px rgba(255, 255, 255, 0.14), 0 6px 20px rgba(0, 0, 0, 0.45);
     --term-bg: #1e1e1e; --term-fg: #e5e5e7; --term-cursor: #e5e5e7; --term-select: rgba(10, 132, 255, 0.35);
@@ -123,12 +159,19 @@
   --fill: rgba(120, 120, 128, 0.24); --fill-2: rgba(120, 120, 128, 0.16);
   --separator: rgba(84, 84, 88, 0.6); --overlay: rgba(0, 0, 0, 0.45); --seg-on: #636366;
   --label: #f5f5f7; --label-2: #98989d; --label-3: #636366;
-  --accent: #0a84ff; --accent-text: #0a84ff; --accent-fill: #0071e3; --accent-soft: rgba(10, 132, 255, 0.2);
+  --accent: #0091ff; --accent-text: #3ba4ff; --accent-fill: #0071e3; --accent-soft: rgba(0, 145, 255, 0.2);
   --green: #30d158; --green-text: #30d158; --green-soft: rgba(48, 209, 88, 0.18);
   --orange: #ff9f0a; --orange-text: #ff9f0a; --orange-soft: rgba(255, 159, 10, 0.18);
   --red: #ff453a; --red-text: #ff453a; --red-soft: rgba(255, 69, 58, 0.18);
   --purple: #bf5af2; --purple-text: #da8fff; --purple-soft: rgba(191, 90, 242, 0.2);
   --material-sidebar: rgba(40, 40, 42, 0.72); --material-bar: rgba(30, 30, 32, 0.8);
+  --glass-fill: rgba(28, 28, 30, 0.58); --glass-fill-strong: rgba(26, 26, 26, 0.72);
+  --glass-filter: blur(14px) saturate(190%) brightness(0.92); --glass-filter-strong: blur(40px) saturate(170%);
+  --glass-rim: 1.25px 0 0 -0.75px rgba(255, 255, 255, 0.32), -1.25px 0 0 -0.75px rgba(255, 255, 255, 0.32), 0 0 0 0.5px rgba(255, 255, 255, 0.14), inset 0 1px 0 rgba(255, 255, 255, 0.16);
+  --glass-rim-strong: 1.25px 0 0 -0.75px #a6a6a6, -1.25px 0 0 -0.75px #a6a6a6, 0 0 0 0.5px rgba(166, 166, 166, 0.55), inset 0 1px 0 rgba(255, 255, 255, 0.12);
+  --glass-shadow: 0 8px 15px rgba(0, 0, 0, 0.18), 0 2px 6px rgba(0, 0, 0, 0.2);
+  --glass-shadow-strong: 0 8px 48px rgba(0, 0, 0, 0.45);
+  --glass-select: rgba(255, 255, 255, 0.12); --glass-hover: rgba(255, 255, 255, 0.06); --glass-label: #f2f2f2; --glass-label-2: #8e8e93;
   --shadow-sheet: 0 0 0 0.5px rgba(255, 255, 255, 0.12), 0 12px 40px rgba(0, 0, 0, 0.55);
   --shadow-popover: 0 0 0 0.5px rgba(255, 255, 255, 0.14), 0 6px 20px rgba(0, 0, 0, 0.45);
   --term-bg: #1e1e1e; --term-fg: #e5e5e7; --term-cursor: #e5e5e7; --term-select: rgba(10, 132, 255, 0.35);
@@ -151,6 +194,8 @@
 /* ── iPhone: grouped background, larger text, 44 px rows ──── */
 @media (max-width: 767px) {
   :root {
+    --r-group: 26px;      /* iOS 26 inset grouped lists */
+    --r-sheet: 38px;      /* concentric with the iPhone corners */
     --text-largetitle: 34px;
     --text-title: 22px;
     --text-headline: 17px;
@@ -168,6 +213,16 @@
 }
 @media (max-width: 767px) {
   :root[data-theme="dark"] { --bg: #000000; --surface: #1c1c1e; --surface-2: #2c2c2e; }
+}
+
+/* Reduce transparency (Accessibility): frosted, nearly opaque glass */
+@media (prefers-reduced-transparency: reduce) {
+  :root { --glass-fill: rgba(246, 246, 246, 0.94); --glass-fill-strong: rgba(250, 250, 250, 0.96); }
+  :root[data-theme="dark"] { --glass-fill: rgba(36, 36, 38, 0.95); --glass-fill-strong: rgba(30, 30, 32, 0.96); }
+}
+/* Increase contrast: solid glass with a visible border */
+@media (prefers-contrast: more) {
+  :root { --glass-rim: 0 0 0 1px rgba(0, 0, 0, 0.45); --glass-rim-strong: 0 0 0 1px rgba(0, 0, 0, 0.45); --label-2: #4a4a4f; }
 }
 
 /* Touch screens: 44 px targets whatever the width */

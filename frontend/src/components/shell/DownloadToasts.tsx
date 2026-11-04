@@ -20,8 +20,8 @@ export default function DownloadToasts() {
     const onFinished = (e: FinishedEvent) => {
       toast.custom((t) => (
         <div role="status"
-          className="flex items-start gap-3 p-3 pr-2.5 rounded-[12px] material-bar w-[min(92vw,380px)] text-body"
-          style={{ boxShadow: 'var(--shadow-popover)', opacity: t.visible ? 1 : 0, transition: 'opacity 200ms var(--ease-out)' }}>
+          className="flex items-start gap-3 p-3 pr-2.5 rounded-[22px] glass-strong w-[min(92vw,380px)] text-body"
+          style={{ opacity: t.visible ? 1 : 0, transition: 'opacity 200ms var(--ease-out)' }}>
           {e.ok
             ? <CheckCircle2 size={18} strokeWidth={1.75} className="flex-shrink-0 mt-px text-ok-text" aria-hidden="true" />
             : <XCircle size={18} strokeWidth={1.75} className="flex-shrink-0 mt-px text-danger" aria-hidden="true" />}

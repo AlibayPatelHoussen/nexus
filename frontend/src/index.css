@@ -64,6 +64,32 @@
   .text-balance { text-wrap: balance; }
   .material-bar { background: var(--material-bar); backdrop-filter: var(--material-blur); -webkit-backdrop-filter: var(--material-blur); }
   .material-sidebar { background: var(--material-sidebar); backdrop-filter: var(--material-blur); -webkit-backdrop-filter: var(--material-blur); }
+  /* Liquid Glass (navigation layer only, see CLAUDE.md). Small UI: bars, buttons. */
+  .glass {
+    background: var(--glass-fill);
+    -webkit-backdrop-filter: var(--glass-filter);
+    backdrop-filter: var(--glass-filter);
+    box-shadow: var(--glass-rim), var(--glass-shadow);
+    color: var(--glass-label);
+  }
+  /* Large UI: sidebar, sheets, menus, popovers */
+  .glass-strong {
+    background: var(--glass-fill-strong);
+    -webkit-backdrop-filter: var(--glass-filter-strong);
+    backdrop-filter: var(--glass-filter-strong);
+    box-shadow: var(--glass-rim-strong), var(--glass-shadow-strong);
+    color: var(--glass-label);
+  }
+  /* Clear: controls floating over media (player, hero); always on dark imagery */
+  .glass-clear {
+    background: var(--glass-clear);
+    -webkit-backdrop-filter: blur(10px) saturate(180%);
+    backdrop-filter: blur(10px) saturate(180%);
+    box-shadow: var(--glass-clear-rim), 0 4px 18px rgba(0, 0, 0, 0.18);
+    color: #fff;
+  }
+  /* Scroll edge effect under a floating bar: content dissolves instead of a hard line */
+  .edge-fade-b { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent); }
   .hairline-b { box-shadow: inset 0 -0.5px 0 var(--separator); }
   .hairline-t { box-shadow: inset 0 0.5px 0 var(--separator); }
   .hairline-r { box-shadow: inset -0.5px 0 0 var(--separator); }
