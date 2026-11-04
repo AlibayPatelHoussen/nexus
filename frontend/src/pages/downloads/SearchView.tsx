@@ -26,6 +26,16 @@ interface SearchState { query: string; searchId: string | null; results: SearchR
 // Kept while the app is open: coming back to the page shows the last search
 let lastSearch: SearchState = { query: '', searchId: null, results: [], sources: {} }
 
+/**
+ * Order of the results: anime (anime-sama), manga (anime-sama), films (films.py),
+ * films (movix), series (movix), YouTube videos.
+ */
+const ORDER: string[] = ['anisama:anime', 'anisama:manga', 'films:film', 'movix:film', 'movix:serie', 'youtube:youtube']
+export function rank(r: Pick<SearchResult, 'source' | 'kind'>): number {
+  const i = ORDER.indexOf(`${r.source}:${r.kind}`)
+  return i < 0 ? ORDER.length : i
+}
+
 export function formatDuration(s?: number | null) {
   if (!s) return ''
   const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = Math.floor(s % 60)
@@ -83,7 +93,12 @@ export default function SearchView({ socket }: { socket: Socket | null }) {
   const sources = Object.entries(state.sources) as [DownloadSource, SourceState][]
   const pending = sources.filter(([, s]) => !s.done)
   const failed = sources.filter(([, s]) => s.done && s.error)
-  const shown = useMemo(() => state.results.filter((r) => filter === 'all' || r.kind === filter), [state.results, filter])
+  // Fixed order whatever script answers first; arrival order inside a group
+  const shown = useMemo(() => state.results
+    .map((r, i) => ({ r, i }))
+    .filter(({ r }) => filter === 'all' || r.kind === filter)
+    .sort((a, b) => rank(a.r) - rank(b.r) || a.i - b.i)
+    .map(({ r }) => r), [state.results, filter])
   const posters = shown.filter((r) => r.kind !== 'youtube')
   const videos = shown.filter((r) => r.kind === 'youtube')
   const counts = useMemo(() => {
