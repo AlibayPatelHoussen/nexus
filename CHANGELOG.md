@@ -4,6 +4,12 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Changed — title page on iPhone like the Apple TV app
+- Taller artwork that goes progressively blurred and dark under the text; bold centred title, « Série · Drame · Comédie », a wide white « Lire le premier épisode / Reprendre · S1 É2 / Lire · S1 É3 » capsule and a round glass « + »; the synopsis on two lines with a glass « PLUS » capsule; « 2024 · 2 saisons ★ 7,4 » and badges
+- Back button and bar buttons in glass circles / one glass capsule (iOS 26)
+- « Saison 1 ⇅ »: the season is chosen in a Liquid Glass pull-down menu (new `PullDownMenu`, desktop too)
+- Episodes on iPhone: one card per episode, the still on top and the text on a blurred copy of it
+
 ### Changed — Liquid Glass steps 6–7: YouTube and every page's toolbar
 - YouTube like the Apple TV app: 16:9 thumbnails with 14 pt corners and a hairline rim, spring lift and pointer reflection on hover, the duration in a small clear-glass capsule, a white progress bar; channels as horizontal shelves
 - Every page's toolbar (desktop) and navigation bar (iPhone) uses the iOS 26 / macOS 26 scroll edge effect instead of the old flat bar with a hairline: the content fades and blurs softly under the bar

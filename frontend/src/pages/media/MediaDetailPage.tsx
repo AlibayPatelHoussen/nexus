@@ -199,7 +199,9 @@ export default function MediaDetailPage() {
   const playLabel = isShow
     ? episodes.length === 0
       ? 'Aucun épisode'
-      : `${nextResumes ? 'Reprendre' : 'Lecture'} · S${nextEpisode?.season ?? 1} É${nextEpisode?.episodeNumber}`
+      : episodesProgress.length === 0 && nextEpisode?.id === episodes[0]?.id
+        ? 'Lire le premier épisode'
+        : `${nextResumes ? 'Reprendre' : 'Lire'} · S${nextEpisode?.season ?? 1} É${nextEpisode?.episodeNumber}`
     : isReading
       ? chapters.length === 0 ? 'Aucun chapitre' : 'Lire'
       : progress && progressPct > 0 && progressPct < 95
@@ -209,7 +211,7 @@ export default function MediaDetailPage() {
 
   const scanButton = isAdmin && (isReading || isShow) && (
     phone ? (
-      <button type="button" className="w-11 h-11 grid place-items-center text-accent-text active:opacity-50 disabled:opacity-40" onClick={scan} disabled={scanning} aria-label="Analyser à nouveau">
+      <button type="button" className="w-11 h-11 grid place-items-center rounded-full text-label active:opacity-50 disabled:opacity-40" onClick={scan} disabled={scanning} aria-label="Analyser à nouveau" title="Analyser à nouveau">
         <RotateCw size={22} strokeWidth={1.75} className={scanning ? 'animate-spin' : ''} />
       </button>
     ) : (
@@ -237,7 +239,7 @@ export default function MediaDetailPage() {
           isFav={isFav}
           onFav={() => favMut.mutate()}
           favBusy={favMut.isPending}
-          upNext={nextEpisode && isShow ? `S${nextEpisode.season ?? 1}, É${nextEpisode.episodeNumber}${nextEpisode.title ? ` · ${nextEpisode.title}` : ''}` : null}
+          upNext={nextEpisode && isShow && episodesProgress.length > 0 ? `S${nextEpisode.season ?? 1}, É${nextEpisode.episodeNumber}${nextEpisode.title ? ` · ${nextEpisode.title}` : ''}` : null}
         />
       )}
     >
@@ -288,19 +290,6 @@ export default function MediaDetailPage() {
       )}
 
 
-      {/* iPhone: the synopsis under the artwork (desktop: beside the title, in the header) */}
-      {phone && !isReading && (
-        <section className="mb-8">
-          {nextEpisode && isShow && (
-            <p className="text-subhead font-semibold text-label mb-1">
-              S{nextEpisode.season ?? 1}, É{nextEpisode.episodeNumber}{nextEpisode.title ? ` · ${nextEpisode.title}` : ''}
-            </p>
-          )}
-          <p className="text-callout text-label2">{media.overview || 'Aucun synopsis disponible.'}</p>
-          {media.originalTitle && media.originalTitle !== media.title && <p className="text-subhead text-label3 mt-2">{media.originalTitle}</p>}
-        </section>
-      )}
-
       {/* Episodes (series / anime) */}
       {isShow && episodes.length > 0 && (
         <EpisodesSection
@@ -338,6 +327,7 @@ export default function MediaDetailPage() {
       {(media.genres?.length > 0 || media.year || media.duration || media.status || media.language || media.fileSize) ? (
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] mb-10">
         <Group header="Informations">
+          {media.originalTitle && media.originalTitle !== media.title && <ListRow title="Titre original" detail={media.originalTitle} />}
           {media.genres?.length > 0 && <ListRow title="Genres" detail={media.genres.join(', ')} />}
           {media.year && <ListRow title="Année" detail={String(media.year)} />}
           {media.duration ? <ListRow title="Durée" detail={formatDuration(media.duration)} /> : null}
