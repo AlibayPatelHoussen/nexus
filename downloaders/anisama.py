@@ -79,6 +79,15 @@ SESSION = requests.Session()
 SESSION.headers.update(HEADERS)
 
 
+def _domain_works(base: str) -> bool:
+    """Nexus copy: the domain announced by the pivot page can be dead (404)."""
+    try:
+        r = SESSION.get(f"{base}/catalogue/", timeout=10, headers={"Referer": base + "/"})
+        return r.status_code < 400
+    except Exception:
+        return False
+
+
 def resolve_base_url() -> str:
     try:
         r = SESSION.get(PIVOT_URL, timeout=10)
@@ -87,8 +96,13 @@ def resolve_base_url() -> str:
             href = a["href"]
             if re.match(r"https://anime-sama\.\w+/?$", href):
                 base = href.rstrip("/")
+                if not _domain_works(base):
+                    continue
                 print(c(f"  Domaine : {base}", DIM))
                 return base
+        if _domain_works(PIVOT_URL):
+            print(c(f"  Domaine : {PIVOT_URL}", DIM))
+            return PIVOT_URL
     except Exception:
         pass
     print(c(f"  Fallback : {FALLBACK_URL}", DIM))
@@ -113,7 +127,18 @@ _catalogue_cache = None
 
 # ── Helpers partagés ──────────────────────────────────────────────────────────
 
+def _own_referer(url, kwargs):
+    """Nexus copy: each site expects its own address as Referer (403 otherwise)."""
+    m = re.match(r"https?://[^/]+", url)
+    if m:
+        headers = dict(kwargs.get("headers") or {})
+        headers.setdefault("Referer", m.group(0) + "/")
+        kwargs["headers"] = headers
+    return kwargs
+
+
 def get(url, silent_404=False, **kwargs):
+    kwargs = _own_referer(url, kwargs)
     for attempt in range(3):
         try:
             r = SESSION.get(url, timeout=20, **kwargs)
@@ -341,7 +366,7 @@ def get_title_page(anime_url: str):
 
 def _check_url_exists(url: str) -> bool:
     try:
-        r = SESSION.head(url, timeout=6, allow_redirects=True)
+        r = SESSION.head(url, timeout=6, allow_redirects=True, **_own_referer(url, {}))
         return r.status_code < 400
     except Exception:
         return False
