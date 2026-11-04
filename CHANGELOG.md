@@ -4,6 +4,19 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Changed — OxTorrent: one card per film and per series
+- Every release (720p, 1080p, 4K, VF, VOSTFR, MULTI…) used to be its own result. OxTorrent results are now grouped: one card per film (« 5 versions ») and per series (« 22 épisodes · 1 pack »). Release names are read with guessit when installed (deploy installs `python3-guessit`), with the script's own rules otherwise. Titles are compared without accents, punctuation or « the », and « and » == « & » (« Georgie.and.Mandys » and « Georgie & Mandy's » are one series). A release listed twice is kept once, up to 4 result pages are read, and the group gets its poster, year, synopsis and episode titles from TMDB
+- Film sheet: every version with resolution, language, source, codec, size and seeders, sorted by quality then seeders, « Recommandé » on the best (1080p, well shared, reasonable size), versions nobody shares greyed out at the bottom, Résolution / Langue filters
+- Series sheet: season, season packs on top, a preferred quality applied to every checked episode (the best version when it does not exist for one), a version chosen by hand by unfolding an episode
+- Queue: the job keeps the version chosen (« S01E03 · 1080p MULTI »). Asking for another version of something already downloaded says « Déjà téléchargé en 720p MULTI » and offers to replace it: the old files are deleted once the new version is complete
+- Nothing changes for anime-sama, movix, films.py and YouTube results (their sheet is the one from before OxTorrent)
+
+### Fixed — download notifications
+- A finished OxTorrent film sent its notification, but nothing showed it on the iPhone while Nexus was open (iOS shows no banner for an app in the foreground) and the server did not log successful sends
+- Every download (anime-sama, movix, films, YouTube, OxTorrent) now ends with « Film terminé — Deadpool & Wolverine · 1080p MULTI », « Épisodes terminés — One Piece · épisodes 1–3 · VOSTFR », or « Échec du téléchargement — … — reason ». Touching it opens the title in the library once the rescan has found it (the queue otherwise)
+- A live toast shows the same message in every open Nexus (admins), and touching it opens the title too
+- The server logs every send (« Push download-…: sent to 1/1 device(s) ») and the subscriptions it removes after a 404 / 410; the progress bar reaches 100 % at the end
+
 ### Added — OxTorrent in Téléchargements
 - New script `downloaders/oxtorrent.py`, made from the qBittorrent search plugin by CravateRouge, with the same `--json` protocol as films.py / movix.py / anisama.py (and a menu without `--json`). It searches OxTorrent (films, séries, animes; music, games and ebooks are left out), reads a torrent page (release, size, seeds, poster, synopsis) and downloads it with aria2
 - The site changes domain often: the current one is read from the portal https://ww1.click/oxtorrent/ (its iframe), remembered a day, and can be forced with `OXTORRENT_URL`

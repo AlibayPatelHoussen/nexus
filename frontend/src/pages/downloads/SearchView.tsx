@@ -3,7 +3,7 @@ import { useQuery } from '@tanstack/react-query'
 import { Download as DownloadIcon, Search, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import type { Socket } from 'socket.io-client'
-import { SOURCE_INFO, downloadsService, type DownloadKind, type DownloadSource, type SearchResult } from '@/services/downloadsService'
+import { SOURCE_INFO, downloadsService, type DownloadKind, type DownloadSource, type SearchResult, type TorrentGroup } from '@/services/downloadsService'
 import { useShell } from '@/components/shell/shellContext'
 import SegmentedControl from '@/components/ui/SegmentedControl'
 import EmptyState from '@/components/ui/EmptyState'
@@ -44,18 +44,22 @@ export function formatDuration(s?: number | null) {
   return h ? `${h}:${String(m).padStart(2, '0')}:${String(sec).padStart(2, '0')}` : `${m}:${String(sec).padStart(2, '0')}`
 }
 
-/** « MULTI · 2160p · 4.36 GB · 82 seeds » */
-export function torrentLine(r: Pick<SearchResult, 'langs' | 'quality' | 'size' | 'seeds' | 'season' | 'episode'>) {
-  const part = r.season && r.episode ? `S${r.season} · épisode ${r.episode}` : r.season ? `Saison ${r.season}` : r.episode ? `Épisode ${r.episode}` : null
-  return [part, r.langs?.join('/'), r.quality, r.size,
-    r.seeds != null ? `${r.seeds} seed${r.seeds > 1 ? 's' : ''}` : null].filter(Boolean).join(' · ')
+/** OxTorrent cards: « 5 versions » for a film, « 12 épisodes » for a series. */
+export function torrentCount(r: SearchResult): string {
+  const g = r as TorrentGroup
+  if (r.kind === 'film') { const n = g.versions?.length ?? 0; return `${n} version${n > 1 ? 's' : ''}` }
+  const seasons = g.seasons ?? []
+  const eps = seasons.reduce((n, s) => n + s.episodes.length, 0)
+  const packs = seasons.reduce((n, s) => n + s.packs.length, 0)
+  return [eps ? `${eps} épisode${eps > 1 ? 's' : ''}` : null, packs ? `${packs} pack${packs > 1 ? 's' : ''}` : null,
+    seasons.length > 1 ? `${seasons.length} saisons` : null].filter(Boolean).join(' · ')
 }
 
 function subtitleOf(r: SearchResult) {
   // Always say where it comes from: "2 saisons · anime-sama"
   const site = SOURCE_INFO[r.source]?.site
   let detail = ''
-  if (r.source === 'oxtorrent') detail = torrentLine(r)
+  if (r.source === 'oxtorrent') detail = torrentCount(r)
   else if (r.kind === 'youtube') detail = [r.channel, formatDuration(r.duration)].filter(Boolean).join(' · ')
   else if ((r.kind === 'anime' || r.kind === 'serie') && r.seasons?.length) detail = `${r.seasons.length} saison${r.seasons.length > 1 ? 's' : ''}`
   else if (r.kind === 'manga' && r.langs?.length) detail = r.langs.join(', ')

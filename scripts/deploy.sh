@@ -59,6 +59,12 @@ if ! command -v aria2c &> /dev/null; then
   fi
 fi
 
+# ── guessit reads OxTorrent release names (oxtorrent.py falls back to its own rules without it) ──
+if ! python3 -c "import guessit" &> /dev/null; then
+  echo "📦 Installing python3-guessit (OxTorrent release names)..."
+  sudo -n apt-get install -y python3-guessit || echo "⚠️  python3-guessit could not be installed: oxtorrent.py uses its own rules."
+fi
+
 # ── Install dependencies (including devDeps for build) ─
 echo "📦 Installing dependencies..."
 npm ci --include=dev

@@ -7,6 +7,7 @@ import Sidebar from './Sidebar'
 import TabBar from './TabBar'
 import CommandPalette from './CommandPalette'
 import VersionBanner from './VersionBanner'
+import DownloadToasts from './DownloadToasts'
 import { ShellContext, type ShellState } from './shellContext'
 import { useRouteMotion } from './useRouteMotion'
 
@@ -62,7 +63,9 @@ export default function AppShell() {
     device, sidebarOpen, toggleSidebar, openSearch: () => setSearch(true),
   }), [device, sidebarOpen, toggleSidebar])
 
-  const palette = <CommandPalette open={search} onClose={() => setSearch(false)} onLogout={handleLogout} />
+  const isAdmin = useAuthStore((st) => st.user?.role === 'admin')
+  // Admins: a live toast at the end of each download (the /downloads socket is admin only)
+  const palette = <>{isAdmin && <DownloadToasts />}<CommandPalette open={search} onClose={() => setSearch(false)} onLogout={handleLogout} /></>
 
   if (device === 'phone') {
     return (

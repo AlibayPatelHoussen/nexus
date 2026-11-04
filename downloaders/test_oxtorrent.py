@@ -87,5 +87,37 @@ class OxTorrent(unittest.TestCase):
             self.assertEqual(sorted(p.name for p in folder.iterdir()), ["inception.mkv"])
 
 
+    def test_grouping_real_releases(self):
+        import json
+        rows = json.load(open(os.path.join(os.path.dirname(os.path.abspath(__file__)), "testdata_oxtorrent_rows.json")))
+        groups = {(g["kind"], g["title"], g["year"]): g for g in ox.group_rows(rows)}
+        self.assertEqual(ox.group_key("Georgie & Mandy's First Marriage"), ox.group_key("Georgie.and.Mandys.First.Marriage".replace(".", " ")))
+        gm = groups[("serie", "Georgie & Mandy's First Marriage", None)]
+        s2 = next(s for s in gm["seasons"] if s["number"] == 2)
+        numbers = [e["number"] for e in s2["episodes"]]
+        self.assertEqual(numbers, list(range(1, 23)))                 # every episode once…
+        self.assertEqual(len(next(e for e in s2["episodes"] if e["number"] == 3)["versions"]), 2)   # …with its versions
+        self.assertEqual([p["label"] for p in s2["packs"]], ["Épisodes 12–22"])
+        s1 = next(s for s in gm["seasons"] if s["number"] == 1)
+        self.assertEqual([p["label"] for p in s1["packs"]], ["Saison complète"])
+        # A film in several qualities: one card; the same release listed twice is kept once
+        dune = groups[("film", "Dune", 2021)]
+        self.assertEqual(len(dune["versions"]), 6)
+        self.assertEqual(sorted(v["resolution"] or "" for v in dune["versions"]), ["", "", "1080p", "1080p", "2160p", "720p"])
+        self.assertEqual(len(groups[("film", "Dune : Deuxième Partie", 2024)]["versions"]), 7)
+        v = next(v for v in groups[("film", "Inception", 2010)]["versions"] if v["id"] == "oxtorrent:film:82140")
+        self.assertEqual((v["resolution"], v["source"], v["codec"], v["language"], v["seeders"]), ("2160p", "BluRay", "x265", "MULTI", 82))
+        bear = groups[("serie", "The Bear", None)]
+        self.assertEqual([(s["number"], len(s["packs"][0]["versions"])) for s in bear["seasons"]], [(1, 1), (2, 2), (3, 2), (4, 2)])
+        self.assertFalse(any(g["kind"] not in ("film", "serie", "anime") for g in groups.values()))   # « Vidéos » left out
+
+    def test_language_labels(self):
+        self.assertEqual(ox.analyse("Georgie.and.Mandys.First.Marriage.S02E17.FASTSUB.VOSTFR.WEBRip.x264")["language"], "VOSTFR")
+        self.assertEqual(ox.analyse("Georgie.and.Mandys.First.Marriage.S02E01.SUBFRENCH.WEBRip.x264.mp4")["language_family"], "VOSTFR")
+        a = ox.analyse("Georgie.And.Mandys.First.Marriage.S02e22.Final.Vostfr.Web.H264-Fw (Georgie & Mandy's First Marriage)")
+        self.assertEqual((a["season"], a["episode"], a["plain_title"], a["codec"]), (2, 22, "Georgie & Mandy's First Marriage", "x264"))
+        self.assertEqual(ox.analyse("Oppenheimer.2023.VFQ.720p.BluRay.x264-Slay3R")["language"], "VFQ")
+
+
 if __name__ == "__main__":
     unittest.main()

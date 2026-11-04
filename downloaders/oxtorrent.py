@@ -244,14 +244,26 @@ def parse_results(html):
     return out
 
 
+MAX_PAGES = 4     # 50 rows a page: a series with every episode in 3 languages needs more than one
+
+
 def search(query):
     q = query.strip()[:49]              # the site's search box takes 49 characters
-    html, _ = get_page("/recherche/" + quote(q))
+    path = "/recherche/" + quote(q)
+    html, _ = get_page(path)
     if not html:
         return []
+    found = parse_results(html)
+    offsets = sorted({int(o) for o in re.findall(re.escape(path) + r"/(\d+)", html) if int(o) > 1})
+    offsets = [o for o in (51, 101, 151) if o in offsets or (offsets and o <= max(offsets))][: MAX_PAGES - 1]
+    if offsets:
+        from concurrent.futures import ThreadPoolExecutor
+        with ThreadPoolExecutor(max_workers=3) as pool:
+            for page in pool.map(lambda o: get_page(f"{path}/{o}", retry_portal=False)[0], offsets):
+                found += parse_results(page or "")
     words = [w for w in _norm(q).split() if len(w) > 1] or _norm(q).split()
     rows = []
-    for row in parse_results(html):
+    for row in found:
         hay = " " + _norm(row["name"]) + " "
         if all(w in hay for w in words):
             rows.append(row)
@@ -282,8 +294,199 @@ def tmdb_match(title, year, kind):
     _TMDB[k] = {"id": hit["id"], "media_type": media,
                 "poster_url": TMDB_IMG + hit["poster_path"] if hit.get("poster_path") else None,
                 "description": (hit.get("overview") or None),
-                "title": hit.get("title") or hit.get("name")} if hit else None
+                "title": hit.get("title") or hit.get("name"),
+                "year": int((hit.get("release_date") or hit.get("first_air_date") or "0")[:4] or 0) or None} if hit else None
     return _TMDB[k]
+
+
+# ── Versions: one card per film / series ──────────────────────────────────────
+# The site lists every release on its own line (720p, 1080p, 4K, VF, VOSTFR…).
+# Nexus shows one card per film and per series, with the versions inside.
+
+try:
+    from guessit import guessit as _guessit       # proven release-name parser (apt: python3-guessit)
+except Exception:                                  # missing: the regexes below do the job
+    _guessit = None
+
+LANG_RULES = [   # (token, label, family) — first match wins
+    (r"\bMULTI\b", "MULTI", "MULTI"),
+    (r"\b(VOSTFR|SUBFRENCH|FASTSUB)\b", "VOSTFR", "VOSTFR"),
+    (r"\bTRUEFRENCH\b", "TRUEFRENCH", "VF"),
+    (r"\bVFF\b", "VFF", "VF"),
+    (r"\bVFQ\b", "VFQ", "VF"),
+    (r"\b(VF2|VFI|FRENCH|VF)\b", "VF", "VF"),
+]
+SOURCE_RULES = [
+    (r"\bREMUX\b", "REMUX"), (r"\b(BDRip|BRRip)\b", "BDRip"), (r"\b(Blu-?Ray|UHD)\b", "BluRay"),
+    (r"\bWEB-?DL\b", "WEB-DL"), (r"\bWEB-?Rip\b", "WEBRip"), (r"\bHDTV\b", "HDTV"), (r"\bDVDRip\b", "DVDRip"),
+    (r"\bHDRip\b", "HDRip"), (r"\b4KLight\b", "4KLight"), (r"\bHDLight\b", "HDLight"), (r"\bWEB\b", "WEB-DL"),
+    (r"\bDVD\b", "DVDRip"),
+]
+CODEC_RULES = [(r"\b(x265|HEVC|H\.?265)\b", "x265"), (r"\b(x264|AVC|H\.?264)\b", "x264"), (r"\bAV1\b", "AV1"),
+               (r"\bXviD\b", "XviD")]
+
+
+def _clean_name(name):
+    """Release name without the site's additions: extension, « (Titre en clair) », double dots."""
+    plain = None
+    m = re.search(r"\s\(([^()]*[A-Za-zÀ-ÿ][^()]*)\)\s*$", name or "")
+    if m:
+        plain, name = m.group(1).strip(), name[: m.start()]
+    name = re.sub(r"\.(mkv|mp4|avi|m4v|ts)$", "", name.strip(), flags=re.I)
+    return re.sub(r"\.{2,}", ".", name).strip(), plain
+
+
+def group_key(title):
+    """« Georgie & Mandy's First Marriage » == « Georgie.and.Mandys.First.Marriage »."""
+    t = _norm(re.sub(r"['’`´]", "", (title or "").replace("&", " and ")))
+    words = [w for w in t.split() if w not in ("the", "and", "le", "la", "les")]
+    return " ".join(words) or t
+
+
+def analyse(name):
+    """Everything the release name says: title, year, season / episode(s), resolution, source, codec, language."""
+    clean, plain = _clean_name(name)
+    spaced = re.sub(r"[._]+", " ", clean)
+    g = {}
+    if _guessit:
+        try:
+            g = dict(_guessit(clean))
+        except Exception:
+            g = {}
+    rel = parse_release(clean)                      # regex fallback (and what guessit misses)
+    title = g.get("title") if isinstance(g.get("title"), str) else rel["title"]
+    year = g.get("year") if isinstance(g.get("year"), int) else rel["year"]
+
+    # Season / episode(s): S02E12-22, S02e22, S01, E1180
+    season = episode = None
+    episodes = None
+    m = re.search(r"\bS(\d{1,2})\s?E(\d{1,4})(?:\s?-\s?E?(\d{1,4}))?\b", spaced, re.I)
+    if m:
+        season, a, b = int(m.group(1)), int(m.group(2)), m.group(3)
+        if b and int(b) > a:
+            episodes = list(range(a, int(b) + 1))
+        else:
+            episode = a
+    else:
+        m = re.search(r"\bS(\d{1,2})\b|\bSaison\s*(\d{1,2})\b", spaced, re.I)
+        if m:
+            season = int(m.group(1) or m.group(2))
+        e = re.search(r"\bE(?:p|pisode)?\s?(\d{1,4})\b", spaced, re.I)
+        if e:
+            episode = int(e.group(1))
+    if season is None and isinstance(g.get("season"), int):
+        season = g["season"]
+    if episode is None and episodes is None and isinstance(g.get("episode"), int):
+        episode = g["episode"]
+    elif episode is None and episodes is None and isinstance(g.get("episode"), list):
+        episodes = sorted(x for x in g["episode"] if isinstance(x, int))
+
+    up = spaced.upper()
+    language = family = None
+    for rx, label, fam in LANG_RULES:
+        if re.search(rx, up):
+            language, family = label, fam
+            break
+    if not language and g.get("subtitle_language"):
+        language, family = "VOSTFR", "VOSTFR"
+    elif not language and str(g.get("language", "")).startswith("fr"):
+        language, family = "VF", "VF"
+
+    res = re.search(r"\b(2160p|1080p|720p|576p|480p)\b", spaced, re.I)
+    resolution = res.group(1).lower() if res else None
+    if not resolution and re.search(r"\b(4K|UHD|4KLight)\b", spaced, re.I):
+        resolution = "2160p"
+    if not resolution and isinstance(g.get("screen_size"), str) and re.fullmatch(r"\d{3,4}p", g["screen_size"]):
+        resolution = g["screen_size"]
+    if not resolution and re.search(r"\bHDLight\b", spaced, re.I):
+        resolution = "1080p"
+    source = next((label for rx, label in SOURCE_RULES if re.search(rx, spaced, re.I)), None)
+    codec = next((label for rx, label in CODEC_RULES if re.search(rx, spaced, re.I)), None)
+    return {"title": title, "plain_title": plain, "year": year, "season": season, "episode": episode,
+            "episodes": episodes, "resolution": resolution, "source": source, "codec": codec,
+            "language": language, "language_family": family}
+
+
+def _version(row, kind, a):
+    return {"id": f"oxtorrent:{kind}:{row['detail']}", "release": row["name"], "resolution": a["resolution"],
+            "source": a["source"], "codec": a["codec"], "language": a["language"], "language_family": a["language_family"],
+            "size": row["size"], "size_bytes": size_bytes(row["size"]), "seeders": row["seeds"], "leechers": row["leech"]}
+
+
+def group_rows(rows):
+    """Search rows -> [{kind, key, title, year, versions | seasons}] (one per film / series)."""
+    seen, unique = {}, []
+    for row in rows:                       # the same release is sometimes listed twice
+        k = (row["name"].strip().lower(), row["size"])
+        if k in seen:
+            if row["seeds"] > seen[k]["seeds"]:
+                unique[unique.index(seen[k])] = row
+                seen[k] = row
+            continue
+        seen[k] = row
+        unique.append(row)
+
+    analysed = []
+    for row in unique:
+        kind = kind_of(row["category"])
+        if not kind:
+            continue
+        a = analyse(row["name"])
+        if kind == "film" and (a["season"] or a["episode"] or a["episodes"]):
+            kind = "serie"                 # an episode filed under Films
+        analysed.append((row, kind, a))
+
+    groups = {}
+    for row, kind, a in analysed:
+        key = (kind, group_key(a["title"]), a["year"])
+        g = groups.setdefault(key, {"kind": kind, "key": group_key(a["title"]), "title": a["plain_title"] or a["title"],
+                                    "year": a["year"], "rows": []})
+        if a["plain_title"] and not g["title"] == a["plain_title"]:
+            g["title"] = a["plain_title"]       # « (Georgie & Mandy's First Marriage) » reads better than the dotted name
+        g["rows"].append((row, a))
+    # No year on some releases: they join the only group of the same title
+    for key in [k for k in groups if k[2] is None]:
+        same = [k for k in groups if k[:2] == key[:2] and k[2] is not None]
+        if len(same) == 1:
+            groups[same[0]]["rows"] += groups.pop(key)["rows"]
+
+    out = []
+    for g in groups.values():
+        kind = g["kind"]
+        if kind == "film":
+            g["versions"] = [_version(r, kind, a) for r, a in g["rows"]]
+        else:
+            seasons = {}
+            for r, a in g["rows"]:
+                n = a["season"] or 1
+                s_ = seasons.setdefault(n, {"number": n, "episodes": {}, "packs": {}})
+                v = _version(r, kind, a)
+                if a["episode"] is not None:
+                    s_["episodes"].setdefault(a["episode"], {"number": a["episode"], "title": None, "versions": []})["versions"].append(v)
+                else:
+                    eps = a["episodes"]
+                    label = f"Épisodes {eps[0]}–{eps[-1]}" if eps else "Saison complète"
+                    s_["packs"].setdefault(label, {"label": label, "episodes": eps, "versions": []})["versions"].append(v)
+            g["seasons"] = [{"number": n, "episodes": sorted(s_["episodes"].values(), key=lambda e: e["number"]),
+                             "packs": sorted(s_["packs"].values(), key=lambda p: (p["episodes"] is not None, p["label"]))}
+                            for n, s_ in sorted(seasons.items())]
+        g["seeders"] = sum(r["seeds"] for r, _ in g["rows"])
+        del g["rows"]
+        out.append(g)
+    out.sort(key=lambda g: -g["seeders"])
+    return out
+
+
+def _tmdb_episode_titles(tv_id, season):
+    key = nexus_cli.env_value("TMDB_API_KEY")
+    if not key:
+        return {}
+    try:
+        d = SESSION.get(f"https://api.themoviedb.org/3/tv/{tv_id}/season/{season}",
+                        params={"api_key": key, "language": "fr-FR"}, timeout=10).json()
+        return {e["episode_number"]: e.get("name") for e in d.get("episodes", []) if e.get("name")}
+    except Exception:
+        return {}
 
 
 # ── Detail page ───────────────────────────────────────────────────────────────
@@ -462,21 +665,28 @@ def _parse_id(id_):
 
 
 def json_search(query, limit):
-    rows = [r for r in search(query) if kind_of(r["category"])][: (limit or 15)]
+    groups = group_rows(search(query))[: (limit or 12)]
 
-    def one(row):
-        kind = kind_of(row["category"])
-        rel = parse_release(row["name"])
-        tmdb = tmdb_match(rel["title"], rel["year"], kind)     # animes too: they are on TMDB (poster only)
-        return {"id": f"oxtorrent:{kind}:{row['detail']}", "source": "oxtorrent", "kind": kind,
-                "title": rel["title"], "year": rel["year"], "poster_url": (tmdb or {}).get("poster_url"),
-                "description": (tmdb or {}).get("description"), "release": row["name"], "size": row["size"],
-                "seeds": row["seeds"], "leech": row["leech"], "langs": rel["langs"], "quality": rel["quality"],
-                "season": rel["season"], "episode": rel["episode"]}
+    def one(g):
+        tmdb = tmdb_match(g["title"], g["year"], g["kind"])
+        res = {"id": f"oxtorrent:group:{g['kind']}:{re.sub(r'[^a-z0-9]+', '-', g['key'])}-{g['year'] or ''}".rstrip("-"),
+               "source": "oxtorrent", "kind": g["kind"], "title": (tmdb or {}).get("title") or g["title"],
+               "year": g["year"] or (tmdb or {}).get("year"), "poster_url": (tmdb or {}).get("poster_url"),
+               "description": (tmdb or {}).get("description")}
+        if g["kind"] == "film":
+            res["versions"] = g["versions"]
+        else:
+            if tmdb:
+                for s_ in g["seasons"]:
+                    names = _tmdb_episode_titles(tmdb["id"], s_["number"]) if s_["episodes"] else {}
+                    for e in s_["episodes"]:
+                        e["title"] = names.get(e["number"])
+            res["seasons"] = g["seasons"]
+        return res
 
     from concurrent.futures import ThreadPoolExecutor
     with ThreadPoolExecutor(max_workers=6) as pool:
-        for res in pool.map(one, rows):
+        for res in pool.map(one, groups):
             nexus_cli.emit("result", **res)
 
 

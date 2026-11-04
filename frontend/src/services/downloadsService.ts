@@ -18,9 +18,21 @@ export interface SearchResult {
   channel?:      string | null
   langs?:        string[]
   seasons?:      { id: string | number; label: string; langs?: string[]; episodes_count?: number }[]
-  /** oxtorrent: one torrent = one job */
-  release?: string; size?: string; seeds?: number; leech?: number; quality?: string | null; season?: number | null; episode?: number | null
+  /** oxtorrent: one card per film (versions) or per series (torrentSeasons, sent as « seasons ») */
+  versions?:     TorrentVersion[]
 }
+
+/** One release of a film / episode on OxTorrent */
+export interface TorrentVersion {
+  id: string; release: string; resolution: string | null; source: string | null; codec: string | null
+  language: string | null; language_family: 'MULTI' | 'VF' | 'VOSTFR' | null
+  size: string; size_bytes: number | null; seeders: number; leechers: number
+}
+export interface TorrentEpisode { number: number; title: string | null; versions: TorrentVersion[] }
+export interface TorrentPack { label: string; episodes: number[] | null; versions: TorrentVersion[] }
+export interface TorrentSeason { number: number; episodes: TorrentEpisode[]; packs: TorrentPack[] }
+/** An OxTorrent series card: its « seasons » are torrent seasons */
+export type TorrentGroup = Omit<SearchResult, 'seasons'> & { seasons?: TorrentSeason[] }
 
 export interface DetailEpisode { n: number; label: string; downloaded: boolean | string[]; available?: boolean; air_date?: string | null; langs?: string[] | null }
 export interface DetailChapter { n: number; pages: number; downloaded: boolean }
@@ -35,8 +47,6 @@ export interface Details {
   seasons?:     { id: string | number; lang?: string; langs?: string[]; label: string; episodes: DetailEpisode[] }[]
   /** manga: one entry per language; film: availability per language */
   langs?:       ({ lang: string; chapters?: DetailChapter[]; downloaded?: boolean; available?: boolean } | string)[]
-  /** oxtorrent */
-  release?: string; size?: string; seeds?: number; leech?: number; quality?: string | null; downloadable?: boolean
 }
 
 export interface DownloadProgress {
@@ -54,7 +64,7 @@ export interface Download {
   source_id:     string
   title:         string
   poster_url:    string | null
-  options:       { lang?: string; season?: string }
+  options:       { lang?: string; season?: string; part?: string; version?: { label: string } }
   selection:     { episodes?: number[]; chapters?: number[] }
   status:        DownloadStatus
   progress:      DownloadProgress
@@ -68,6 +78,8 @@ export interface Download {
 export interface NewDownload {
   id: string; title: string; poster_url?: string | null
   lang?: string; season?: string | number; episodes?: number[]; chapters?: number[]; force?: boolean
+  /** oxtorrent: version chosen, « S01E03 », what it stands for (duplicates across versions), replace the other versions */
+  version?: { resolution: string | null; language: string | null }; part?: string; item?: string; replace?: boolean
 }
 
 /** The image proxy URL keeps the original address in ?u= (needed to queue a job) */

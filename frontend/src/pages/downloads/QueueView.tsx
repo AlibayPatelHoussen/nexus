@@ -23,6 +23,8 @@ export function describe(d: Download): string {
   const parts: string[] = []
   const season = d.options.season
   if (season) parts.push(/^\d+$/.test(season) ? `Saison ${season}` : season.replace(/^saison(\d+)/, 'Saison $1').replace(/^(\w)/, (c) => c.toUpperCase()))
+  if (d.options.part) parts.push(d.options.part)                 // oxtorrent: « S01E03 »
+  if (d.options.version?.label) parts.push(d.options.version.label)   // oxtorrent: « 1080p MULTI »
   if (d.options.lang) parts.push(d.options.lang)
   const list = d.selection.episodes ?? d.selection.chapters
   if (list?.length) {
