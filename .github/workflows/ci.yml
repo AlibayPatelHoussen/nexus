@@ -85,6 +85,9 @@ jobs:
           DB_PASSWORD: test_password
         run: npm run db:migrate --workspace=backend
 
+      - name: Download scripts (Python) compile and unit tests
+        run: python3 -m py_compile downloaders/*.py && python3 -m unittest discover downloaders
+
       - name: Run backend tests
         working-directory: backend
         env:
