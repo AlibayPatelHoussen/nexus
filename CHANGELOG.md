@@ -4,6 +4,14 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Added — download scripts usable by Nexus (step 1 of « Téléchargements »)
+- `downloaders/`: copies of the scripts of `/media/scripts` (anisama, films, movix, youtube; the originals stay untouched as a backup) with a non-interactive mode: `--json --search`, `--details`, `--download <id> [--season] [--lang] [--episodes|--chapters] --dest`. Output is JSON Lines (`result`, `details`, `item_start`, `progress`, `item_done`, `item_skipped`, `error`, `done`); without `--json` the menus work as before
+- anisama: one title gives an `anime` and/or a `manga` result (season links vs `scan/` links of the site), with poster and synopsis kept in its catalogue; fixed for the site's new video host (ansembed) and dead mirror domains (each request now sends its own site as Referer)
+- movix: the TMDB key is no longer written in the script (`TMDB_API_KEY` from the environment / Nexus' `.env`)
+- youtube: search through yt-dlp metadata (thumbnail, duration, channel); downloads go to `/media/youtube/{Chaîne}/{Titre} [id].mp4` with the thumbnail `.jpg` (same name, also embedded) and `.info.json`
+- Files being downloaded are named `.part-…` and renamed when complete, so a cut download is never taken for a finished one
+- CI compiles the scripts and runs their unit tests
+
 ### Fixed — services and overview show the real state of the server
 - Services are read from systemd (`systemctl show`) instead of `is-active`, which answered "inactive" for units that do not exist: services that are not installed now show "Non installé" (hidden from Aperçu) instead of "Arrêté"
 - Cockpit is socket-activated: it now shows "Actif · à la demande" when its socket is listening, instead of "Arrêté"; Démarrer / Arrêter / Redémarrer act on the socket too, and its journal includes both units
