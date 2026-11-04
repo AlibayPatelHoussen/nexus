@@ -20,7 +20,7 @@ export interface SearchResult {
   seasons?:      { id: string | number; label: string; langs?: string[]; episodes_count?: number }[]
 }
 
-export interface DetailEpisode { n: number; label: string; downloaded: boolean | string[]; available?: boolean; air_date?: string | null }
+export interface DetailEpisode { n: number; label: string; downloaded: boolean | string[]; available?: boolean; air_date?: string | null; langs?: string[] | null }
 export interface DetailChapter { n: number; pages: number; downloaded: boolean }
 
 export interface Details {
@@ -30,9 +30,9 @@ export interface Details {
   poster_url?:  string | null
   description?: string | null
   /** anime: one entry per season + language; serie: one per season (langs on top) */
-  seasons?:     { id: string | number; lang?: string; label: string; episodes: DetailEpisode[] }[]
+  seasons?:     { id: string | number; lang?: string; langs?: string[]; label: string; episodes: DetailEpisode[] }[]
   /** manga: one entry per language; film: availability per language */
-  langs?:       ({ lang: string; chapters?: DetailChapter[]; downloaded?: boolean } | string)[]
+  langs?:       ({ lang: string; chapters?: DetailChapter[]; downloaded?: boolean; available?: boolean } | string)[]
 }
 
 export interface DownloadProgress {

@@ -643,19 +643,148 @@ def json_details(id_):
     kind, tmdb_id = _parse_id(id_)
     m = _media(kind, tmdb_id)
     if kind == "movie":
+        langs = _movie_langs(tmdb_id)
         nexus_cli.emit("details", id=id_, kind="film", **m, langs=[
-            {"lang": l, "downloaded": os.path.exists(_movie_file(m["title"], m["year"], l))} for l in ("VF", "VOSTFR")])
+            {"lang": l, "downloaded": os.path.exists(_movie_file(m["title"], m["year"], l)),
+             "available": langs is None or bool(langs[l])} for l in ("VF", "VOSTFR")])
         return
     seasons = get_seasons(tmdb_id)
     from concurrent.futures import ThreadPoolExecutor
     with ThreadPoolExecutor(max_workers=6) as pool:
         eps = list(pool.map(lambda s: get_episodes(tmdb_id, s["num"]), seasons))
-    nexus_cli.emit("details", id=id_, kind="serie", **m, langs=["VF", "VOSTFR"], seasons=[
-        {"id": s["num"], "label": s["name"], "episodes": [
-            {"n": e["num"], "label": e["title"], "air_date": e.get("air_date") or None, "available": _aired(e),
-             "downloaded": [l for l in ("VF", "VOSTFR") if os.path.exists(_episode_file(m["title"], l, s["num"], e))]}
-            for e in ep_list]}
-        for s, ep_list in zip(seasons, eps)])
+        hosted = list(pool.map(lambda s: _season_langs(tmdb_id, s["num"]), seasons))
+
+    def episode(s, e, have):
+        langs = _ep_langs(have.get(e["num"]))
+        return {"n": e["num"], "label": e["title"], "air_date": e.get("air_date") or None,
+                # out = links found in some language, else TMDB says it was broadcast
+                "available": bool(langs) or _aired(e), "langs": langs,
+                "downloaded": [l for l in ("VF", "VOSTFR") if os.path.exists(_episode_file(m["title"], l, s["num"], e))]}
+
+    out = []
+    for s, ep_list, have in zip(seasons, eps, hosted):
+        episodes = [episode(s, e, have) for e in ep_list]
+        known = [e["langs"] for e in episodes if e["langs"]]
+        # Languages of the season: those of its episodes when a source knows them
+        langs = [l for l in ("VF", "VOSTFR") if any(l in k for k in known)] if known else ["VF", "VOSTFR"]
+        out.append({"id": s["num"], "label": s["name"], "langs": langs, "episodes": episodes})
+    nexus_cli.emit("details", id=id_, kind="serie", **m, langs=["VF", "VOSTFR"], seasons=out)
+
+
+# Nexus copy: sources that say which language each player is in (what movix's own
+# player uses). links / purstream do not know the language nor the recent episodes.
+LANG_KEYS = {"vf": "VF", "vff": "VF", "truefrench": "VF", "french": "VF", "vostfr": "VOSTFR"}
+
+
+def _lang_links(obj):
+    """{"VF": [urls], "VOSTFR": [urls]} from any answer that lists players under vf / vostfr keys."""
+    out = {"VF": [], "VOSTFR": []}
+
+    def urls(v):
+        if isinstance(v, str):
+            return [v] if v.startswith("http") else []
+        if isinstance(v, dict):
+            u = v.get("url") or v.get("link") or v.get("src") or ""
+            return [u] if isinstance(u, str) and u.startswith("http") else []
+        if isinstance(v, list):
+            return [u for x in v for u in urls(x)]
+        return []
+
+    def walk(o):
+        if isinstance(o, dict):
+            for k, v in o.items():
+                lang = LANG_KEYS.get(str(k).lower())
+                if lang:
+                    for u in urls(v):
+                        if u not in out[lang]:
+                            out[lang].append(u)
+                else:
+                    walk(v)
+        elif isinstance(o, list):
+            for x in o:
+                walk(x)
+    walk(obj)
+    return out
+
+
+def _api(path, params=None):
+    """JSON of a movix API call, or None (404, error, success:false) — no retries, no warning."""
+    try:
+        r = SESSION.get(f"{MOVIX_API}{path}", params=params, timeout=15)
+        if r.status_code != 200:
+            return None
+        d = r.json()
+        return None if isinstance(d, dict) and d.get("success") is False else d
+    except Exception:
+        return None
+
+
+_SEASON_CACHE = {}
+
+
+def _season_langs(tmdb_id, season):
+    """{episode: {"VF": [...], "VOSTFR": [...]}} from fstream then wiflix (one call each per season)."""
+    key = (tmdb_id, season)
+    if key in _SEASON_CACHE:
+        return _SEASON_CACHE[key]
+    found = {}
+    for path in (f"/fstream/tv/{tmdb_id}/season/{season}", f"/wiflix/tv/{tmdb_id}/{season}"):
+        d = _api(path)
+        eps = d.get("episodes") if isinstance(d, dict) else None
+        if isinstance(eps, list):
+            eps = {str(e.get("number") or e.get("episode") or i + 1): e for i, e in enumerate(eps) if isinstance(e, dict)}
+        if not isinstance(eps, dict):
+            continue
+        for num, ep in eps.items():
+            try:
+                n = int(float(num))
+            except (TypeError, ValueError):
+                continue
+            links = _lang_links(ep)
+            slot = found.setdefault(n, {"VF": [], "VOSTFR": []})
+            for lang in slot:
+                slot[lang] += [u for u in links[lang] if u not in slot[lang]]
+    _SEASON_CACHE[key] = found
+    return found
+
+
+def _movie_langs(tmdb_id):
+    """{"VF": [...], "VOSTFR": [...]} for a film, or None when no source says it."""
+    found, known = {"VF": [], "VOSTFR": []}, False
+    for path in (f"/fstream/movie/{tmdb_id}", f"/wiflix/movie/{tmdb_id}"):
+        d = _api(path)
+        if d is None:
+            continue
+        links = _lang_links(d)
+        known = known or any(links.values())
+        for lang in found:
+            found[lang] += [u for u in links[lang] if u not in found[lang]]
+    return found if known else None
+
+
+def _ep_langs(info):
+    """Languages that really exist for an episode, or None when no source knows it."""
+    if not info or not any(info.values()):
+        return None
+    return [l for l in ("VF", "VOSTFR") if info.get(l)]
+
+
+async def _try_embeds(urls, output_file):
+    """Each player of the right language, until one gives a complete file."""
+    for url in urls:
+        step(f"Tentative : {url.split('/')[2] if '//' in url else url}...")
+        try:
+            if ".m3u8" in url:
+                run_ffmpeg(url, {}, output_file)
+                ok_ = os.path.exists(output_file) and os.path.getsize(output_file) > 0
+            else:
+                ok_ = await download_from_embed(url, output_file)
+        except Exception as e:
+            print(f"embed {url[:60]}: {e}")
+            ok_ = False
+        if ok_:
+            return True
+    return False
 
 
 def _aired(ep):
@@ -727,8 +856,19 @@ async def json_download(args):
             FILMS_DIR = args.dest
         item = f"{m['title']} ({m['year']})" if m["year"] else m["title"]
         nexus_cli.emit("item_start", name=item, index=1, total=1)
-        stats[await _download_one(item, _movie_file(m["title"], m["year"], lang),
-                                  lambda part: download_movie(tmdb_id, m["title"], lang, part))] += 1
+        langs = _movie_langs(tmdb_id)
+        final = _movie_file(m["title"], m["year"], lang)
+        if langs is not None and not langs[lang] and not os.path.exists(final):
+            other = [l for l in langs if langs[l]]
+            nexus_cli.emit("error", message=f"Pas disponible en {lang} sur movix (seulement {', '.join(other)})",
+                           item=item, fatal=False)
+            stats["failed"] += 1
+        else:
+            async def get_movie(part, urls=list((langs or {}).get(lang) or [])):
+                if urls and await _try_embeds(urls, part):
+                    return
+                await download_movie(tmdb_id, m["title"], lang, part)
+            stats[await _download_one(item, final, get_movie)] += 1
     else:
         if args.dest:
             SERIES_DIR = args.dest
@@ -747,14 +887,28 @@ async def json_download(args):
             final = _episode_file(m["title"], lang, season_num, ep)
             if not os.path.exists(final):
                 nexus_cli.emit("item_start", name=item, index=i, total=len(wanted))
-                if _episode_missing(tmdb_id, season_num, n):
+                hosted = _season_langs(tmdb_id, season_num).get(n) or {}
+                langs = _ep_langs(hosted)
+                if langs and lang not in langs:
+                    nexus_cli.emit("error", message=f"Pas disponible en {lang} sur movix (seulement {', '.join(langs)})",
+                                   item=item, fatal=False)
+                    stats["failed"] += 1
+                    continue
+                if not langs and _episode_missing(tmdb_id, season_num, n):
                     # No need to wait 60 s for the web player: movix has no link at all
                     when = f" (sortie le {ep['air_date']})" if ep.get("air_date") and not _aired(ep) else ""
                     nexus_cli.emit("error", message=f"Épisode pas encore disponible sur movix{when}", item=item, fatal=False)
                     stats["failed"] += 1
                     continue
-            stats[await _download_one(item, final, lambda part, ep=ep: download_episode(
-                tmdb_id=tmdb_id, season=season_num, episode=ep["num"], lang_filter=lang, output_file=part))] += 1
+            else:
+                hosted = {}
+
+            async def get_ep(part, ep=ep, urls=list(hosted.get(lang) or [])):
+                # Players of the asked language first (fstream / wiflix), then the original sources
+                if urls and await _try_embeds(urls, part):
+                    return
+                await download_episode(tmdb_id=tmdb_id, season=season_num, episode=ep["num"], lang_filter=lang, output_file=part)
+            stats[await _download_one(item, final, get_ep)] += 1
     nexus_cli.emit("done", **stats)
     return 0 if stats["failed"] == 0 else 2
 
