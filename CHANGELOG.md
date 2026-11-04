@@ -4,6 +4,13 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Fixed — services and overview show the real state of the server
+- Services are read from systemd (`systemctl show`) instead of `is-active`, which answered "inactive" for units that do not exist: services that are not installed now show "Non installé" (hidden from Aperçu) instead of "Arrêté"
+- Cockpit is socket-activated: it now shows "Actif · à la demande" when its socket is listening, instead of "Arrêté"; Démarrer / Arrêter / Redémarrer act on the socket too, and its journal includes both units
+- Wi-Fi uses the network manager actually installed (`WIFI_SERVICE`, wifi, NetworkManager, iwd, wpa_supplicant, systemd-networkd); the Wi-Fi watchdog and automatic deployment are listed too
+- Service details: since when, memory used, started at boot, systemd units; states "Démarrage…" / "Arrêt…" are shown instead of "État inconnu"
+- Memory in Aperçu no longer counts the Linux disk cache as used (total − available, like htop); free disk space is the space really writable
+
 ### Changed — Apple-like motion
 - Buttons, links and cards shrink slightly under the finger / click and spring back when released (cards press more softly); list rows highlight at once and fade out on release, like iOS lists
 - Pages slide in like iOS navigation on phones (push from the right, back from the left, fade between tabs) and fade in on Mac / iPad; each page keeps its own scroll position (a new page opens at the top, "back" returns where you were)

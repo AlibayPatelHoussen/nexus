@@ -71,13 +71,22 @@ export interface FileEntry {
 }
 
 // ── Services ─────────────────────────────────────────
-export type ServiceStatus = 'active' | 'inactive' | 'failed' | 'unknown'
+/** Real systemd state; "waiting": started on demand (socket armed, e.g. Cockpit idle) */
+export type ServiceStatus = 'active' | 'waiting' | 'activating' | 'deactivating' | 'inactive' | 'failed' | 'missing' | 'unknown'
 
 export interface ServiceInfo {
   name:        string
   displayName: string
   description: string
   status:      ServiceStatus
+  /** systemd units behind it */
+  units:       string[]
+  /** ISO date of the last state change */
+  since?:      string
+  /** Memory used, bytes */
+  memory?:     number
+  /** Starts with the server */
+  enabled?:    boolean
   url?:        string
   icon:        string
   color:       string

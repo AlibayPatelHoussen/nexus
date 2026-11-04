@@ -13,6 +13,7 @@ import StatSparkline, { CapacityBar } from '@/components/ui/StatSparkline'
 import Skeleton, { SkeletonRows } from '@/components/ui/Skeleton'
 import EmptyState from '@/components/ui/EmptyState'
 import type { ServiceInfo, SystemStats } from '@/types'
+import { SERVICE_STATE, isInstalled, isStopped } from '@/services/serviceState'
 
 const last = (a: number[]) => (a.length ? a[a.length - 1] : 0)
 
@@ -121,7 +122,7 @@ function Meter({ label, value, detail, warn, children }: { label: string; value:
 
 function PhoneOverview({ stats, history, services, servicesError }: OverviewProps) {
   const isAdmin = useAuthStore((s) => s.user?.role === 'admin')
-  const stopped = services?.filter((s) => s.status !== 'active').length ?? 0
+  const stopped = services?.filter(isStopped).length ?? 0
   return (
     <div className="flex flex-col gap-8">
       <Group>
@@ -171,16 +172,17 @@ function ServicesGroup({ services, error }: { services: ServiceInfo[] | undefine
         <EmptyState className="py-8" title="Services indisponibles" message="Le serveur n’a pas répondu. Réessaie dans un instant." />
       ) : !services ? (
         <SkeletonRows rows={4} />
-      ) : services.length === 0 ? (
+      ) : services.filter(isInstalled).length === 0 ? (
         <EmptyState className="py-8" title="Aucun service suivi" message="Ajoute des services dans la configuration du serveur pour les voir ici." />
       ) : (
-        services.map((s) => (
+        // Only what is installed on this server
+        services.filter(isInstalled).map((s) => (
           <ListRow
             key={s.name}
             to="/services"
-            status={s.status === 'active' ? 'ok' : s.status === 'failed' ? 'error' : 'off'}
+            status={SERVICE_STATE[s.status].dot}
             title={s.displayName}
-            detail={s.status === 'active' ? 'Actif' : s.status === 'failed' ? 'En échec' : s.status === 'inactive' ? 'Arrêté' : 'État inconnu'}
+            detail={SERVICE_STATE[s.status].label}
           />
         ))
       )}
