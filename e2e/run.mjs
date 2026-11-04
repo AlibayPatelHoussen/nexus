@@ -194,7 +194,7 @@ test('UI: login form → dashboard, no "outdated server" banner', async () => {
 test('UI: catalogue (hero, rows, cleaned series title)', async () => {
   const page = await newPage(admin)
   await page.goto(`${B}/cinema`, { waitUntil: 'networkidle' })
-  await page.waitForSelector('text=Plus d’infos')
+  await page.waitForSelector('button[aria-label="Plus d’infos"]')   // billboard (Apple TV)
   assert(await page.$('text=Ajouts récents'), 'recent row')
   await page.screenshot({ path: `${SHOTS}/cinema.png` })
   await page.click('[role="radio"]:has-text("Séries")')
@@ -398,8 +398,9 @@ test('UI: search and genre "Tout voir" show a results grid', async () => {
   await page.fill('input[placeholder^="Rechercher"]', title)
   await page.waitForSelector('text=/^1 résultat$/', { timeout: 10000 })
   await page.fill('input[placeholder^="Rechercher"]', '')
-  await page.waitForSelector('text=Tout voir', { timeout: 10000 })
-  await page.click('text=Tout voir')
+  // Apple TV: the shelf title with its chevron opens the full list
+  await page.waitForSelector('button[title^="Tout voir"]', { timeout: 10000 })
+  await page.click('button[title^="Tout voir"]')
   await page.waitForSelector('text=/\\d+ résultats?/', { timeout: 10000 })
   await page.context().close()
 })

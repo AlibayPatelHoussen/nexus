@@ -21,6 +21,9 @@ interface PageProps {
   narrow?:    boolean
   /** Phone: show the large title (default) or only the compact bar */
   largeTitle?: boolean
+  /** Full-bleed artwork at the top (Apple TV billboard): the toolbar / large title float over it,
+      in white, and turn into the normal glass bar once it has scrolled away */
+  hero?:      React.ReactNode
   children:   React.ReactNode
   className?: string
 }
@@ -35,12 +38,39 @@ export default function Page(props: PageProps) {
   return device === 'phone' ? <PhonePage {...props} /> : <DesktopPage {...props} />
 }
 
-function DesktopPage({ title, subtitle, actions, accessory, back, bleed, narrow, children, className }: PageProps) {
+/** True once the page scrolled past `limit` px (the scroller is #main on desktop, the window on phones). */
+function useScrolledPast(limit: number, enabled: boolean, phone: boolean) {
+  const [past, setPast] = useState(false)
+  useEffect(() => {
+    if (!enabled) return
+    const el: HTMLElement | Window = phone ? window : (document.getElementById('main') ?? window)
+    const read = () => setPast((el === window ? window.scrollY : (el as HTMLElement).scrollTop) > limit)
+    read()
+    el.addEventListener('scroll', read, { passive: true })
+    return () => el.removeEventListener('scroll', read)
+  }, [limit, enabled, phone])
+  return past
+}
+
+function DesktopPage({ title, subtitle, actions, accessory, back, bleed, narrow, hero, children, className }: PageProps) {
   const { device, sidebarOpen, toggleSidebar } = useShell()
   useEffect(() => { document.title = `${title} — Nexus` }, [title])
+  const overHero = useScrolledPast(typeof window === 'undefined' ? 400 : window.innerHeight * 0.5, !!hero, false)
+  const onMedia = !!hero && !overHero
   return (
     <div className={cn('flex flex-col', bleed ? 'h-full' : 'min-h-full')}>
-      <header className="sticky top-0 z-30 material-bar hairline-b flex-shrink-0" style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}>
+      {hero && (
+        // Full width, under the floating sidebar too; the toolbar floats over it
+        <div className="relative order-2" style={{ marginLeft: 'calc(-1 * var(--content-left))' }}>{hero}</div>
+      )}
+      <header
+        className={cn(
+          'sticky top-0 z-30 flex-shrink-0 transition-[background-color,box-shadow,color] duration-300',
+          hero ? 'order-1 -mb-[var(--hero-bar-h)] h-[var(--hero-bar-h)]' : 'material-bar hairline-b',
+          hero && (onMedia ? 'scheme-dark bg-transparent' : 'material-bar hairline-b'),
+        )}
+        style={{ paddingTop: 'env(safe-area-inset-top, 0px)', ['--hero-bar-h' as string]: accessory ? '96px' : '52px' }}
+      >
         <div className="flex items-center gap-2 min-h-[var(--toolbar-h)] px-4">
           {(device === 'tablet' || !sidebarOpen) && (
             <button
@@ -67,14 +97,14 @@ function DesktopPage({ title, subtitle, actions, accessory, back, bleed, narrow,
         </div>
         {accessory && <div className="px-4 pb-2.5">{accessory}</div>}
       </header>
-      <div className={cn('flex-1 min-h-0', !bleed && 'px-6 py-5', className)}>
+      <div className={cn('flex-1 min-h-0 order-3', !bleed && 'px-[var(--page-x)] py-5', hero && 'pt-8', className)}>
         {narrow && !bleed ? <div className="max-w-[880px] mx-auto">{children}</div> : children}
       </div>
     </div>
   )
 }
 
-function PhonePage({ title, actions, accessory, back, bleed, largeTitle = true, children, className }: PageProps) {
+function PhonePage({ title, actions, accessory, back, bleed, largeTitle = true, hero, children, className }: PageProps) {
   const { pathname } = useLocation()
   const parent = back ?? PHONE_PARENT[pathname]
   const titleRef = useRef<HTMLHeadingElement>(null)
@@ -89,6 +119,36 @@ function PhonePage({ title, actions, accessory, back, bleed, largeTitle = true, 
     io.observe(el)
     return () => io.disconnect()
   }, [largeTitle])
+
+  if (hero) {
+    // Apple TV (iPhone): the large title and its accessory float over the billboard, in white;
+    // the navigation bar is transparent until the billboard has scrolled away.
+    return (
+      <div className="flex flex-col min-h-full">
+        <header
+          className={cn('sticky top-0 z-30 transition-[background-color,box-shadow] duration-300 -mb-[calc(var(--navbar-h)+env(safe-area-inset-top,0px))]',
+            compact ? 'material-bar hairline-b' : 'scheme-dark bg-transparent')}
+          style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
+        >
+          <div className="grid grid-cols-[1fr_auto_1fr] items-center h-[var(--navbar-h)] safe-x" style={{ ['--gutter' as string]: '8px' }}>
+            <div />
+            <div className="text-[17px] font-semibold text-label truncate max-w-[52vw] transition-opacity duration-fast" style={{ opacity: compact ? 1 : 0 }} aria-hidden={!compact}>{title}</div>
+            <div className="justify-self-end flex items-center gap-1 pr-1">{actions}</div>
+          </div>
+        </header>
+        <div className="relative">
+          {hero}
+          <div className="absolute inset-x-0 top-0 scheme-dark" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + var(--navbar-h))' }}>
+            <div className="gutter safe-x pt-0.5 pb-2">
+              <h1 ref={titleRef} className="text-largetitle text-label [text-shadow:0_1px_12px_rgba(0,0,0,0.25)]">{title}</h1>
+            </div>
+            {accessory && <div className="gutter safe-x pb-3">{accessory}</div>}
+          </div>
+        </div>
+        <div className={cn('flex-1 min-h-0 gutter safe-x pb-6 pt-7', className)}>{children}</div>
+      </div>
+    )
+  }
 
   return (
     <div className={cn('flex flex-col', bleed ? 'h-full' : 'min-h-full')}>

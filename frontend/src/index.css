@@ -137,6 +137,27 @@
 .nx-img { transition: opacity 300ms var(--ease-out); }
 .nx-img[data-loaded="false"] { opacity: 0; }
 
+/* ── Apple TV shelves (tv.apple.com): rows of cards that snap, page gutter 40 / 25 px ──
+   The number of cards across follows the width the shelf really has (container query). */
+.shelf { container-type: inline-size; margin-inline: calc(-1 * var(--page-x)); margin-bottom: 34px; }
+.shelf__title { padding-inline: var(--shelf-x); margin-bottom: 14px; }
+.shelf__scroller {
+  --n: 3; --gap: 10px;
+  display: grid; grid-auto-flow: column; gap: var(--gap);
+  grid-auto-columns: calc((100cqw - 2 * var(--shelf-x) - (var(--n) - 1) * var(--gap)) / var(--n));
+  overflow-x: auto; overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory; scroll-padding-inline: var(--shelf-x);
+  padding: 8px var(--shelf-x) 16px;   /* room for the hover lift and its shadow */
+  margin-block: -8px -16px;
+}
+.shelf--poster .shelf__scroller { grid-auto-columns: 144px; }   /* iPhone: 144 × 215 */
+.shelf--wide .shelf__scroller { --n: 1.25; }
+@container (min-width: 600px) { .shelf__scroller { --gap: 20px; } .shelf--poster .shelf__scroller { --n: 4; grid-auto-columns: calc((100cqw - 2 * var(--shelf-x) - (var(--n) - 1) * var(--gap)) / var(--n)); } .shelf--wide .shelf__scroller { --n: 2; } }
+@container (min-width: 800px)  { .shelf--poster .shelf__scroller { --n: 5; } .shelf--wide .shelf__scroller { --n: 3; } }
+@container (min-width: 1000px) { .shelf--poster .shelf__scroller { --n: 6; } .shelf--wide .shelf__scroller { --n: 3; } }
+@container (min-width: 1200px) { .shelf--poster .shelf__scroller { --n: 7; } .shelf--wide .shelf__scroller { --n: 4; } }
+@container (min-width: 1400px) { .shelf--poster .shelf__scroller { --n: 8; } .shelf--wide .shelf__scroller { --n: 5; } }
+
 /* Grouped list separators: hairline between rows, inset after the icon (iOS) */
 [role="list"] > :not(:first-child).nx-row::before,
 [role="list"] > :not(:first-child) > .nx-row::before {

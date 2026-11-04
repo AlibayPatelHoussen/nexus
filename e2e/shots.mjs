@@ -55,6 +55,11 @@ for (const vp of VIEWPORTS) {
       const file = `${OUT}/${name}-${vp.name}-${theme}.png`
       await page.screenshot({ path: file })
       console.log(file)
+      if (process.env.SCROLL) {   // a second image further down (rows, lists)
+        await page.evaluate((y) => { const m = document.getElementById('main'); if (m && m.scrollHeight > m.clientHeight) m.scrollTo(0, y); else window.scrollTo(0, y) }, Number(process.env.SCROLL))
+        await page.waitForTimeout(500)
+        await page.screenshot({ path: file.replace('.png', '-scroll.png') })
+      }
       await page.close()
     }
     await ctx.close()
