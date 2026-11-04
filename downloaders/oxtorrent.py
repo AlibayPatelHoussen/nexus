@@ -141,7 +141,7 @@ def get_page(path, retry_portal=True):
 # ── Release names ─────────────────────────────────────────────────────────────
 
 STOP = re.compile(
-    r"\b(S\d{1,2}(?:E\d{1,3})?|Saison\s*\d+|INT[EÉ]GRALE|COMPLETE|MULTi|MULTI|TRUEFRENCH|FRENCH|SUBFRENCH|VOSTFR|"
+    r"\b(S\d{1,2}(?:E\d{1,4})?|E(?:p|pisode)?\s?\d{1,4}|Saison\s*\d+|INT[EÉ]GRALE|COMPLETE|MULTi|MULTI|TRUEFRENCH|FRENCH|SUBFRENCH|VOSTFR|"
     r"VFF|VFQ|VF2|VFI|\d{3,4}p|4K|UHD|HDLight|4KLight|WEB(?:-?DL|RIP)?|BluRay|BDRip|BRRip|DVDRip|HDTV|REMUX|"
     r"x26[45]|HEVC|H26[45])\b", re.I)
 
@@ -154,9 +154,12 @@ def parse_release(name):
     end = stop.start() if stop else len(n)
     year = None
     for m in re.finditer(r"\b((?:19|20)\d{2})\b", n):
-        if 0 < m.start() <= end:
-            year, end = int(m.group(1)), m.start()
-            break
+        if m.start() == 0:
+            continue                      # « 1917 », « 2012 »: the year is the title
+        year = int(m.group(1))            # before the tags it ends the title, after them it is only the year
+        if m.start() <= end:
+            end = m.start()
+        break
     title = re.sub(r"\s+", " ", n[:end]).strip(" -–([")
     if not title:
         title = n.split(" ")[0]
@@ -168,10 +171,19 @@ def parse_release(name):
         langs.append("VF")
     if re.search(r"\bVOSTFR\b|\bSUBFRENCH\b", up):
         langs.append("VOSTFR")
-    q = re.search(r"\b(2160p|1080p|720p|480p|4KLight|HDLight|4K|UHD)\b", n, re.I)
-    s = re.search(r"\bS(\d{1,2})(?:E\d{1,3})?\b|\bSaison\s*(\d+)", n, re.I)
-    return {"title": title, "year": year, "season": int(s.group(1) or s.group(2)) if s else None,
-            "langs": langs, "quality": q.group(1) if q else None}
+    q = re.search(r"\b(2160p|1080p|720p|480p)\b", n, re.I) or re.search(r"\b(4KLight|HDLight|4K|UHD)\b", n, re.I) \
+        or re.search(r"\b(REMUX|BluRay|BDRip|BRRip|WEB-?DL|WEBRip|WEB|HDTV|DVDRip)\b", n, re.I)
+    quality = None
+    if q:
+        quality = q.group(1)
+        quality = quality.lower() if re.fullmatch(r"\d{3,4}p", quality, re.I) else \
+            {"bdrip": "BDRip", "brrip": "BRRip", "webrip": "WEBRip", "web-dl": "WEB-DL", "webdl": "WEB-DL", "web": "WEB",
+             "hdtv": "HDTV", "dvdrip": "DVDRip", "bluray": "BluRay", "remux": "REMUX", "4klight": "4KLight",
+             "hdlight": "HDLight", "4k": "4K", "uhd": "UHD"}.get(quality.lower(), quality)
+    s = re.search(r"\bS(\d{1,2})(?:E(\d{1,4}))?\b|\bSaison\s*(\d+)", n, re.I)
+    e = re.search(r"\bS\d{1,2}E(\d{1,4})\b|\bE(?:p|pisode)?\s?(\d{1,4})\b", n, re.I)
+    return {"title": title, "year": year, "season": int(s.group(1) or s.group(3)) if s else None,
+            "episode": int(e.group(1) or e.group(2)) if e else None, "langs": langs, "quality": quality}
 
 
 def _norm(text):
@@ -455,12 +467,12 @@ def json_search(query, limit):
     def one(row):
         kind = kind_of(row["category"])
         rel = parse_release(row["name"])
-        tmdb = tmdb_match(rel["title"], rel["year"], kind) if kind != "anime" else None
+        tmdb = tmdb_match(rel["title"], rel["year"], kind)     # animes too: they are on TMDB (poster only)
         return {"id": f"oxtorrent:{kind}:{row['detail']}", "source": "oxtorrent", "kind": kind,
                 "title": rel["title"], "year": rel["year"], "poster_url": (tmdb or {}).get("poster_url"),
                 "description": (tmdb or {}).get("description"), "release": row["name"], "size": row["size"],
                 "seeds": row["seeds"], "leech": row["leech"], "langs": rel["langs"], "quality": rel["quality"],
-                "season": rel["season"]}
+                "season": rel["season"], "episode": rel["episode"]}
 
     from concurrent.futures import ThreadPoolExecutor
     with ThreadPoolExecutor(max_workers=6) as pool:
@@ -480,12 +492,14 @@ def json_details(id_):
                    poster_url=d["poster_url"] or (tmdb or {}).get("poster_url"),
                    description=d["description"] or (tmdb or {}).get("description"),
                    release=d["release"] or d["title"], size=d["size"], seeds=d["seeds"], leech=d["leech"],
-                   langs=rel["langs"], quality=rel["quality"], season=rel["season"],
+                   langs=rel["langs"], quality=rel["quality"], season=rel["season"], episode=rel["episode"],
                    downloadable=bool(d["torrent"] or d["magnet"]))
 
 
 def json_download(args):
     kind, detail_id = _parse_id(args.download)
+    if not shutil.which("aria2c"):
+        nexus_cli.fail("aria2 n'est pas installé sur le serveur (sudo apt-get install -y aria2)")
     dest = args.dest or {"film": FILMS_DIR, "serie": SERIES_DIR, "anime": ANIMES_DIR}[kind]
     html, base = get_page(f"/detail/{detail_id}")
     if not html:
@@ -511,6 +525,9 @@ def json_download(args):
     work.mkdir(parents=True, exist_ok=True)
     source = fetch_torrent(base, d, work)
     if not aria2(source, str(work), item):
+        # Keep what was received (resumed when retried), but not an empty folder
+        if not any(f.is_file() and f.name != ".source.torrent" for f in work.rglob("*")):
+            shutil.rmtree(work, ignore_errors=True)
         nexus_cli.emit("error", message="Le torrent n'a pas pu être téléchargé (pas de sources ?)", item=item, fatal=False)
         nexus_cli.emit("done", ok=0, failed=1, skipped=0)
         return 2

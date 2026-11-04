@@ -19,7 +19,7 @@ export interface SearchResult {
   langs?:        string[]
   seasons?:      { id: string | number; label: string; langs?: string[]; episodes_count?: number }[]
   /** oxtorrent: one torrent = one job */
-  release?: string; size?: string; seeds?: number; leech?: number; quality?: string | null; season?: number | null
+  release?: string; size?: string; seeds?: number; leech?: number; quality?: string | null; season?: number | null; episode?: number | null
 }
 
 export interface DetailEpisode { n: number; label: string; downloaded: boolean | string[]; available?: boolean; air_date?: string | null; langs?: string[] | null }

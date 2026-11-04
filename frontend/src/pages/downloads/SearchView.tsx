@@ -45,8 +45,9 @@ export function formatDuration(s?: number | null) {
 }
 
 /** « MULTI · 2160p · 4.36 GB · 82 seeds » */
-export function torrentLine(r: Pick<SearchResult, 'langs' | 'quality' | 'size' | 'seeds' | 'season'>) {
-  return [r.season ? `Saison ${r.season}` : null, r.langs?.join('/'), r.quality, r.size,
+export function torrentLine(r: Pick<SearchResult, 'langs' | 'quality' | 'size' | 'seeds' | 'season' | 'episode'>) {
+  const part = r.season && r.episode ? `S${r.season} · épisode ${r.episode}` : r.season ? `Saison ${r.season}` : r.episode ? `Épisode ${r.episode}` : null
+  return [part, r.langs?.join('/'), r.quality, r.size,
     r.seeds != null ? `${r.seeds} seed${r.seeds > 1 ? 's' : ''}` : null].filter(Boolean).join(' · ')
 }
 

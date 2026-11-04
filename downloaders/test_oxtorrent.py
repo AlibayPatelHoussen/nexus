@@ -48,6 +48,14 @@ class OxTorrent(unittest.TestCase):
         r = ox.parse_release("1917.2019.VOSTFR.1080p.WEB")          # a year as the title
         self.assertEqual((r["title"], r["year"], r["langs"]), ("1917", 2019, ["VOSTFR"]))
         self.assertEqual(ox.kind_of("Séries"), "serie")
+        r = ox.parse_release("Dune : Deuxième Partie FRENCH DVDRIP 2024")       # year after the tags
+        self.assertEqual((r["title"], r["year"], r["quality"]), ("Dune : Deuxième Partie", 2024, "DVDRip"))
+        r = ox.parse_release("One Piece E1180 VOSTFR 720P")
+        self.assertEqual((r["title"], r["episode"], r["quality"]), ("One Piece", 1180, "720p"))
+        r = ox.parse_release("One.Piece.2023.S02.MULTi.1080p.WEB")
+        self.assertEqual((r["title"], r["year"], r["season"], r["episode"]), ("One Piece", 2023, 2, None))
+        r = ox.parse_release("Dune.Prophecy.S01E01.FRENCH.WEBRip")
+        self.assertEqual((r["season"], r["episode"], r["quality"]), (1, 1, "WEBRip"))
 
     def test_detail_page(self):
         d = ox.parse_detail(DETAIL)

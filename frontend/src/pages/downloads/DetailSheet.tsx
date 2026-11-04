@@ -250,7 +250,7 @@ export default function DetailSheet({ result, onClose }: { result: SearchResult 
         {details && torrent && (
           <div className="flex flex-col gap-2 rounded-[10px] bg-fill2 px-3 py-2.5">
             <p className="text-subhead text-label break-all">{details.release || r.release}</p>
-            <p className="text-caption text-label2">{torrentLine({ langs: r.langs, quality: details.quality ?? r.quality, size: details.size || r.size, seeds: details.seeds ?? r.seeds, season: r.season })}{details.leech != null ? ` · ${details.leech} leech` : ''}</p>
+            <p className="text-caption text-label2">{torrentLine({ langs: r.langs, quality: details.quality ?? r.quality, size: details.size || r.size, seeds: details.seeds ?? r.seeds, season: r.season, episode: r.episode })}{details.leech != null ? ` · ${details.leech} leech` : ''}</p>
             <p className="text-caption text-label2">
               {details.downloadable === false
                 ? 'Pas de lien torrent sur cette page.'
