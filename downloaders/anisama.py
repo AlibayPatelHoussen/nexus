@@ -754,21 +754,30 @@ def get_chapters(scan_url: str) -> list:
     el = soup.find(id="titreOeuvre")
     if not el:
         return []
-    titre = el.get_text(strip=True)
+    # Nexus copy: the site sends the title exactly as written in the page,
+    # spaces included ("Naruto  "); the stripped one is "not found"
+    raw = re.search(r'id=["\']titreOeuvre["\'][^>]*>(.*?)</', r.text, re.S)
+    names = [raw.group(1)] if raw else []
+    names.append(el.get_text(strip=True))
 
     domain = re.match(r"https?://[^/]+", scan_url).group(0)
     api_url = f"{domain}/s2/scans/get_nb_chap_et_img.php"
-    api_r = get(api_url, params={"oeuvre": titre})
-    if not api_r:
-        return []
-
-    try:
-        data = api_r.json()
-    except Exception:
+    data, titre = None, None
+    for name in dict.fromkeys(names):
+        api_r = get(api_url, params={"oeuvre": name})
+        try:
+            candidate = api_r.json() if api_r else None
+        except Exception:
+            candidate = None
+        if isinstance(candidate, dict) and candidate and "error" not in candidate:
+            data, titre = candidate, name
+            break
+    if not data:
         return []
 
     chapters = []
-    for chap_num_str, nb_pages in sorted(data.items(), key=lambda x: int(x[0])):
+    numeric = [(k, v) for k, v in data.items() if re.fullmatch(r"\d+", str(k))]
+    for chap_num_str, nb_pages in sorted(numeric, key=lambda x: int(x[0])):
         chap_num = int(chap_num_str)
         chapters.append({
             "label":    f"Chapitre {chap_num}",
@@ -1068,7 +1077,7 @@ def main():
 # ── Mode Nexus (--json) ───────────────────────────────────────────────────────
 # Everything below is only used with --json; the menus above are unchanged.
 
-ANIME_SEGMENT = re.compile(r"^(saison\d+(?:-\d+)?|film\d*|oav\d*|speciaux|specials?|kai\d*)$")
+ANIME_SEGMENT = re.compile(r"^(saison\d+(?:hs|-\d+)?|film\d*|oav\d*|speciaux|specials?|kai\d*)$")
 LANGS = ("vostfr", "vf", "va", "vj", "vcn", "vqc", "vkr", "vf1", "vf2")
 
 
@@ -1146,6 +1155,9 @@ def _probe(urls):
 
 
 def _season_label(seg):
+    m = re.match(r"saison(\d+)hs$", seg)
+    if m:
+        return f"Saison {m.group(1)} (sans fillers)"
     m = re.match(r"saison(\d+)", seg)
     if m:
         return f"Saison {m.group(1)}"
@@ -1188,8 +1200,8 @@ def _structure(slug, full_probe=False):
     else:
         # The page often lists only VOSTFR; VF may exist next to it
         extra = {f"{base}/{seg}/vf/": seg for seg, langs in seasons.items() if "vf" not in langs}
-        if scans:
-            extra.update({f"{base}/scan/{l}/": "scan" for l in ("vf", "vostfr") if l.upper() not in scans})
+        # Scans: always checked (the page does not always list them where we read it — Naruto)
+        extra.update({f"{base}/scan/{l}/": "scan" for l in ("vf", "vostfr") if l.upper() not in scans})
         for u in _probe(list(extra)):
             if extra[u] == "scan":
                 scans.add("VOSTFR" if "/vostfr/" in u else "VF")
