@@ -23,8 +23,13 @@ if '--search' in args:
     elif name == 'films':
         out(type='result', id='films:aHR0cHM6Ly9leGFtcGxlLmNvbS9iL3gvMQ', source='films', kind='film', title='One Piece Stampede', year=None, poster_url='https://broken.invalid/x.jpg')
     elif name == 'oxtorrent' and q.lower() == 'one piece':
-        out(type='result', id='oxtorrent:serie:5550', source='oxtorrent', kind='serie', title='One Piece', year=None, poster_url=f'{IMG}/tmdb/op-tv.png',
-            release='One.Piece.S01.MULTi.1080p.WEB.x264', size='12.4 GB', seeds=40, leech=3, langs=['MULTI'], quality='1080p', season=1)
+        def v(i, res, lang, fam, seeds, size):
+            return {'id': f'oxtorrent:serie:{i}', 'release': f'One.Piece.S01.{lang}.{res}', 'resolution': res, 'source': 'WEB-DL', 'codec': 'x264',
+                    'language': lang, 'language_family': fam, 'size': size, 'size_bytes': 1, 'seeders': seeds, 'leechers': 1}
+        out(type='result', id='oxtorrent:group:serie:one-piece', source='oxtorrent', kind='serie', title='One Piece', year=1999, poster_url=f'{IMG}/tmdb/op-tv.png',
+            seasons=[{'number': 1, 'packs': [{'label': 'Saison complète', 'episodes': None, 'versions': [v(5550, '1080p', 'MULTI', 'MULTI', 40, '12.4 GB')]}],
+                      'episodes': [{'number': n, 'title': f'Épisode {n}', 'versions': [v(5560 + n, '1080p', 'MULTI', 'MULTI', 30, '1.2 GB'),
+                                                                                       v(5570 + n, '720p', 'VOSTFR', 'VOSTFR', 12, '400 MB')]} for n in (1, 2)]}])
     elif name == 'youtube':
         for i in range(3):
             out(type='result', id=f'youtube:abcdefghij{i}', source='youtube', kind='youtube', title=f'{q} — vidéo {i + 1}', channel='Chaîne Test',

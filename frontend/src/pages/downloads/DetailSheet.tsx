@@ -4,7 +4,7 @@ import { AlertTriangle, Check } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { isAxiosError } from 'axios'
 import {
-  SOURCE_INFO, downloadsService, originalImage, type DetailChapter, type DetailEpisode, type SearchResult,
+  SOURCE_INFO, downloadsService, originalImage, type DetailChapter, type DetailEpisode, type SearchResult, type TorrentGroup,
 } from '@/services/downloadsService'
 import { useShell } from '@/components/shell/shellContext'
 import Sheet from '@/components/ui/Sheet'
@@ -17,7 +17,8 @@ import { useConfirm } from '@/components/ui/useConfirm'
 import Artwork from '@/components/media/Artwork'
 import KindBadge from '@/components/downloads/KindBadge'
 import { cn } from '@/utils'
-import { formatDuration, torrentLine } from './SearchView'
+import { formatDuration } from './SearchView'
+import TorrentSheet from './TorrentSheet'
 
 /** off = shown but cannot be chosen (movix: not out yet, or not in this language); date = TMDB air date */
 interface Item { n: number; label?: string; done: boolean; off?: string; date?: string | null }
@@ -83,13 +84,18 @@ function nextOut(items: Item[]) {
   return next ? ` (prochain le ${formatDay(next)})` : ''
 }
 
+/** OxTorrent cards (versions inside) have their own sheet; every other site keeps this one, unchanged. */
 export default function DetailSheet({ result, onClose }: { result: SearchResult | null; onClose: () => void }) {
+  if (result?.source === 'oxtorrent') return <TorrentSheet result={result as TorrentGroup} onClose={onClose} />
+  return <StandardSheet result={result} onClose={onClose} />
+}
+
+function StandardSheet({ result, onClose }: { result: SearchResult | null; onClose: () => void }) {
   const { device } = useShell()
   const phone = device === 'phone'
   const qc = useQueryClient()
   const confirm = useConfirm()
   const r = result
-  const torrent = r?.source === 'oxtorrent'   // one torrent = one job: no season / episode / language choice
   const needsDetails = !!r && r.kind !== 'youtube' && r.source !== 'films'
   const { data: details, isLoading, isError, refetch } = useQuery({
     queryKey: ['dl-details', r?.id],
@@ -103,7 +109,7 @@ export default function DetailSheet({ result, onClose }: { result: SearchResult 
   const [lang, setLang] = useState<string>('')
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [busy, setBusy] = useState(false)
-  const followable = !!r && !torrent && (r.kind === 'anime' || r.kind === 'serie' || r.kind === 'manga')
+  const followable = !!r && (r.kind === 'anime' || r.kind === 'serie' || r.kind === 'manga')
   const { data: follow, refetch: refetchFollow } = useQuery({
     queryKey: ['dl-follow', r?.id], queryFn: () => downloadsService.follow(r!.id), enabled: followable, retry: false,
   })
@@ -163,14 +169,14 @@ export default function DetailSheet({ result, onClose }: { result: SearchResult 
 
   async function queue(force = false) {
     if (!r) return
-    const multi = !torrent && (r.kind === 'anime' || r.kind === 'serie' || r.kind === 'manga')
+    const multi = r.kind === 'anime' || r.kind === 'serie' || r.kind === 'manga'
     if (multi && !selected.size) { toast('Choisis au moins un élément.'); return }
     setBusy(true)
     try {
       await downloadsService.create({
         id: r.id, title: details?.title || r.title, poster_url: originalImage(r.poster_url ?? r.thumbnail_url),
-        ...(r.kind !== 'youtube' && r.source !== 'films' && !torrent && lang ? { lang } : {}),
-        ...(!torrent && (r.kind === 'anime' || r.kind === 'serie') ? { season, episodes: [...selected] } : {}),
+        ...(r.kind !== 'youtube' && r.source !== 'films' && lang ? { lang } : {}),
+        ...(r.kind === 'anime' || r.kind === 'serie' ? { season, episodes: [...selected] } : {}),
         ...(r.kind === 'manga' ? { chapters: [...selected] } : {}),
         force,
       })
@@ -196,12 +202,12 @@ export default function DetailSheet({ result, onClose }: { result: SearchResult 
 
   if (!r) return <Sheet open={false} onClose={onClose} />
 
-  const multi = !torrent && (r.kind === 'anime' || r.kind === 'serie' || r.kind === 'manga')
+  const multi = r.kind === 'anime' || r.kind === 'serie' || r.kind === 'manga'
   const count = selected.size
   const action = multi
     ? `Télécharger${count ? ` ${count} ${r.kind === 'manga' ? `chapitre${count > 1 ? 's' : ''}` : `épisode${count > 1 ? 's' : ''}`}` : ''}`
     : 'Télécharger'
-  const canQueue = !busy && (!needsDetails || !!details) && (!multi || count > 0) && !(torrent && details?.downloadable === false)
+  const canQueue = !busy && (!needsDetails || !!details) && (!multi || count > 0)
   const video = r.kind === 'youtube'
 
   const footer = (
@@ -247,18 +253,7 @@ export default function DetailSheet({ result, onClose }: { result: SearchResult 
             message="Le site n’a pas répondu." action={<Button size="small" onClick={() => refetch()}>Réessayer</Button>} />
         )}
 
-        {details && torrent && (
-          <div className="flex flex-col gap-2 rounded-[10px] bg-fill2 px-3 py-2.5">
-            <p className="text-subhead text-label break-all">{details.release || r.release}</p>
-            <p className="text-caption text-label2">{torrentLine({ langs: r.langs, quality: details.quality ?? r.quality, size: details.size || r.size, seeds: details.seeds ?? r.seeds, season: r.season, episode: r.episode })}{details.leech != null ? ` · ${details.leech} leech` : ''}</p>
-            <p className="text-caption text-label2">
-              {details.downloadable === false
-                ? 'Pas de lien torrent sur cette page.'
-                : 'Le torrent est téléchargé en entier, dans sa langue et sa qualité, puis rangé dans la bibliothèque.'}
-            </p>
-          </div>
-        )}
-        {details && !torrent && (
+        {details && (
           <div className="flex flex-col gap-4">
             <div className="flex flex-wrap items-center gap-3">
               {(r.kind === 'anime' || r.kind === 'serie') && seasonIds.length > 0 && (

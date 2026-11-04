@@ -110,7 +110,12 @@ export interface DownloadRow {
   source_id: string
   title: string
   poster_url: string | null
-  options: { lang?: string; season?: string }
+  options: {
+    lang?: string; season?: string
+    /** oxtorrent: the version chosen, what it is (« S01E03 »), the film / episode it stands for, jobs it replaces */
+    version?: { label: string; resolution?: string | null; language?: string | null }
+    part?: string; item?: string; replaces?: string[]
+  }
   selection: { episodes?: number[]; chapters?: number[] }
   status: Status
   progress: Record<string, unknown>
@@ -136,6 +141,17 @@ export interface CreateInput {
   episodes?: unknown
   chapters?: unknown
   force?: unknown
+  /** oxtorrent */
+  version?: unknown
+  part?: unknown
+  item?: unknown
+  replace?: unknown
+}
+
+const shortText = (v: unknown, max: number, re = /^[\p{L}\p{N} .,:'’&()·+\-–/]+$/u) => {
+  if (typeof v !== 'string') return undefined
+  const t = v.trim().slice(0, max)
+  return t && re.test(t) ? t : undefined
 }
 
 function cleanInput(input: CreateInput) {
@@ -143,7 +159,7 @@ function cleanInput(input: CreateInput) {
   const title = typeof input.title === 'string' ? input.title.trim().slice(0, 300) : ''
   if (!title) throw new ValidationError('Titre manquant')
   const poster = typeof input.poster_url === 'string' && /^https?:\/\/\S+$/.test(input.poster_url) ? input.poster_url.slice(0, 2000) : null
-  const options: { lang?: string; season?: string } = {}
+  const options: DownloadRow['options'] = {}
   if (input.lang != null) {
     const lang = String(input.lang).toUpperCase()
     if (!LANG_RE.test(lang)) throw new ValidationError('Langue invalide')
@@ -159,6 +175,16 @@ function cleanInput(input: CreateInput) {
     // A torrent is downloaded whole: no season / episode choice, its language is in its name
     delete options.season
     delete options.lang
+    const v = (input.version ?? {}) as { resolution?: unknown; language?: unknown }
+    const resolution = shortText(v.resolution, 10, /^\d{3,4}p$/)
+    const language = shortText(v.language, 12, /^[A-Z]{2,12}$/)
+    const label = [resolution, language].filter(Boolean).join(' ')
+    if (label) options.version = { label, resolution: resolution ?? null, language: language ?? null }
+    const part = shortText(input.part, 40)
+    if (part) options.part = part
+    // The film / episode this version stands for: another version of it is a duplicate
+    const item = shortText(input.item, 300, /^[a-z0-9 :|-]+$/)
+    if (item) options.item = item
   } else if (kind === 'anime' || kind === 'serie') {
     if (!options.season) throw new ValidationError('Saison manquante')
     selectionArg(input.episodes)   // validates
@@ -187,9 +213,34 @@ async function findDuplicates(sourceId: string, options: object, selection: { ep
   return { rows: overlap.length ? rows : [], items: overlap.sort((a, b) => a - b) }
 }
 
+/** Another version of the same film / episode (oxtorrent), queued or downloaded. */
+async function otherVersions(item: string) {
+  const { rows } = await query<DownloadRow>(
+    `SELECT * FROM downloads WHERE source_script = 'oxtorrent' AND options->>'item' = $1
+       AND status IN ('queued', 'running', 'paused', 'done') ORDER BY created_at DESC`, [item])
+  return rows
+}
+
 export async function createDownload(input: CreateInput, userId: string) {
   const c = cleanInput(input)
-  if (input.force !== true) {
+  if (c.source === 'oxtorrent' && c.options.item) {
+    const others = await otherVersions(c.options.item)
+    const same = others.filter((r) => r.source_id === String(input.id))
+    const different = others.filter((r) => r.source_id !== String(input.id))
+    if (same.length && input.force !== true) {
+      const err = new ConflictError('Cette version est déjà téléchargée ou dans la file')
+      Object.assign(err, { details: { duplicate: true, items: [], downloads: same.map((r) => r.id) } })
+      throw err
+    }
+    if (different.length && input.force !== true && input.replace !== true) {
+      const had = [...new Set(different.map((r) => r.options.version?.label || 'une autre version'))].join(', ')
+      const err = new ConflictError(`Déjà téléchargé en ${had}`)
+      Object.assign(err, { details: { duplicate: true, replaceable: true, items: [], versions: had, downloads: different.map((r) => r.id) } })
+      throw err
+    }
+    // « Remplacer »: the other versions' files are deleted once this one is complete
+    if (input.replace === true && different.length) c.options.replaces = different.map((r) => r.id)
+  } else if (input.force !== true) {
     const dup = await findDuplicates(String(input.id), c.options, c.selection)
     if (dup.rows.length) {
       const err = new ConflictError(dup.items.length
@@ -332,6 +383,7 @@ async function launch(row: DownloadRow) {
     let libraryUpdated = Promise.resolve()
     if (status === 'done') {
       await writeHints(finished).catch((err: Error) => logger.warn(`Download hint: ${err.message}`))
+      await removeReplaced(finished).catch((err: Error) => logger.warn(`Download replace: ${err.message}`))
       libraryUpdated = rescanLibrary(row.kind)
     }
     for (const fn of finishListeners) {
@@ -339,6 +391,36 @@ async function launch(row: DownloadRow) {
     }
   }
   void tick()
+}
+
+/**
+ * « Remplacer » (oxtorrent): the new version is complete, the files of the
+ * versions it replaces are deleted (only inside the library folder of this
+ * kind) and their jobs leave the queue.
+ */
+export async function removeReplaced(row: DownloadRow) {
+  const ids = (row.options.replaces ?? []).filter((id) => /^[0-9a-f-]{36}$/i.test(id) && id !== row.id)
+  if (!ids.length) return
+  const root = path.resolve(destFor(row.kind))
+  const mine = new Set(((row.progress as { files?: string[] }).files ?? []).map((f) => path.resolve(f)))
+  const { rows } = await query<DownloadRow>('SELECT * FROM downloads WHERE id = ANY($1::uuid[])', [ids])
+  for (const old of rows) {
+    for (const f of ((old.progress as { files?: string[] }).files ?? [])) {
+      const file = path.resolve(String(f))
+      if (!file.startsWith(root + path.sep) || mine.has(file)) continue
+      await fs.unlink(file).catch(() => {})
+      await fs.unlink(path.join(path.dirname(file), `.${path.basename(file)}.nexus.json`)).catch(() => {})
+      // Empty folders left behind (« Film (2024) »), never the library folder itself
+      for (let dir = path.dirname(file); dir.startsWith(root + path.sep); dir = path.dirname(dir)) {
+        const left = await fs.readdir(dir).catch(() => ['?'])
+        if (left.some((n) => n !== '.nexus.json')) break
+        await fs.rm(dir, { recursive: true, force: true }).catch(() => {})
+      }
+    }
+    await query('DELETE FROM downloads WHERE id = $1', [old.id])
+    emit('download:removed', { id: old.id })
+    logger.info(`Download ${row.id}: replaces ${old.id} (${old.options.version?.label ?? 'autre version'})`)
+  }
 }
 
 /** Starts queued jobs while there is room. */

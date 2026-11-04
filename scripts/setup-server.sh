@@ -56,6 +56,9 @@ if ! command -v aria2c &> /dev/null; then
   sudo apt-get install -y aria2
 fi
 
+# ── guessit (OxTorrent release names) ──
+python3 -c "import guessit" &> /dev/null || sudo apt-get install -y python3-guessit || true
+
 # ── Setup PostgreSQL DB ──────────────────────────────
 echo "🗄️  Setting up database..."
 DB_NAME="nexus"

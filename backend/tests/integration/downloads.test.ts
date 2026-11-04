@@ -82,6 +82,13 @@ elif '--download' in args:
         out(type='error', message='Aucune source', item='Episode 1', fatal=False)
         out(type='done', ok=0, failed=1, skipped=0)
         sys.exit(2)
+    if ident.startswith('oxtorrent:'):
+        p = os.path.join(dest, 'Film (2024)', ident.replace(':', '_') + '.mkv')
+        os.makedirs(os.path.dirname(p), exist_ok=True); open(p, 'w').write('x')
+        out(type='item_start', name='Film.2024', index=1, total=1)
+        out(type='item_done', name='Film.2024', path=p)
+        out(type='done', ok=1, failed=0, skipped=0)
+        sys.exit(0)
     out(type='item_start', name='Chapitre 1', index=1, total=2)
     out(type='progress', item='Chapitre 1', chapter=1, chapters_total=2, page=10, pages_total=20)
     p = os.path.join(dest, 'Chapitre 1.pdf')
@@ -118,6 +125,7 @@ beforeAll(async () => {
   process.env.DOWNLOADERS_DIR = DIR
   process.env.MANGA_PATH = path.join(OUT, 'scans')
   process.env.SERIES_PATH = path.join(OUT, 'series')
+  process.env.FILMS_PATH = path.join(OUT, 'films')
   process.env.DOWNLOADS_SEARCH_TIMEOUT_MS = '3000'
   const { rows } = await query<{ id: string }>(
     `INSERT INTO users (username, email, password, role) VALUES ('dl-admin', 'dl@test.io', 'x', 'admin')
@@ -230,6 +238,35 @@ describe('Downloads: queue', () => {
     await waitFor(async () => (await statusOf(res.body.data.id)) === 'done')
     const call = JSON.parse(fs.readFileSync(ARGS_LOG, 'utf8').trim().split('\n').pop()!)
     expect(call).toEqual(['oxtorrent', '--json', '--download', 'oxtorrent:serie:5550', '--dest', path.join(OUT, 'series')])
+  })
+
+  it('torrent versions: the version is kept, another version of the same film can replace it', async () => {
+    const film = (id: string, resolution: string, extra = {}) => request(app).post('/api/downloads').set(admin).send({
+      id, title: 'Film', item: 'oxtorrent:film:film 2024', part: undefined,
+      version: { resolution, language: 'MULTI' }, ...extra })
+    const first = await film('oxtorrent:film:701', '720p')
+    expect(first.status).toBe(201)
+    expect(first.body.data.options.version).toEqual({ label: '720p MULTI', resolution: '720p', language: 'MULTI' })
+    await waitFor(async () => (await statusOf(first.body.data.id)) === 'done')
+    const oldFile = path.join(OUT, 'films', 'Film (2024)', 'oxtorrent_film_701.mkv')
+    expect(fs.existsSync(oldFile)).toBe(true)
+    // Same version again: plain duplicate
+    expect((await film('oxtorrent:film:701', '720p')).status).toBe(409)
+    // Another version: « Déjà téléchargé en 720p MULTI », can replace
+    const other = await film('oxtorrent:film:702', '1080p')
+    expect(other.status).toBe(409)
+    expect(other.body.error).toBe('Déjà téléchargé en 720p MULTI')
+    expect(other.body.details).toEqual(expect.objectContaining({ duplicate: true, replaceable: true }))
+    const replace = await film('oxtorrent:film:702', '1080p', { replace: true })
+    expect(replace.status).toBe(201)
+    await waitFor(async () => (await statusOf(replace.body.data.id)) === 'done')
+    await waitFor(async () => !fs.existsSync(oldFile) && !(await statusOf(first.body.data.id)))
+    expect(fs.existsSync(path.join(OUT, 'films', 'Film (2024)', 'oxtorrent_film_702.mkv'))).toBe(true)
+    // Odd version fields are dropped, never passed on
+    const odd = await request(app).post('/api/downloads').set(admin).send({
+      id: 'oxtorrent:film:703', title: 'X', item: 'x;rm -rf /', part: '<b>', version: { resolution: '1080p; rm', language: 'multi --x' } })
+    expect(odd.status).toBe(201)
+    expect(odd.body.data.options).toEqual({})
   })
 
   it('warns about duplicates instead of downloading again (unless forced)', async () => {

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest'
-import { rank, torrentLine } from '@/pages/downloads/SearchView'
+import { rank, torrentCount } from '@/pages/downloads/SearchView'
 
 describe('download search results order', () => {
   it('anime, manga, OxTorrent films and series, films.py films, movix films, movix series, YouTube', () => {
@@ -13,10 +13,12 @@ describe('download search results order', () => {
     ])
   })
 
-  it('describes a torrent by its language, quality, size and seeds', () => {
-    expect(torrentLine({ langs: ['MULTI'], quality: '2160p', size: '4.36 GB', seeds: 82, season: null })).toBe('MULTI · 2160p · 4.36 GB · 82 seeds')
-    expect(torrentLine({ langs: ['VF'], quality: null, size: '12 GB', seeds: 1, season: 3 })).toBe('Saison 3 · VF · 12 GB · 1 seed')
-    expect(torrentLine({ langs: ['VOSTFR'], quality: '720p', size: '300 MB', seeds: 9, episode: 1180 })).toBe('Épisode 1180 · VOSTFR · 720p · 300 MB · 9 seeds')
-    expect(torrentLine({ langs: ['VF'], quality: 'WEBRip', size: '334 MB', seeds: 2, season: 1, episode: 1 })).toBe('S1 · épisode 1 · VF · WEBRip · 334 MB · 2 seeds')
+  it('says how many versions / episodes an OxTorrent card holds', () => {
+    const v = { id: 'oxtorrent:film:1', release: '', resolution: '1080p', source: null, codec: null, language: 'MULTI', language_family: 'MULTI', size: '1 GB', size_bytes: 1, seeders: 1, leechers: 0 } as const
+    expect(torrentCount({ id: 'g', source: 'oxtorrent', kind: 'film', title: 'Dune', versions: [v, v, v] })).toBe('3 versions')
+    expect(torrentCount({ id: 'g', source: 'oxtorrent', kind: 'serie', title: 'G', seasons: [
+      { number: 1, episodes: [{ number: 1, title: null, versions: [v] }], packs: [{ label: 'Saison complète', episodes: null, versions: [v] }] },
+      { number: 2, episodes: [{ number: 1, title: null, versions: [v] }, { number: 2, title: null, versions: [v] }], packs: [] },
+    ] } as unknown as Parameters<typeof torrentCount>[0])).toBe('3 épisodes · 1 pack · 2 saisons')
   })
 })
