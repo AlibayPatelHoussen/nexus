@@ -54,7 +54,7 @@ export function destFor(kind: Kind): string {
 }
 
 export const LANG_RE = /^[A-Z0-9]{2,8}$/
-export const SEASON_RE = /^(saison\d{1,3}(-\d{1,3})?|film\d{0,2}|oav\d{0,2}|kai\d{0,2}|speciaux|specials?|\d{1,3})$/
+export const SEASON_RE = /^(saison\d{1,3}(hs|-\d{1,3})?|film\d{0,2}|oav\d{0,2}|kai\d{0,2}|speciaux|specials?|\d{1,3})$/
 
 /** A list of episode / chapter numbers -> compact text for the script ("1-3,7"). */
 export function selectionArg(list: unknown): string | null {

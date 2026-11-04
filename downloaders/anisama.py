@@ -1068,7 +1068,7 @@ def main():
 # ── Mode Nexus (--json) ───────────────────────────────────────────────────────
 # Everything below is only used with --json; the menus above are unchanged.
 
-ANIME_SEGMENT = re.compile(r"^(saison\d+(?:-\d+)?|film\d*|oav\d*|speciaux|specials?|kai\d*)$")
+ANIME_SEGMENT = re.compile(r"^(saison\d+(?:hs|-\d+)?|film\d*|oav\d*|speciaux|specials?|kai\d*)$")
 LANGS = ("vostfr", "vf", "va", "vj", "vcn", "vqc", "vkr", "vf1", "vf2")
 
 
@@ -1146,6 +1146,9 @@ def _probe(urls):
 
 
 def _season_label(seg):
+    m = re.match(r"saison(\d+)hs$", seg)
+    if m:
+        return f"Saison {m.group(1)} (sans fillers)"
     m = re.match(r"saison(\d+)", seg)
     if m:
         return f"Saison {m.group(1)}"
@@ -1188,8 +1191,8 @@ def _structure(slug, full_probe=False):
     else:
         # The page often lists only VOSTFR; VF may exist next to it
         extra = {f"{base}/{seg}/vf/": seg for seg, langs in seasons.items() if "vf" not in langs}
-        if scans:
-            extra.update({f"{base}/scan/{l}/": "scan" for l in ("vf", "vostfr") if l.upper() not in scans})
+        # Scans: always checked (the page does not always list them where we read it — Naruto)
+        extra.update({f"{base}/scan/{l}/": "scan" for l in ("vf", "vostfr") if l.upper() not in scans})
         for u in _probe(list(extra)):
             if extra[u] == "scan":
                 scans.add("VOSTFR" if "/vostfr/" in u else "VF")
