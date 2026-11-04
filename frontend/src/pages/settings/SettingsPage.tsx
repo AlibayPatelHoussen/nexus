@@ -13,6 +13,7 @@ import SegmentedControl from '@/components/ui/SegmentedControl'
 import Button from '@/components/ui/Button'
 import { useConfirm } from '@/components/ui/useConfirm'
 import type { Appearance } from '@/types'
+import NotificationsGroup from './NotificationsGroup'
 
 export default function SettingsPage() {
   const user = useAuthStore((s) => s.user)
@@ -102,6 +103,7 @@ export default function SettingsPage() {
           </Group>
         )}
 
+        {user?.role === 'admin' && <NotificationsGroup />}
         <PasswordGroup />
         <VersionGroup />
 

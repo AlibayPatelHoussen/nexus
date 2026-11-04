@@ -93,7 +93,7 @@ export interface ServiceInfo {
 }
 
 // ── Media ────────────────────────────────────────────
-export type MediaType = 'film' | 'serie' | 'anime' | 'manga' | 'webtoon'
+export type MediaType = 'film' | 'serie' | 'anime' | 'manga' | 'webtoon' | 'youtube'
 
 export interface MediaItem {
   id:            string
@@ -115,6 +115,8 @@ export interface MediaItem {
   language:      string | null
   fileSize:      number | null
   duration:      number | null
+  /** YouTube videos: channel name */
+  channel?:      string | null
   createdAt:     string
   updatedAt:     string
 }

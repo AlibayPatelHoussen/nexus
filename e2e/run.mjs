@@ -445,7 +445,7 @@ test('UI: change password (and back)', async () => {
 test('UI: theme toggle and no horizontal overflow on phones', async () => {
   const page = await newPage(admin, { width: 375, height: 812 })
   const show = sql(`SELECT id FROM media_items WHERE file_path LIKE '%Georgie%'`)
-  for (const p of ['/dashboard', '/cinema', '/animes', '/manga', '/files', '/services', '/network', '/settings', `/media/${show}`, `/player/${show}`]) {
+  for (const p of ['/dashboard', '/cinema', '/animes', '/manga', '/files', '/services', '/network', '/settings', '/youtube', '/downloads', `/media/${show}`, `/player/${show}`]) {
     await page.goto(B + p, { waitUntil: 'networkidle' })
     await page.waitForTimeout(400)
     const w = await page.evaluate(() => [document.documentElement.scrollWidth, window.innerWidth])
@@ -773,6 +773,24 @@ test('files: permission refused → password asked, wrong then right password, c
   await page.waitForSelector('text=Supprimé')
   await page.waitForSelector('button[aria-label="Actions pour root-owned"]', { state: 'detached', timeout: 10000 })
   assert(sent.length === 2 && sent[1].paths[0] === dir, 'elevated request with the path')
+  await page.context().close()
+})
+
+test('youtube: videos of /media/youtube with channel, duration and thumbnail; play', async () => {
+  const st = await api('/api/media/scan/youtube', { method: 'POST', token: admin.accessToken })
+  eq(st.status, 200, 'youtube scan')
+  const page = await newPage(admin, { width: 1280, height: 800 })
+  await page.goto(`${B}/youtube`, { waitUntil: 'networkidle' })
+  await page.waitForSelector('text=Vidéo de démo 3')
+  assert(await page.locator('text=3:45').count(), 'duration shown')
+  assert(await page.locator('text=Chaîne Démo').count(), 'channel shown')
+  const loaded = await page.evaluate(() => [...document.images].filter((i) => i.naturalWidth > 0 && i.src.includes('/api/images/media/')).length)
+  assert(loaded >= 3, `thumbnails loaded (${loaded})`)
+  await page.click('[role=switch]')
+  await page.waitForSelector('h2:has-text("Chaîne Démo")')
+  await page.click('button[aria-label="Vidéo de démo 1"]')
+  await page.waitForURL(/\/player\//)
+  await page.waitForSelector('video')
   await page.context().close()
 })
 

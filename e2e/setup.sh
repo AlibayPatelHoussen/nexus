@@ -77,6 +77,14 @@ mkdir -p "$MEDIA/films"; cp "$MEDIA/films/Tu.ne.tueras.point.2016.MULTi.1080p.mp
 SRC=(-f lavfi -i "testsrc=size=480x270:rate=24" -f lavfi -i "sine=frequency=550")
 ffmpeg -loglevel error -y "${SRC[@]}" -t 30 -c:v libx264 -pix_fmt yuv420p -g 48 -c:a ac3 "$MEDIA/films/Remux Test (2018).mkv"
 ffmpeg -loglevel error -y "${SRC[@]}" -t 90 -c:v libx265 -x265-params log-level=error -c:a aac "$MEDIA/films/Hevc Test (2017).mkv"
+# YouTube videos as yt-dlp saves them (video + thumbnail + .info.json), and one of the old layout
+YT="$MEDIA/youtube/Chaîne Démo"; mkdir -p "$YT"
+for n in 1 2 3; do
+  cp "$MEDIA/films/Tu.ne.tueras.point.2016.MULTi.1080p.mp4" "$YT/Vidéo de démo $n [demovideo0$n].mp4"
+  ffmpeg -loglevel error -y -f lavfi -i "color=c=0x$((n * 3))0$((n * 2))0a0:size=320x180" -frames:v 1 "$YT/Vidéo de démo $n [demovideo0$n].jpg"
+  printf '{"title": "Vidéo de démo %s", "channel": "Chaîne Démo", "duration": %s, "upload_date": "2024050%s"}' "$n" "$((n * 75))" "$n" > "$YT/Vidéo de démo $n [demovideo0$n].info.json"
+done
+cp "$MEDIA/films/Tu.ne.tueras.point.2016.MULTi.1080p.mp4" "$MEDIA/youtube/Vieille_video.mp4"
 S="$MEDIA/series/Georgie and Mandys First Marriage S02E12-22 FINAL"
 for e in 12 13 14; do vid "$S/Georgie.and.Mandys.First.Marriage.S02E$e.1080p.WEB.H264.mp4" 4; done
 vid "$MEDIA/series/Breaking Bad/Saison 1/Episode 1.mp4" 4

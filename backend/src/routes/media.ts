@@ -84,13 +84,14 @@ router.post('/prune', asyncHandler(async (_req, res: Response) => {
 
 router.post('/scan/:type', asyncHandler(async (req: Request, res: Response) => {
   const typeMap: Record<string, string> = {
-    films: 'film', series: 'serie', animes: 'anime', manga: 'manga',
+    films: 'film', series: 'serie', animes: 'anime', manga: 'manga', youtube: 'youtube',
   }
   const map: Record<string, () => Promise<number>> = {
     films: () => MediaScanner.scanFilms(),
     series: () => MediaScanner.scanSeries(),
     animes: () => MediaScanner.scanAnimes(),
     manga: () => MediaScanner.scanManga(),
+    youtube: () => MediaScanner.scanYoutube(),
   }
   const fn = map[req.params.type]
   if (!fn) { res.status(400).json({ success: false, error: 'Unknown type' }); return }

@@ -36,6 +36,7 @@
     "sharp": "^0.33.5",
     "socket.io": "^4.7.5",
     "systeminformation": "^5.22.11",
+    "web-push": "^3.6.7",
     "winston": "^3.13.0"
   },
   "devDependencies": {
@@ -52,6 +53,7 @@
     "@types/node": "^20.14.9",
     "@types/pg": "^8.11.6",
     "@types/supertest": "^6.0.2",
+    "@types/web-push": "^3.6.4",
     "@typescript-eslint/eslint-plugin": "^7.15.0",
     "@typescript-eslint/parser": "^7.15.0",
     "eslint": "^8.57.0",

@@ -35,6 +35,7 @@ function mapMedia(row: Record<string, any>) {
     language:      row['language'],
     fileSize:      row['file_size'],
     duration:      row['duration'],
+    channel:       row['channel'] ?? null,
     createdAt:     row['created_at'],
     updatedAt:     row['updated_at'],
   }
@@ -102,8 +103,8 @@ export class MediaService {
       query(
         `SELECT id, type, title, original_title, poster_path, backdrop_path,
                 genres, year, rating, vote_count, status, overview, duration,
-                file_path, file_size, created_at
-         FROM media_items
+                file_path, file_size, created_at, channel
+               FROM media_items
          ${where}
          ORDER BY ${validSort} ${validDir} NULLS LAST
          LIMIT $${i} OFFSET $${i + 1}`,

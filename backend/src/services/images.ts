@@ -38,7 +38,9 @@ export const urlVersion = (url: string) => crypto.createHash('sha1').update(url)
 /** URL the browser should use for a stored artwork (proxied when remote). */
 export function proxied(kind: 'media' | 'episode', id: string, field: string, url: unknown): string | null {
   if (typeof url !== 'string' || !url) return null
-  if (!isRemote(url)) return url                // data: URIs, local paths…
+  // Local artwork (YouTube thumbnail next to the video) is served by the same route
+  const local = url.startsWith('/') && !url.startsWith('/api/')
+  if (!isRemote(url) && !local) return url      // data: URIs…
   const suffix = kind === 'media' ? `/${field}` : ''
   return `/api/images/${kind}/${id}${suffix}?v=${urlVersion(url)}`
 }
