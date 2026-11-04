@@ -20,6 +20,8 @@ import filesRoutes    from './routes/files'
 import mediaRoutes    from './routes/media'
 import chaptersRoutes from './routes/chapters'
 import servicesRoutes from './routes/services'
+import downloadsRoutes from './routes/downloads'
+import { startDownloadWorker } from './services/downloads'
 import terminalRoutes from './routes/terminal'
 import imagesRoutes   from './routes/images'
 import { registerSocketHandlers } from './socket'
@@ -81,6 +83,7 @@ app.use('/api/files',    filesRoutes)
 app.use('/api/media',    chaptersRoutes)
 app.use('/api/media',    mediaRoutes)
 app.use('/api/services', servicesRoutes)
+app.use('/api/downloads', downloadsRoutes)
 app.use('/api/terminal', terminalRoutes)
 app.get('/api/health',   (_req, res) => res.json({
   status:    'ok',
@@ -133,7 +136,10 @@ if (require.main === module) {
     }
     throw err
   })
-  server.listen(PORT, () => logger.info(`Nexus backend ${BUILD_INFO.commit} running on port ${PORT} [${process.env.NODE_ENV}]`))
+  server.listen(PORT, () => {
+    logger.info(`Nexus backend ${BUILD_INFO.commit} running on port ${PORT} [${process.env.NODE_ENV}]`)
+    startDownloadWorker().catch((err: Error) => logger.error(`Download worker: ${err.message}`))
+  })
 }
 
 export { app, io }

@@ -43,11 +43,37 @@ export function proxied(kind: 'media' | 'episode', id: string, field: string, ur
   return `/api/images/${kind}/${id}${suffix}?v=${urlVersion(url)}`
 }
 
+// ─── Signed URLs: artwork of download search results (any site) ────────────
+// The server signs the URLs it hands out itself, so /api/images/remote cannot
+// be used as an open proxy by anyone else.
+const signKey = () => `img:${process.env.JWT_SECRET || 'nexus'}`
+const signature = (url: string) => crypto.createHmac('sha256', signKey()).update(url).digest('base64url').slice(0, 32)
+
+export function signedImage(url: unknown): string | null {
+  if (!isRemote(url)) return typeof url === 'string' && url ? url : null
+  return `/api/images/remote?u=${encodeURIComponent(url)}&s=${signature(url)}`
+}
+
+export function validSignature(url: unknown, sig: unknown): url is string {
+  if (!isRemote(url) || typeof sig !== 'string' || url.length > 4000) return false
+  const a = Buffer.from(signature(url)), b = Buffer.from(sig)
+  return a.length === b.length && crypto.timingSafeEqual(a, b)
+}
+
 const inflight = new Map<string, Promise<{ file: string; type: string }>>()
 
-/** Download (once) and return the cached file of an allowed remote image. */
-export function cachedImage(url: string): Promise<{ file: string; type: string }> {
-  if (!isAllowed(url)) return Promise.reject(new Error(`host not allowed: ${url}`))
+/** Download (once) and return the cached file of an allowed (or signed) remote image. */
+export function cachedImage(url: string, trusted = false): Promise<{ file: string; type: string }> {
+  if (!trusted && !isAllowed(url)) return Promise.reject(new Error(`host not allowed: ${url}`))
+  try {
+    const u = new URL(url)
+    if (u.protocol !== 'https:' && u.protocol !== 'http:') throw new Error('protocol')
+    // Never fetch the server itself or the local network through a signed URL
+    if (/^(localhost|127\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.|\[?::1\]?$|0\.)/i.test(u.hostname) && trusted
+        && process.env.NODE_ENV === 'production') throw new Error('local address')
+  } catch (err) {
+    return Promise.reject(new Error(`bad image url (${(err as Error).message}): ${url}`))
+  }
   const key  = crypto.createHash('sha1').update(url).digest('hex')
   const file = path.join(CACHE_DIR, key.slice(0, 2), key)
   const meta = `${file}.type`
