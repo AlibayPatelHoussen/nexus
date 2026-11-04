@@ -51,6 +51,11 @@ if ! command -v pdftoppm &> /dev/null; then
   sudo apt-get install -y poppler-utils
 fi
 
+# ── aria2 (torrents of downloaders/oxtorrent.py) ──
+if ! command -v aria2c &> /dev/null; then
+  sudo apt-get install -y aria2
+fi
+
 # ── Setup PostgreSQL DB ──────────────────────────────
 echo "🗄️  Setting up database..."
 DB_NAME="nexus"

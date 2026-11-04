@@ -210,7 +210,7 @@ END $$;
 CREATE TABLE IF NOT EXISTS downloads (
   id             UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   kind           VARCHAR(10) NOT NULL CHECK (kind IN ('anime', 'manga', 'film', 'serie', 'youtube')),
-  source_script  VARCHAR(10) NOT NULL CHECK (source_script IN ('anisama', 'films', 'movix', 'youtube')),
+  source_script  VARCHAR(10) NOT NULL CHECK (source_script IN ('anisama', 'films', 'movix', 'oxtorrent', 'youtube')),
   source_id      TEXT NOT NULL,
   title          TEXT NOT NULL,
   poster_url     TEXT,

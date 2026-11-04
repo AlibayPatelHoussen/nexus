@@ -46,6 +46,8 @@ elif '--search' in args:
     if name == 'anisama':
         out(type='result', id='anisama:anime:one-piece', kind='anime', title='One Piece', poster_url='https://cdn.example/op.jpg')
         out(type='result', id='anisama:manga:one-piece', kind='manga', title='One Piece', poster_url='https://cdn.example/op.jpg')
+    if name == 'oxtorrent':
+        out(type='result', id='oxtorrent:film:82140', kind='film', title='Inception', size='4.36 GB', seeds=82, langs=['MULTI'])
     if name == 'youtube':
         out(type='result', id='youtube:dQw4w9WgXcQ', kind='youtube', title=q, thumbnail_url='https://i.ytimg.com/vi/x/hq.jpg', duration=212)
     out(type='done')
@@ -112,9 +114,10 @@ const statusOf = async (id: string) =>
   (await query<{ status: string }>('SELECT status FROM downloads WHERE id = $1', [id])).rows[0]?.status
 
 beforeAll(async () => {
-  for (const f of ['anisama', 'films', 'movix', 'youtube']) fs.writeFileSync(path.join(DIR, `${f}.py`), FAKE)
+  for (const f of ['anisama', 'films', 'movix', 'oxtorrent', 'youtube']) fs.writeFileSync(path.join(DIR, `${f}.py`), FAKE)
   process.env.DOWNLOADERS_DIR = DIR
   process.env.MANGA_PATH = path.join(OUT, 'scans')
+  process.env.SERIES_PATH = path.join(OUT, 'series')
   process.env.DOWNLOADS_SEARCH_TIMEOUT_MS = '3000'
   const { rows } = await query<{ id: string }>(
     `INSERT INTO users (username, email, password, role) VALUES ('dl-admin', 'dl@test.io', 'x', 'admin')
@@ -140,17 +143,17 @@ describe('Downloads: access', () => {
 })
 
 describe('Downloads: unified search', () => {
-  it('runs the four scripts in parallel and streams results; a slow or broken script does not block the others', async () => {
+  it('runs the five scripts in parallel and streams results; a slow or broken script does not block the others', async () => {
     emitted.length = 0
     const res = await request(app).post('/api/downloads/search').set(admin).send({ query: 'one piece' })
     expect(res.status).toBe(202)
     const { searchId } = res.body.data
     const done = await waitFor(async () => {
       const d = emitted.filter((e) => e.event === 'download:search_done' && e.payload.searchId === searchId)
-      return d.length === 4 ? d : null
+      return d.length === 5 ? d : null
     }, 10000)
     const results = emitted.filter((e) => e.event === 'download:search_result' && e.payload.searchId === searchId)
-    expect(results.map((r) => (r.payload.result as { kind: string }).kind).sort()).toEqual(['anime', 'manga', 'youtube'])
+    expect(results.map((r) => (r.payload.result as { kind: string }).kind).sort()).toEqual(['anime', 'film', 'manga', 'youtube'])
     // Only to the user who searched
     expect(results.every((r) => r.room === `user:${adminId}`)).toBe(true)
     // Artwork goes through the signed proxy (results arrive in any order)
@@ -186,6 +189,8 @@ describe('Downloads: queue', () => {
       { id: 'anisama:anime:one-piece', title: 'x', season: '../x', episodes: [1] },
       { id: 'anisama:anime:one-piece', title: 'x', episodes: [1] },          // no season
       { id: 'youtube:short', title: 'x' },
+      { id: 'oxtorrent:musique:1', title: 'x' },
+      { id: 'oxtorrent:film:82140/../1', title: 'x' },
     ]
     for (const body of bad) {
       expect((await request(app).post('/api/downloads').set(admin).send(body)).status).toBe(422)
@@ -214,6 +219,17 @@ describe('Downloads: queue', () => {
     expect(emitted.some((e) => e.event === 'download:progress' && e.payload.id === id)).toBe(true)
     expect(emitted.filter((e) => e.event === 'download:status' && e.payload.id === id).map((e) => e.payload.status))
       .toEqual(expect.arrayContaining(['queued', 'running', 'done']))
+  })
+
+  it('downloads a torrent whole: no season, episode or language passed to oxtorrent.py', async () => {
+    fs.writeFileSync(ARGS_LOG, '')
+    const res = await request(app).post('/api/downloads').set(admin)
+      .send({ id: 'oxtorrent:serie:5550', title: 'The Bear', season: 'saison1', episodes: [1], lang: 'VF' })
+    expect(res.status).toBe(201)
+    expect(res.body.data.kind).toBe('serie')
+    await waitFor(async () => (await statusOf(res.body.data.id)) === 'done')
+    const call = JSON.parse(fs.readFileSync(ARGS_LOG, 'utf8').trim().split('\n').pop()!)
+    expect(call).toEqual(['oxtorrent', '--json', '--download', 'oxtorrent:serie:5550', '--dest', path.join(OUT, 'series')])
   })
 
   it('warns about duplicates instead of downloading again (unless forced)', async () => {
