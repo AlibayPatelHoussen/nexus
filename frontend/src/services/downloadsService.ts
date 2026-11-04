@@ -20,7 +20,7 @@ export interface SearchResult {
   seasons?:      { id: string | number; label: string; langs?: string[]; episodes_count?: number }[]
 }
 
-export interface DetailEpisode { n: number; label: string; downloaded: boolean | string[] }
+export interface DetailEpisode { n: number; label: string; downloaded: boolean | string[]; available?: boolean; air_date?: string | null }
 export interface DetailChapter { n: number; pages: number; downloaded: boolean }
 
 export interface Details {
