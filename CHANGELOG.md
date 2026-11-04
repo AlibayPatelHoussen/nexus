@@ -4,6 +4,10 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Fixed — push notifications refused by Apple
+- iPhone notifications never arrived: the server signed them as `mailto:admin@localhost`, which Apple rejects (403 BadJwtToken). The sender is now `VAPID_SUBJECT`, else the public https address of Nexus (`FRONTEND_URL`), never localhost
+- « Envoyer un test » says why a send failed (service and reason) instead of « Aucun appareil abonné »; opening Réglages sends this device's subscription to the server again, in case it was forgotten
+
 ### Changed — downloads on iPhone, anime badge, follow switch in the library
 - iPhone: Téléchargements now lives in Médias (download button with the active count in the navigation bar of Films / Séries / Animes / YouTube; back goes to Médias) instead of Aperçu
 - The anime badge reads « Animé/Série »

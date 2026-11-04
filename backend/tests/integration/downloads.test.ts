@@ -137,9 +137,11 @@ describe('Downloads: unified search', () => {
     expect(results.map((r) => (r.payload.result as { kind: string }).kind).sort()).toEqual(['anime', 'manga', 'youtube'])
     // Only to the user who searched
     expect(results.every((r) => r.room === `user:${adminId}`)).toBe(true)
-    // Artwork goes through the signed proxy
-    const poster = (results[0].payload.result as { poster_url: string }).poster_url
-    expect(poster).toMatch(/^\/api\/images\/remote\?u=.+&s=/)
+    // Artwork goes through the signed proxy (results arrive in any order)
+    const anime = results.find((r) => (r.payload.result as { kind: string }).kind === 'anime')!.payload.result as { poster_url: string }
+    expect(anime.poster_url).toMatch(/^\/api\/images\/remote\?u=.+&s=/)
+    const video = results.find((r) => (r.payload.result as { kind: string }).kind === 'youtube')!.payload.result as { thumbnail_url: string }
+    expect(video.thumbnail_url).toMatch(/^\/api\/images\/remote\?u=.+&s=/)
     const by = Object.fromEntries(done.map((d) => [d.payload.source, d.payload]))
     expect(by.anisama.error).toBeNull()
     expect(by.movix.error).toBeTruthy()           // crashed

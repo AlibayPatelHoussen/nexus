@@ -16,6 +16,18 @@ import { ValidationError } from '../utils/errors'
 const KEY_FILE = process.env.VAPID_FILE || path.resolve(__dirname, '../../data/vapid.json')
 let keys: { publicKey: string; privateKey: string } | null = null
 
+/**
+ * Who sends the notifications. Apple refuses "localhost" (403 BadJwtToken):
+ * VAPID_SUBJECT, else the public address of Nexus (FRONTEND_URL) when it is https.
+ */
+export function vapidSubject(): string {
+  const configured = (process.env.VAPID_SUBJECT || '').trim()
+  if (/^(mailto:\S+@\S+\.\S+|https:\/\/\S+)$/.test(configured)) return configured
+  const site = (process.env.FRONTEND_URL || '').split(',')[0].trim().replace(/\/+$/, '')
+  if (/^https:\/\/[^/\s]+\.[^/\s]+/.test(site) && !/localhost|127\.0\.0\.1/.test(site)) return site
+  return 'mailto:nexus@example.com'
+}
+
 function vapid() {
   if (keys) return keys
   if (process.env.VAPID_PUBLIC_KEY && process.env.VAPID_PRIVATE_KEY) {
@@ -30,7 +42,7 @@ function vapid() {
       logger.info(`Web Push keys generated in ${KEY_FILE}`)
     }
   }
-  webpush.setVapidDetails(process.env.VAPID_SUBJECT || 'mailto:admin@localhost', keys!.publicKey, keys!.privateKey)
+  webpush.setVapidDetails(vapidSubject(), keys!.publicKey, keys!.privateKey)
   return keys!
 }
 
@@ -60,13 +72,21 @@ export async function unsubscribe(userId: string, endpoint: unknown) {
 export interface PushMessage { title: string; body: string; url?: string; tag?: string }
 
 /** Sends to every device of these users; forgets devices that unsubscribed. */
+export interface PushResult { devices: number; sent: number; errors: string[] }
+
 export async function sendPush(userIds: string[], msg: PushMessage): Promise<number> {
-  if (!userIds.length) return 0
+  return (await sendPushDetailed(userIds, msg)).sent
+}
+
+/** Same, with what went wrong for each device (shown by « Envoyer un test »). */
+export async function sendPushDetailed(userIds: string[], msg: PushMessage): Promise<PushResult> {
+  if (!userIds.length) return { devices: 0, sent: 0, errors: [] }
   vapid()
   const { rows } = await query<{ id: string; endpoint: string; p256dh: string; auth: string }>(
     'SELECT id, endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = ANY($1::uuid[])', [userIds],
   )
   let sent = 0
+  const errors: string[] = []
   await Promise.all(rows.map(async (s) => {
     try {
       await webpush.sendNotification({ endpoint: s.endpoint, keys: { p256dh: s.p256dh, auth: s.auth } },
@@ -77,11 +97,13 @@ export async function sendPush(userIds: string[], msg: PushMessage): Promise<num
       if (status === 404 || status === 410) {
         await query('DELETE FROM push_subscriptions WHERE id = $1', [s.id])
       } else {
-        logger.warn(`Push to ${new URL(s.endpoint).host} failed: ${status ?? ''} ${(err as Error).message}`)
+        const body = String((err as { body?: unknown }).body ?? '').slice(0, 200)
+        errors.push(`${new URL(s.endpoint).host} : ${status ?? ''} ${body || (err as Error).message}`.trim())
+        logger.warn(`Push to ${new URL(s.endpoint).host} failed: ${status ?? ''} ${(err as Error).message} ${body}`)
       }
     }
   }))
-  return sent
+  return { devices: rows.length, sent, errors }
 }
 
 export async function deviceCount(userId: string) {

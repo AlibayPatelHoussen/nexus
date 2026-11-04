@@ -4,7 +4,7 @@ import request from 'supertest'
 import webpush from 'web-push'
 import { app } from '../../src/index'
 import { query } from '../../src/config/database'
-import { sendPush } from '../../src/services/push'
+import { sendPush, vapidSubject } from '../../src/services/push'
 import { makeToken } from '../helpers'
 
 process.env.VAPID_FILE = path.join(os.tmpdir(), `nexus-vapid-${process.pid}.json`)
@@ -49,6 +49,30 @@ describe('Push notifications', () => {
     expect(send).toHaveBeenCalledTimes(2)
     expect(JSON.parse(String(send.mock.calls[0][1]))).toEqual({ title: 'Téléchargement terminé', body: 'One Piece · chapitre 1' })
     expect((await request(app).get('/api/push/key').set(auth)).body.data.devices).toBe(1)
+  })
+
+  it('reports why a send failed instead of "no device"', async () => {
+    await request(app).post('/api/push/subscribe').set(auth).send({ subscription: sub(3) })
+    jest.spyOn(webpush, 'sendNotification').mockRejectedValue(Object.assign(new Error('Forbidden'), { statusCode: 403, body: '{"reason":"BadJwtToken"}' }))
+    const res = await request(app).post('/api/push/test').set(auth)
+    expect(res.body.data).toEqual(expect.objectContaining({ devices: 2, sent: 0 }))
+    expect(res.body.data.errors[0]).toMatch(/403.*BadJwtToken/)
+    await request(app).post('/api/push/unsubscribe').set(auth).send({ endpoint: sub(3).endpoint })
+  })
+
+  it('never signs as localhost (Apple refuses it)', () => {
+    const env = { s: process.env.VAPID_SUBJECT, f: process.env.FRONTEND_URL }
+    delete process.env.VAPID_SUBJECT
+    process.env.FRONTEND_URL = 'https://nexus.example.org/'
+    expect(vapidSubject()).toBe('https://nexus.example.org')
+    process.env.FRONTEND_URL = 'http://localhost:5173'
+    expect(vapidSubject()).not.toMatch(/localhost/)
+    process.env.VAPID_SUBJECT = 'mailto:me@example.org'
+    expect(vapidSubject()).toBe('mailto:me@example.org')
+    process.env.VAPID_SUBJECT = 'mailto:admin@localhost'
+    expect(vapidSubject()).not.toMatch(/localhost/)
+    process.env.VAPID_SUBJECT = env.s; process.env.FRONTEND_URL = env.f
+    if (env.s === undefined) delete process.env.VAPID_SUBJECT
   })
 
   it('unsubscribes a device', async () => {
