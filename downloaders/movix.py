@@ -356,7 +356,8 @@ async def download_from_embed(embed_url, output_file):
         dl(f"Fichier : {output_file}")
         sep()
         run_ffmpeg(m3u8_url, m3u8_headers, output_file)
-        return True
+        # Nexus copy: success only if ffmpeg really wrote the file, else try the next source
+        return os.path.exists(output_file) and os.path.getsize(output_file) > 0
     else:
         err("Aucun m3u8 trouve pour cet embed.")
         return False
