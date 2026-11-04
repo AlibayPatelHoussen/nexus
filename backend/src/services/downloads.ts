@@ -34,7 +34,7 @@ const emit = (event: string, payload: unknown, room?: string) => {
 }
 
 /** Listeners for finished jobs (push notifications, step 5). */
-type FinishListener = (job: DownloadRow) => void
+type FinishListener = (job: DownloadRow, libraryUpdated: Promise<void>) => void
 const finishListeners: FinishListener[] = []
 export function onDownloadFinished(fn: FinishListener) { finishListeners.push(fn) }
 
@@ -277,6 +277,7 @@ function applyEvent(p: Record<string, unknown>, e: ScriptEvent) {
       break
     case 'item_done':
       p.items_done = Number(p.items_done || 0) + 1
+      if (p.item === e.name || !p.item) p.percent = 100     // the last progress line is often 99 %
       p.files = [...files, String(e.path)].slice(-200)
       break
     case 'item_skipped':
@@ -328,12 +329,13 @@ async function launch(row: DownloadRow) {
   if (status === 'failed' || error) logger.warn(`Download ${row.id} (${row.title}) ${status}: ${error} — ${log.slice(-5).join(' | ')}`)
   const finished = await setStatus(row.id, status, { progress, error: error?.slice(0, 1000) ?? null })
   if (finished && (status === 'done' || status === 'failed')) {
+    let libraryUpdated = Promise.resolve()
     if (status === 'done') {
       await writeHints(finished).catch((err: Error) => logger.warn(`Download hint: ${err.message}`))
-      rescanLibrary(row.kind)
+      libraryUpdated = rescanLibrary(row.kind)
     }
     for (const fn of finishListeners) {
-      try { fn(finished) } catch (err) { logger.warn(`download listener: ${(err as Error).message}`) }
+      try { fn(finished, libraryUpdated) } catch (err) { logger.warn(`download listener: ${(err as Error).message}`) }
     }
   }
   void tick()
@@ -468,16 +470,20 @@ const SCANS: Partial<Record<Kind, [string, () => Promise<number>]>> = {
 }
 
 /** The finished file appears in the library at once (retries while another scan runs). */
-function rescanLibrary(kind: Kind, attempt = 0) {
+/** Rescans the library of this kind; resolves when done (or given up), never rejects. */
+function rescanLibrary(kind: Kind, attempt = 0): Promise<void> {
   const scan = SCANS[kind]
-  if (!scan) return
+  if (!scan) return Promise.resolve()
   if (MediaScanner.isRunning()) {
-    if (attempt < 30) setTimeout(() => rescanLibrary(kind, attempt + 1), 60_000).unref()
-    return
+    if (attempt >= 30) return Promise.resolve()
+    return new Promise((resolve) => { setTimeout(() => { void rescanLibrary(kind, attempt + 1).then(resolve) }, 60_000).unref() })
   }
-  MediaScanner.exclusive(scan[0], scan[1])
-    .then((n) => logger.info(`Library rescan after download (${kind}): ${n}`))
-    .catch((err: Error) => logger.warn(`Library rescan after download: ${err.message}`))
+  return MediaScanner.exclusive(scan[0], scan[1])
+    .then((n) => { logger.info(`Library rescan after download (${kind}): ${n}`) })
+    .catch((err: Error) => { logger.warn(`Library rescan after download: ${err.message}`) })
 }
+
+/** Live event to every open Nexus of the admins (the /downloads namespace is admin only). */
+export function broadcast(event: string, payload: unknown) { emit(event, payload) }
 
 export const _test = { applyEvent, findDuplicates, running }

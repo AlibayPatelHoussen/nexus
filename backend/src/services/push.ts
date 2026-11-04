@@ -95,7 +95,9 @@ export async function sendPushDetailed(userIds: string[], msg: PushMessage): Pro
     } catch (err) {
       const status = (err as { statusCode?: number }).statusCode
       if (status === 404 || status === 410) {
+        // The device unsubscribed / the app was removed: forget it
         await query('DELETE FROM push_subscriptions WHERE id = $1', [s.id])
+        logger.info(`Push: ${new URL(s.endpoint).host} subscription expired (${status}), removed`)
       } else {
         const body = String((err as { body?: unknown }).body ?? '').slice(0, 200)
         errors.push(`${new URL(s.endpoint).host} : ${status ?? ''} ${body || (err as Error).message}`.trim())
@@ -103,6 +105,7 @@ export async function sendPushDetailed(userIds: string[], msg: PushMessage): Pro
       }
     }
   }))
+  logger.info(`Push ${msg.tag ?? msg.title}: sent to ${sent}/${rows.length} device(s)${errors.length ? `, ${errors.length} error(s)` : ''}`)
   return { devices: rows.length, sent, errors }
 }
 
