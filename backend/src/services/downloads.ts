@@ -82,11 +82,11 @@ export function startSearch(rawQuery: unknown, userId: string): { searchId: stri
 const detailsCache = new Map<string, { at: number; data: unknown }>()
 
 /** Seasons / episodes / chapters of a title, with what is already downloaded. */
-export async function getDetails(id: unknown): Promise<Record<string, unknown>> {
+export async function getDetails(id: unknown, fresh = false): Promise<Record<string, unknown>> {
   const { source } = parseSourceId(id)
   const key = String(id)
   const hit = detailsCache.get(key)
-  if (hit && Date.now() - hit.at < 60_000) return hit.data as Record<string, unknown>
+  if (!fresh && hit && Date.now() - hit.at < 60_000) return hit.data as Record<string, unknown>
   const { events, code, log } = await collect(source, ['--details', key], DETAILS_TIMEOUT())
   const details = events.find((e) => e.type === 'details')
   if (!details) {
