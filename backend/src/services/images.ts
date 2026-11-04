@@ -70,7 +70,7 @@ export function cachedImage(url: string, trusted = false): Promise<{ file: strin
     if (u.protocol !== 'https:' && u.protocol !== 'http:') throw new Error('protocol')
     // Never fetch the server itself or the local network through a signed URL
     if (/^(localhost|127\.|10\.|192\.168\.|169\.254\.|172\.(1[6-9]|2\d|3[01])\.|\[?::1\]?$|0\.)/i.test(u.hostname) && trusted
-        && process.env.NODE_ENV === 'production') throw new Error('local address')
+        && process.env.NODE_ENV === 'production' && process.env.IMAGE_PROXY_ALLOW_LOCAL !== '1') throw new Error('local address')
   } catch (err) {
     return Promise.reject(new Error(`bad image url (${(err as Error).message}): ${url}`))
   }

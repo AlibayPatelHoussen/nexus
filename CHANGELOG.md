@@ -4,6 +4,13 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Added — « Téléchargements » page (step 5, part 1)
+- New section Téléchargements (sidebar, ⌘K, and Aperçu on iPhone), admins only
+- One search field queries the four scripts at once; cards appear as each script answers, with a discreet line for the ones still searching or that failed. Poster grid like the TV app on Mac (YouTube in 16:9 with the duration), big thumbnails list on iPhone; type filter Tout / Animés / Mangas / Films / Séries / YouTube; badges with one system colour per type; images that fail show a neutral placeholder
+- Detail sheet (macOS sheet / iOS bottom sheet): season and language, episodes or chapters as number chips with a range « De … à … », « Tout sélectionner », already downloaded ones ticked; one button for a film or a video; duplicates ask before downloading again
+- Queue: En cours / En attente / Terminés / Échecs with progress bars (chapter and page for manga; Mo, speed and time left for video), live over Socket.io; pause / resume / cancel / retry / remove from the context menu on Mac and by swiping the row on iPhone; « Ouvrir » plays the video or opens the manga reader
+- `GET /api/downloads/:id/open` finds the downloaded file in the library
+
 ### Added — downloads backend (step 4 of « Téléchargements »)
 - Table `downloads` (migration 003) and a queue worker: 2 jobs at a time (`DOWNLOADS_PARALLEL`), each runs the right script with `spawn` (arguments as an array, minimal environment without Nexus' secrets, own process group so pause / cancel also stop ffmpeg and the browser), reads its JSON Lines and saves the progress; jobs left running by a restart go back to the queue
 - Admin API: `POST /api/downloads/search` (the four scripts in parallel, results streamed over Socket.io `/downloads` as `download:search_result`, one `download:search_done` per script, timeout per script), `GET /api/downloads/details`, `POST /api/downloads`, `GET /api/downloads`, `POST /api/downloads/:id/pause|resume|cancel|retry`, `DELETE /api/downloads/:id`; live `download:status` / `download:progress`

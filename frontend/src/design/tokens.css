@@ -36,6 +36,7 @@
   --green:       #34c759;  --green-text:  #1e7b34;  --green-soft:  rgba(52, 199, 89, 0.14);
   --orange:      #ff9500;  --orange-text: #c93400;  --orange-soft: rgba(255, 149, 0, 0.14);
   --red:         #ff3b30;  --red-text:    #d70015;  --red-soft:    rgba(255, 59, 48, 0.12);
+  --purple:      #af52de;  --purple-text: #8944ab;  --purple-soft: rgba(175, 82, 222, 0.14);
 
   /* ── Materials (blur only on sidebar, toolbar, tab bar) ── */
   --material-sidebar: rgba(236, 236, 238, 0.78);
@@ -109,6 +110,7 @@
     --green: #30d158; --green-text: #30d158; --green-soft: rgba(48, 209, 88, 0.18);
     --orange: #ff9f0a; --orange-text: #ff9f0a; --orange-soft: rgba(255, 159, 10, 0.18);
     --red: #ff453a; --red-text: #ff453a; --red-soft: rgba(255, 69, 58, 0.18);
+    --purple: #bf5af2; --purple-text: #da8fff; --purple-soft: rgba(191, 90, 242, 0.2);
     --material-sidebar: rgba(40, 40, 42, 0.72); --material-bar: rgba(30, 30, 32, 0.8);
     --shadow-sheet: 0 0 0 0.5px rgba(255, 255, 255, 0.12), 0 12px 40px rgba(0, 0, 0, 0.55);
     --shadow-popover: 0 0 0 0.5px rgba(255, 255, 255, 0.14), 0 6px 20px rgba(0, 0, 0, 0.45);
@@ -125,6 +127,7 @@
   --green: #30d158; --green-text: #30d158; --green-soft: rgba(48, 209, 88, 0.18);
   --orange: #ff9f0a; --orange-text: #ff9f0a; --orange-soft: rgba(255, 159, 10, 0.18);
   --red: #ff453a; --red-text: #ff453a; --red-soft: rgba(255, 69, 58, 0.18);
+  --purple: #bf5af2; --purple-text: #da8fff; --purple-soft: rgba(191, 90, 242, 0.2);
   --material-sidebar: rgba(40, 40, 42, 0.72); --material-bar: rgba(30, 30, 32, 0.8);
   --shadow-sheet: 0 0 0 0.5px rgba(255, 255, 255, 0.12), 0 12px 40px rgba(0, 0, 0, 0.55);
   --shadow-popover: 0 0 0 0.5px rgba(255, 255, 255, 0.14), 0 6px 20px rgba(0, 0, 0, 0.45);

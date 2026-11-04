@@ -776,6 +776,45 @@ test('files: permission refused → password asked, wrong then right password, c
   await page.context().close()
 })
 
+test('downloads: one search over the four scripts, choose chapters, queue runs with live progress', async () => {
+  const page = await newPage(admin, { width: 1280, height: 800 })
+  await page.goto(`${B}/downloads`, { waitUntil: 'networkidle' })
+  await page.fill('input[type=search]', 'one piece')
+  await page.keyboard.press('Enter')
+  // anime-sama answers first: its cards appear before the slower scripts have finished
+  await page.waitForSelector('text=Recherche dans', { timeout: 5000 })
+  await page.locator('button', { hasText: 'Animé' }).filter({ hasText: 'One Piece' }).first().waitFor({ timeout: 5000 })
+  await page.locator('button', { hasText: 'Manga' }).filter({ hasText: 'One Piece' }).first().waitFor()
+  await page.waitForSelector('text=One Piece Stampede', { timeout: 10000 })
+  await page.waitForSelector('text=one piece — vidéo 1')
+  // Filter by type
+  await page.click('[role=radio]:has-text("YouTube")')
+  eq(await page.locator('text=One Piece Stampede').count(), 0, 'films hidden by the YouTube filter')
+  await page.click('[role=radio]:has-text("Tout")')
+  // Manga: range of chapters
+  await page.locator('button', { hasText: 'Manga' }).filter({ hasText: 'One Piece' }).first().click()
+  await page.waitForSelector('text=Tout sélectionner')
+  await page.fill('input[aria-label="Premier chapitre"]', '4')
+  await page.fill('input[aria-label="Dernier chapitre"]', '5')
+  await page.click('button:has-text("Choisir")')
+  await page.click('button:has-text("Télécharger 2 chapitres")')
+  await page.waitForSelector('text=ajouté à la file')
+  await page.click('[role=radio]:has-text("File")')
+  await page.waitForSelector('text=chapitres 4–5')
+  await page.waitForSelector('[role=progressbar]', { timeout: 10000 })
+  await page.waitForSelector('text=Terminés', { timeout: 20000 })
+  await page.screenshot({ path: `${SHOTS}/downloads-queue.png` })
+  // Same chapters again: warned instead of downloading twice
+  await page.click('[role=radio]:has-text("Rechercher")')
+  await page.locator('button', { hasText: 'Manga' }).filter({ hasText: 'One Piece' }).first().click()
+  await page.waitForSelector('text=Tout sélectionner')
+  await page.fill('input[aria-label="Premier chapitre"]', '5'); await page.fill('input[aria-label="Dernier chapitre"]', '6')
+  await page.click('button:has-text("Choisir")')
+  await page.click('button:has-text("Télécharger 2 chapitres")')
+  await page.waitForSelector('text=Déjà téléchargé ou en file : 5')
+  await page.context().close()
+})
+
 test('UI: logout', async () => {
   const page = await newPage(admin, { width: 1280, height: 800 })
   await page.goto(`${B}/dashboard`, { waitUntil: 'networkidle' })
