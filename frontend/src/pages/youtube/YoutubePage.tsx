@@ -13,6 +13,7 @@ import Skeleton from '@/components/ui/Skeleton'
 import Artwork from '@/components/media/Artwork'
 import { VideoSectionSwitch } from '@/components/media/MediaBrowser'
 import { formatDuration } from '@/pages/downloads/SearchView'
+import DownloadsButton from '@/components/downloads/DownloadsButton'
 
 type Sort = 'recent' | 'title'
 const GRID = 'grid grid-cols-[repeat(auto-fill,minmax(240px,1fr))] max-sm:grid-cols-1 gap-x-4 gap-y-6'
@@ -115,7 +116,7 @@ export default function YoutubePage() {
   }
 
   return (
-    <Page title={phone ? 'Médias' : 'YouTube'}
+    <Page title={phone ? 'Médias' : 'YouTube'} actions={phone ? <DownloadsButton /> : undefined}
       subtitle={!phone && data ? `${data.total ?? videos.length} vidéo${(data.total ?? videos.length) > 1 ? 's' : ''}` : undefined}
       accessory={phone ? <div className="flex flex-col gap-3"><VideoSectionSwitch full value="youtube" />{controls}</div>
         : <div className="flex flex-wrap items-center gap-4"><VideoSectionSwitch value="youtube" />{controls}</div>}>

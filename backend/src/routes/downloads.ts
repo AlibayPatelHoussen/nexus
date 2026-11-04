@@ -5,7 +5,7 @@ import {
   actOn, createDownload, deleteDownload, getDetails, listDownloads, openTarget, startSearch, type CreateInput,
 } from '../services/downloads'
 import { ValidationError } from '../utils/errors'
-import { checkDueFollows, getFollow, listFollows, setFollow, type FollowInput } from '../services/follows'
+import { checkDueFollows, followTarget, getFollow, listFollows, setFollow, type FollowInput } from '../services/follows'
 
 // « Téléchargements »: writes on the server, so admins only
 const router = Router()
@@ -25,6 +25,11 @@ router.get('/details', asyncHandler(async (req: Request, res: Response) => {
 router.get('/follows', asyncHandler(async (req: Request, res: Response) => {
   if (req.query.id) { res.json({ success: true, data: await getFollow(req.query.id) }); return }
   res.json({ success: true, data: await listFollows() })
+}))
+
+// The follow switch of a library title (anime / series / manga page)
+router.get('/follows/media/:mediaId', asyncHandler(async (req: Request, res: Response) => {
+  res.json({ success: true, data: await followTarget(req.params.mediaId) })
 }))
 
 router.put('/follows', asyncHandler(async (req: Request, res: Response) => {

@@ -10,6 +10,7 @@ import type { MediaItem, MediaType } from '@/types'
 import Page from '@/components/shell/Page'
 import { useShell } from '@/components/shell/shellContext'
 import SegmentedControl from '@/components/ui/SegmentedControl'
+import DownloadsButton from '@/components/downloads/DownloadsButton'
 import Button from '@/components/ui/Button'
 import EmptyState from '@/components/ui/EmptyState'
 import Skeleton from '@/components/ui/Skeleton'
@@ -215,6 +216,7 @@ export default function MediaBrowser({ title, tabs, yearFilter, emptyIcon, video
   )
   const phoneActions = (
     <>
+      {videoSwitch && <DownloadsButton />}
       <button type="button" className="w-11 h-11 grid place-items-center text-accent-text active:opacity-50" onClick={() => setView(view === 'grid' ? 'list' : 'grid')} aria-label={view === 'grid' ? 'Afficher en liste' : 'Afficher les affiches'}>
         {view === 'grid' ? <List size={22} strokeWidth={1.75} /> : <LayoutGrid size={22} strokeWidth={1.75} />}
       </button>
