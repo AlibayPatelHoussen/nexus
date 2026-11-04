@@ -19,19 +19,21 @@ import KindBadge from '@/components/downloads/KindBadge'
 import { cn } from '@/utils'
 import { formatDuration } from './SearchView'
 
-interface Item { n: number; label?: string; done: boolean }
+/** soon = announced, not out yet (movix): shown, but cannot be chosen */
+interface Item { n: number; label?: string; done: boolean; soon?: string | null }
 
 /** Episodes / chapters as number chips (One Piece has 1100+ chapters), with a range and select all. */
 function ItemPicker({ items, selected, onChange, noun }: { items: Item[]; selected: Set<number>; onChange: (s: Set<number>) => void; noun: string }) {
   const [from, setFrom] = useState('')
   const [to, setTo] = useState('')
   const all = items.map((i) => i.n)
-  const missing = items.filter((i) => !i.done).map((i) => i.n)
+  const out = items.filter((i) => i.soon === undefined).map((i) => i.n)
+  const missing = items.filter((i) => !i.done && i.soon === undefined).map((i) => i.n)
   const toggle = (n: number) => { const s = new Set(selected); if (s.has(n)) s.delete(n); else s.add(n); onChange(s) }
   const applyRange = () => {
     const a = Number(from || all[0]), b = Number(to || all[all.length - 1])
     if (!Number.isFinite(a) || !Number.isFinite(b)) return
-    onChange(new Set(all.filter((n) => n >= Math.min(a, b) && n <= Math.max(a, b))))
+    onChange(new Set(out.filter((n) => n >= Math.min(a, b) && n <= Math.max(a, b))))
   }
   return (
     <div className="flex flex-col gap-3">
@@ -51,11 +53,12 @@ function ItemPicker({ items, selected, onChange, noun }: { items: Item[]; select
       <div className="grid grid-cols-[repeat(auto-fill,minmax(52px,1fr))] gap-1.5 max-h-[42vh] overflow-y-auto p-0.5" role="group" aria-label={`${noun}s`}>
         {items.map((it) => {
           const on = selected.has(it.n)
+          const soon = it.soon !== undefined
           return (
-            <button key={it.n} type="button" onClick={() => toggle(it.n)} aria-pressed={on}
-              title={`${it.label ?? `${noun} ${it.n}`}${it.done ? ' — déjà téléchargé' : ''}`}
+            <button key={it.n} type="button" onClick={() => toggle(it.n)} aria-pressed={on} disabled={soon}
+              title={`${it.label ?? `${noun} ${it.n}`}${it.done ? ' — déjà téléchargé' : ''}${soon ? ` — pas encore disponible${it.soon ? ` (sortie le ${formatDay(it.soon)})` : ''}` : ''}`}
               className={cn('relative h-9 rounded-[8px] text-subhead tabular font-medium',
-                on ? 'bg-accent-fill text-white' : it.done ? 'bg-fill text-label3' : 'bg-fill text-label')}>
+                on ? 'bg-accent-fill text-white' : soon ? 'bg-fill text-label3 opacity-50 border border-dashed border-separator cursor-not-allowed' : it.done ? 'bg-fill text-label3' : 'bg-fill text-label')}>
               {it.n}
               {it.done && <Check size={10} strokeWidth={3} className={cn('absolute top-1 right-1', on ? 'text-white' : 'text-ok-text')} aria-hidden="true" />}
             </button>
@@ -65,9 +68,18 @@ function ItemPicker({ items, selected, onChange, noun }: { items: Item[]; select
       <p className="text-caption text-label2">
         {selected.size} {noun}{selected.size > 1 ? 's' : ''} sélectionné{selected.size > 1 ? 's' : ''}
         {items.some((i) => i.done) && <> · <Check size={10} strokeWidth={3} className="inline text-ok-text" aria-hidden="true" /> déjà téléchargé</>}
+        {items.some((i) => i.soon !== undefined) && <> · en pointillés : pas encore disponible{nextOut(items)}</>}
       </p>
     </div>
   )
+}
+
+const formatDay = (d: string) => new Date(`${d}T12:00:00`).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
+
+/** « (prochain le 12 janvier 2027) » when the next episode has a date. */
+function nextOut(items: Item[]) {
+  const next = items.map((i) => i.soon).filter((d): d is string => !!d).sort()[0]
+  return next ? ` (prochain le ${formatDay(next)})` : ''
 }
 
 export default function DetailSheet({ result, onClose }: { result: SearchResult | null; onClose: () => void }) {
@@ -135,6 +147,7 @@ export default function DetailSheet({ result, onClose }: { result: SearchResult 
     const s = (details.seasons ?? []).find((x) => String(x.id) === season && (r?.kind !== 'anime' || x.lang === lang))
     return (s?.episodes ?? []).map((e: DetailEpisode) => ({
       n: e.n, label: e.label, done: Array.isArray(e.downloaded) ? e.downloaded.includes(lang) : !!e.downloaded,
+      ...(e.available === false ? { soon: e.air_date ?? null } : {}),
     }))
   }, [details, season, lang, r?.kind])
   useEffect(() => { setSelected(new Set()) }, [season, lang])

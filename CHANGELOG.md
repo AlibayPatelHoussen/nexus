@@ -4,6 +4,12 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Fixed — movix episodes not out yet
+- A series season announced on TMDB but not hosted on movix yet (Georgie & Mandy's First Marriage, saison 3) failed with « Aucune source n'a fonctionné » after a minute per episode. Episodes not out yet (TMDB date to come, or placeholder title « Épisode N ») are now greyed out with dashed borders in the detail sheet and cannot be selected (« prochain le … »)
+- When movix has no link for an episode, the job says « Épisode pas encore disponible sur movix (sortie le …) » right away instead of waiting 60 s for the web player
+- Follow switch: announced episodes are no longer counted as already known, so they are downloaded the day they come out (they were skipped forever before)
+- movix: a source whose stream was found but could not be saved no longer stops the search, the next sources are tried
+
 ### Changed — anime-sama search always live, catalogue rebuilt every day
 - anime-sama is asked at every search, so new titles appear right away; the local catalogue completes the results (close spellings the site's search misses) and answers alone when the site does not
 - The site's search had moved (old address 404, result cards without `title`): it now uses the site's own search box request, with the catalogue page as a second way; until now only the local catalogue answered. Loosely related titles the site adds (« kaiju » → Kaiji) are left out: every word searched must be in the title, its address or its other names

@@ -33,7 +33,7 @@ const CHECK_EVERY_MS = () => Number(process.env.FOLLOW_CHECK_INTERVAL_MS) || 24 
 /** Numbers available right now for this title / season / language. */
 async function available(sourceId: string, kind: FollowRow['kind'], options: FollowRow['options']): Promise<number[]> {
   const d = await getDetails(sourceId, true) as {
-    seasons?: { id: string | number; lang?: string; episodes: { n: number }[] }[]
+    seasons?: { id: string | number; lang?: string; episodes: { n: number; available?: boolean }[] }[]
     langs?: ({ lang: string; chapters?: { n: number }[] } | string)[]
   }
   if (kind === 'manga') {
@@ -41,7 +41,8 @@ async function available(sourceId: string, kind: FollowRow['kind'], options: Fol
     return (l?.chapters ?? []).map((c) => c.n)
   }
   const s = (d.seasons ?? []).find((x) => String(x.id) === String(options.season) && (kind !== 'anime' || x.lang === options.lang))
-  return (s?.episodes ?? []).map((e) => e.n)
+  // Announced but not out yet (movix): not « known », so it is queued the day it comes out
+  return (s?.episodes ?? []).filter((e) => e.available !== false).map((e) => e.n)
 }
 
 export async function getFollow(sourceId: unknown): Promise<FollowRow | null> {

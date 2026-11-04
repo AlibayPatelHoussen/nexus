@@ -207,6 +207,7 @@ def get_episodes(tmdb_id, season_num):
         episodes.append({
             "title": f"E{num:02d} - {name}",
             "num":   num,
+            "air_date": ep.get("air_date") or "",   # Nexus copy: to hide episodes not out yet
         })
     return sorted(episodes, key=lambda x: x["num"])
 
@@ -651,10 +652,31 @@ def json_details(id_):
         eps = list(pool.map(lambda s: get_episodes(tmdb_id, s["num"]), seasons))
     nexus_cli.emit("details", id=id_, kind="serie", **m, langs=["VF", "VOSTFR"], seasons=[
         {"id": s["num"], "label": s["name"], "episodes": [
-            {"n": e["num"], "label": e["title"],
+            {"n": e["num"], "label": e["title"], "air_date": e.get("air_date") or None, "available": _aired(e),
              "downloaded": [l for l in ("VF", "VOSTFR") if os.path.exists(_episode_file(m["title"], l, s["num"], e))]}
             for e in ep_list]}
         for s, ep_list in zip(seasons, eps)])
+
+
+def _aired(ep):
+    """TMDB lists announced episodes (« Épisode 3 », date to come): movix has nothing for them yet."""
+    date = ep.get("air_date") or ""
+    if date:
+        return date <= time.strftime("%Y-%m-%d")
+    return not re.fullmatch(r"E\d+ - [ÉE]pisode \d+", ep.get("title", ""))
+
+
+def _movix_missing(path, params=None):
+    """True when movix answers 404 « not found » (nothing hosted), not on network errors."""
+    try:
+        return SESSION.get(f"{MOVIX_API}{path}", params=params, timeout=15).status_code == 404
+    except requests.RequestException:
+        return False
+
+
+def _episode_missing(tmdb_id, season, episode):
+    p = {"season": season, "episode": episode}
+    return _movix_missing(f"/links/tv/{tmdb_id}", p) and _movix_missing(f"/purstream/tv/{tmdb_id}/stream", p)
 
 
 _CURRENT_ITEM = {"name": ""}
@@ -725,6 +747,12 @@ async def json_download(args):
             final = _episode_file(m["title"], lang, season_num, ep)
             if not os.path.exists(final):
                 nexus_cli.emit("item_start", name=item, index=i, total=len(wanted))
+                if _episode_missing(tmdb_id, season_num, n):
+                    # No need to wait 60 s for the web player: movix has no link at all
+                    when = f" (sortie le {ep['air_date']})" if ep.get("air_date") and not _aired(ep) else ""
+                    nexus_cli.emit("error", message=f"Épisode pas encore disponible sur movix{when}", item=item, fatal=False)
+                    stats["failed"] += 1
+                    continue
             stats[await _download_one(item, final, lambda part, ep=ep: download_episode(
                 tmdb_id=tmdb_id, season=season_num, episode=ep["num"], lang_filter=lang, output_file=part))] += 1
     nexus_cli.emit("done", **stats)

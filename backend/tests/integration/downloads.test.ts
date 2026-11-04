@@ -54,8 +54,17 @@ elif '--details' in args:
         count = int(open(os.path.join(os.path.dirname(sys.argv[0]), 'count.txt')).read())
     except Exception:
         count = 2
-    out(type='details', id=arg('--details'), kind='manga', title='One Piece', poster_url='https://cdn.example/op.jpg',
-        langs=[{'lang': 'VF', 'chapters': [{'n': n, 'pages': 20, 'downloaded': n == 1} for n in range(1, count + 1)]}])
+    if arg('--details').startswith('movix:tv:'):
+        try:
+            aired = int(open(os.path.join(os.path.dirname(sys.argv[0]), 'aired.txt')).read())
+        except Exception:
+            aired = 2
+        out(type='details', id=arg('--details'), kind='serie', title='Série', langs=['VF', 'VOSTFR'], seasons=[
+            {'id': 1, 'label': 'Saison 1', 'episodes': [{'n': n, 'label': f'E{n:02d}', 'downloaded': [], 'available': n <= aired,
+                                                         'air_date': '2026-01-01' if n <= aired else '2099-01-01'} for n in range(1, 5)]}])
+    else:
+        out(type='details', id=arg('--details'), kind='manga', title='One Piece', poster_url='https://cdn.example/op.jpg',
+            langs=[{'lang': 'VF', 'chapters': [{'n': n, 'pages': 20, 'downloaded': n == 1} for n in range(1, count + 1)]}])
     out(type='done')
 elif '--download' in args:
     ident = arg('--download')
@@ -279,6 +288,22 @@ describe('Follow a title (automatic downloads, off by default)', () => {
     await request(app).put('/api/downloads/follows').set(admin).send({ id, enabled: false })
     fs.writeFileSync(path.join(DIR, 'count.txt'), '7')
     expect(await checkDueFollows(true)).toBe(0)
+  })
+
+  it('does not count announced episodes (movix, not out yet) as known: queued the day they come out', async () => {
+    fs.writeFileSync(path.join(DIR, 'aired.txt'), '2')
+    const id = 'movix:tv:243875'
+    const on = await request(app).put('/api/downloads/follows').set(admin)
+      .send({ id, title: 'Série', lang: 'VF', season: '1', enabled: true })
+    expect(on.status).toBe(200)
+    expect(on.body.data.known).toEqual([1, 2])
+    expect(await checkDueFollows(true)).toBe(0)
+    fs.writeFileSync(path.join(DIR, 'aired.txt'), '4')
+    expect(await checkDueFollows(true)).toBe(2)
+    const { rows } = await query<{ selection: { episodes: number[] } }>(
+      "SELECT selection FROM downloads WHERE source_id = $1 ORDER BY created_at DESC LIMIT 1", [id])
+    expect(rows[0].selection.episodes).toEqual([3, 4])
+    await request(app).put('/api/downloads/follows').set(admin).send({ id, enabled: false })
   })
 
   it('finds the source of a library title: from its downloads, else by its name', async () => {
