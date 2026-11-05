@@ -5,6 +5,7 @@ import type { MediaItem } from '@/types'
 import { useShell } from '@/components/shell/shellContext'
 import { spring } from '@/design/motion'
 import { cn } from '@/utils'
+import TitleLogo from './TitleLogo'
 
 interface DetailHeroProps {
   media:      MediaItem
@@ -75,7 +76,7 @@ export default function DetailHero({ media, facts, rating, playLabel, canPlay, o
   const { device } = useShell()
   const phone = device === 'phone'
   const art = useRef<HTMLDivElement>(null)
-  const image = phone ? (media.posterPath || media.backdropPath) : (media.backdropPath || media.posterPath)
+  const image = phone ? (media.keyArtPath || media.posterPath || media.backdropPath) : (media.heroBackdropPath || media.backdropPath || media.posterPath)
   const [failed, setFailed] = useState(false)
   useEffect(() => { setFailed(false) }, [image])
 
@@ -135,8 +136,8 @@ export default function DetailHero({ media, facts, rating, playLabel, canPlay, o
           className="absolute inset-x-0 bottom-6 px-[var(--shelf-x)] flex flex-col"
           initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ ...spring.soft, delay: 0.08 }}
         >
-          <h1 className="self-center text-center text-[36px] font-extrabold leading-[1.02] tracking-[-0.03em] [text-wrap:balance] line-clamp-3">
-            {media.title}
+          <h1 className="self-center text-center text-[36px] font-extrabold leading-[1.02] tracking-[-0.03em] [text-wrap:balance]">
+            <TitleLogo title={media.title} logo={media.logoPath} className="line-clamp-3" logoClassName="block mx-auto max-h-[112px] max-w-[80vw]" />
           </h1>
           {kinds.length > 0 && <p className="self-center text-center text-[17px] text-white/85 mt-2">{kinds.join(' · ')}</p>}
           <div className="flex items-center gap-3 mt-4">
@@ -177,8 +178,8 @@ export default function DetailHero({ media, facts, rating, playLabel, canPlay, o
           initial={{ opacity: 0, y: 14 }} animate={{ opacity: 1, y: 0 }} transition={{ ...spring.soft, delay: 0.08 }}
         >
           <div className={cn('flex flex-col gap-2.5 min-w-0', phone ? 'items-center' : 'flex-[0_1_560px]')}>
-            <h1 className={cn('font-bold leading-[1.04] tracking-[-0.025em] [text-wrap:balance] line-clamp-3', phone ? 'text-[34px]' : 'text-[56px]')}>
-              {media.title}
+            <h1 className={cn('font-bold leading-[1.04] tracking-[-0.025em] [text-wrap:balance]', phone ? 'text-[34px]' : 'text-[56px]')}>
+              <TitleLogo title={media.title} logo={media.logoPath} logoClassName="block max-h-[160px] max-w-[min(480px,36vw)] object-left" />
             </h1>
             <p className="flex flex-wrap items-center justify-center gap-x-1.5 text-[15px] text-white/70 tabular" style={phone ? undefined : { justifyContent: 'flex-start' }}>
               {facts.join(' · ')}

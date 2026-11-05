@@ -1,3 +1,4 @@
+import sharp from 'sharp'
 import axios from 'axios'
 import crypto from 'crypto'
 import fs from 'fs'
@@ -100,12 +101,30 @@ export function cachedImage(url: string, trusted = false): Promise<{ file: strin
     const type = String(res.headers['content-type'] || '').split(';')[0].trim()
     if (!type.startsWith('image/')) throw new Error(`not an image (${type || 'no content-type'}): ${url}`)
 
+    let body: Buffer = Buffer.from(res.data)
+    let outType = type
+    // TMDB full-resolution artwork (key art, backdrops: up to 4000 px, several MB):
+    // downscaled once to what a 3x iPhone / 2x desktop needs, logos keep their alpha
+    if (/\/t\/p\/original\//.test(url) && /^image\/(jpeg|png|webp)$/.test(type)) {
+      try {
+        const img = sharp(body)
+        const { width = 0, height = 0, hasAlpha } = await img.metadata()
+        const max = height > width ? 1290 : 2560
+        if (width > max) {
+          body = hasAlpha
+            ? await img.resize({ width: max }).png({ compressionLevel: 9 }).toBuffer()
+            : await img.resize({ width: max }).jpeg({ quality: 84, mozjpeg: true }).toBuffer()
+          if (!hasAlpha) outType = 'image/jpeg'
+        }
+      } catch (err) { logger.warn(`Image resize skipped (${(err as Error).message}): ${url}`) }
+    }
+
     await fs.promises.mkdir(path.dirname(file), { recursive: true })
     const tmp = `${file}.${process.pid}.tmp`
-    await fs.promises.writeFile(tmp, Buffer.from(res.data))
+    await fs.promises.writeFile(tmp, body)
     await fs.promises.rename(tmp, file)
-    await fs.promises.writeFile(meta, type)
-    return { file, type }
+    await fs.promises.writeFile(meta, outType)
+    return { file, type: outType }
   })()
 
   inflight.set(key, job)

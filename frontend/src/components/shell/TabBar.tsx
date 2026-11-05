@@ -1,8 +1,8 @@
-import { useLayoutEffect, useRef, useState } from 'react'
+import { useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { motion } from 'framer-motion'
+import { motion, useMotionValue, useSpring, useTransform, type MotionValue } from 'framer-motion'
 import { useAuthStore } from '@/stores/authStore'
-import { cn } from '@/utils'
+import type { LucideIcon } from 'lucide-react'
 import { TABS, tabFor } from './nav'
 
 const PAD = 4           // the bar's inner inset (62 pt bar, 54 pt tabs)
@@ -10,8 +10,8 @@ const LENS = 1.45       // lens width, in tabs (Apple Music: ~1.4–1.5)
 const OVERFLOW = 5      // the lens spills over the bar, top and bottom (pt)
 // Apple Music: the lens tracks the finger (≈ response .35, damping .7) and
 // settles back into the pill a bit slower (≈ .5 / .8)
-const FOLLOW = { type: 'spring', stiffness: 520, damping: 34, mass: 0.7 } as const
-const SETTLE = { type: 'spring', stiffness: 260, damping: 26 } as const
+const FOLLOW = { stiffness: 700, damping: 42, mass: 0.6 }
+const SETTLE = { type: 'spring', stiffness: 300, damping: 28 } as const
 
 /**
  * iOS 26 tab bar (Apple's iOS 26 kit, "Tab Bar – iPhone"; motion from a screen
@@ -20,6 +20,10 @@ const SETTLE = { type: 'spring', stiffness: 260, damping: 26 } as const
  * into a clear glass lens, larger than a tab and spilling over the bar, that
  * follows the finger; the tabs under it are tinted and magnified. Letting go
  * selects the tab under the finger and the lens settles back into the pill.
+ *
+ * 60 fps: while the finger moves nothing re-renders. The finger position is a
+ * motion value; the lens and every icon read it through springs / transforms
+ * (compositor-only: transform and opacity).
  */
 export default function TabBar() {
   const { pathname } = useLocation()
@@ -34,8 +38,9 @@ export default function TabBar() {
   const active = tabs.findIndex((t) => t.to === current?.to)
 
   const bar = useRef<HTMLUListElement>(null)
+  const rect = useRef<DOMRect | null>(null)
   const [width, setWidth] = useState(0)
-  const [lens, setLens] = useState<number | null>(null)   // finger x inside the bar, while touching
+  const [pressing, setPressing] = useState(false)
   const handled = useRef(false)
 
   useLayoutEffect(() => {
@@ -49,34 +54,46 @@ export default function TabBar() {
 
   const n = tabs.length
   const tabW = width ? (width - PAD * 2) / n : 0
-  const indexAt = (x: number) => Math.max(0, Math.min(n - 1, Math.floor((x - PAD) / tabW)))
-  const relX = (clientX: number) => clientX - (bar.current?.getBoundingClientRect().left ?? 0)
-
-  // Lens geometry: centred on the finger; past the ends it stretches out elastically
   const lensW = tabW * LENS
-  let lensX = 0
-  if (lens != null) {
-    const want = lens - lensW / 2
+
+  // Finger x inside the bar → lens centre (spring) → lens left edge, elastic past the ends
+  const finger = useMotionValue(0)
+  const center = useSpring(finger, FOLLOW)
+  const lensX = useTransform(center, (c) => {
+    const want = c - lensW / 2
     const min = PAD - tabW * 0.12
     const max = width - PAD - lensW + tabW * 0.12
-    lensX = want < min ? min - (min - want) * 0.3 : want > max ? max + (want - max) * 0.3 : want
-  }
-  const pressing = lens != null && tabW > 0
-  const lensCenter = lensX + lensW / 2
+    return want < min ? min - (min - want) * 0.3 : want > max ? max + (want - max) * 0.3 : want
+  })
+  // 0 at rest, 1 while touching: drives the tint / magnification of the tabs
+  const touch = useSpring(0, { stiffness: 500, damping: 40 })
+
+  const indexAt = (x: number) => Math.max(0, Math.min(n - 1, Math.floor((x - PAD) / tabW)))
+  const relX = (clientX: number) => clientX - (rect.current?.left ?? 0)
 
   const onPointerDown = (e: React.PointerEvent) => {
-    if (e.button !== 0 || !tabW) return
-    bar.current?.setPointerCapture(e.pointerId)
+    if (e.button !== 0 || !tabW || !bar.current) return
+    bar.current.setPointerCapture(e.pointerId)
+    rect.current = bar.current.getBoundingClientRect()
     handled.current = true
-    setLens(relX(e.clientX))
+    const x = relX(e.clientX)
+    // The lens grows out of the selected pill, then runs to the finger
+    const from = active >= 0 ? PAD + (active + 0.5) * tabW : x
+    center.jump(from); finger.jump(from)
+    finger.set(x)
+    touch.set(1)
+    setPressing(true)
   }
-  const onPointerMove = (e: React.PointerEvent) => { if (lens != null) setLens(relX(e.clientX)) }
-  const onPointerUp = (e: React.PointerEvent) => {
-    if (lens == null) return
-    const i = indexAt(relX(e.clientX))
-    setLens(null)
-    navigator.vibrate?.(8)
-    if (tabs[i]) navigate(tabs[i].to)   // the same tab again goes back to its root
+  const onPointerMove = (e: React.PointerEvent) => { if (pressing) finger.set(relX(e.clientX)) }
+  const end = (select: boolean, clientX?: number) => {
+    if (!pressing) return
+    setPressing(false)
+    touch.set(0)
+    if (select && clientX != null) {
+      const i = indexAt(relX(clientX))
+      navigator.vibrate?.(8)
+      if (tabs[i]) navigate(tabs[i].to)   // the same tab again goes back to its root
+    }
   }
 
   return (
@@ -94,54 +111,90 @@ export default function TabBar() {
         className="glass relative pointer-events-auto flex w-full max-w-[460px] h-[var(--tabbar-h)] p-1 rounded-pill touch-none select-none"
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
-        onPointerUp={onPointerUp}
-        onPointerCancel={() => setLens(null)}
+        onPointerUp={(e) => end(true, e.clientX)}
+        onPointerCancel={() => end(false)}
         // The pointer already chose the tab; the links' own clicks are for the keyboard
         onClickCapture={(e) => { if (handled.current) { e.preventDefault(); handled.current = false } }}
       >
-        {/* Resting pill ⟷ glass lens: one element, so it morphs instead of swapping */}
-        {tabW > 0 && (active >= 0 || pressing) && (
-          <motion.span
-            aria-hidden="true"
-            className={cn('absolute z-0 rounded-pill pointer-events-none', pressing ? 'tab-lens' : 'bg-[color:var(--glass-select)]')}
-            initial={false}
-            animate={pressing
-              ? { x: lensX, width: lensW, top: -OVERFLOW, bottom: -OVERFLOW }
-              : { x: PAD + Math.max(active, 0) * tabW, width: tabW, top: PAD, bottom: PAD }}
-            transition={pressing ? FOLLOW : SETTLE}
-            style={{ left: 0 }}
-          />
+        {tabW > 0 && (
+          <>
+            {/* Resting pill under the selected tab (slides on a spring when the tab changes) */}
+            {active >= 0 && (
+              <motion.span
+                aria-hidden="true"
+                className="absolute z-0 left-0 rounded-pill pointer-events-none bg-[color:var(--glass-select)]"
+                style={{ top: PAD, bottom: PAD, width: tabW }}
+                initial={false}
+                animate={{ x: PAD + active * tabW, opacity: pressing ? 0 : 1, scale: pressing ? 1.15 : 1 }}
+                transition={SETTLE}
+              />
+            )}
+            {/* The glass lens: only while touching; grows in, follows the finger, shrinks back */}
+            <motion.span
+              aria-hidden="true"
+              className="tab-lens absolute z-20 left-0 rounded-pill pointer-events-none"
+              style={{ x: lensX, width: lensW, top: -OVERFLOW, bottom: -OVERFLOW }}
+              initial={false}
+              animate={{ opacity: pressing ? 1 : 0, scale: pressing ? 1 : 0.72 }}
+              transition={pressing ? { type: 'spring', stiffness: 520, damping: 30 } : SETTLE}
+            />
+          </>
         )}
-        {tabs.map((t, i) => {
-          const on = i === active
-          // Under the lens: tinted and magnified (strongest at its centre)
-          const under = pressing ? Math.max(0, 1 - Math.abs(PAD + (i + 0.5) * tabW - lensCenter) / (lensW * 0.6)) : 0
-          const tinted = pressing ? under > 0.25 : on
-          return (
-            <li key={t.to} className="relative z-10 flex-1 flex min-w-0">
-              <Link
-                to={t.to}
-                aria-current={on ? 'page' : undefined}
-                draggable={false}
-                className={cn(
-                  'no-press relative flex-1 flex flex-col items-center justify-center gap-px pt-1.5 pb-[7px] rounded-pill',
-                  'text-[10px] leading-3 font-[590] transition-colors duration-200',
-                  tinted ? 'text-accent' : 'text-[color:var(--glass-label)]',
-                )}
-              >
-                <motion.span
-                  className="flex flex-col items-center gap-px max-w-full"
-                  animate={{ scale: 1 + under * 0.14 }}
-                  transition={FOLLOW}
-                >
-                  <t.icon size={23} strokeWidth={on || tinted ? 2.1 : 1.75} aria-hidden="true" />
-                  <span className="truncate max-w-full px-0.5">{t.label}</span>
-                </motion.span>
-              </Link>
-            </li>
-          )
-        })}
+        {tabs.map((t, i) => (
+          <Tab
+            key={t.to}
+            to={t.to}
+            label={t.label}
+            Icon={t.icon}
+            on={i === active}
+            centre={PAD + (i + 0.5) * tabW}
+            reach={lensW * 0.6}
+            lensCenter={center}
+            touch={touch}
+          />
+        ))}
       </ul>
     </nav>
+  )
+}
+
+/** One tab. Under the lens it is tinted and magnified (strongest at the lens centre). */
+function Tab({ to, label, Icon, on, centre, reach, lensCenter, touch }: {
+  to: string; label: string; Icon: LucideIcon; on: boolean
+  centre: number; reach: number; lensCenter: MotionValue<number>; touch: MotionValue<number>
+}) {
+  // Props as motion values, so the transforms below never read stale numbers
+  const cx = useMotionValue(centre)
+  const rx = useMotionValue(reach)
+  const sel = useMotionValue(on ? 1 : 0)
+  useEffect(() => { cx.set(centre); rx.set(reach) }, [cx, rx, centre, reach])
+  useEffect(() => { sel.set(on ? 1 : 0) }, [sel, on])
+  // How much this tab is under the lens: 0…1
+  const under = useTransform<number, number>([lensCenter, touch, cx, rx], ([c, t, x, r]) => t * Math.max(0, 1 - Math.abs(x - c) / (r || 1)))
+  const scale = useTransform(under, (u) => 1 + u * 0.14)
+  // Accent copy of the icon + label cross-fading over the plain one (opacity only, no repaint of colours)
+  const accent = useTransform<number, number>([under, touch, sel], ([u, t, o]) => o * (1 - t) + Math.min(1, u * 2.2) * t)
+  const plain = useTransform(accent, (a) => 1 - a)
+
+  const body = (
+    <>
+      <Icon size={23} strokeWidth={2} />
+      <span className="truncate max-w-full px-0.5">{label}</span>
+    </>
+  )
+  return (
+    <li className="relative z-30 flex-1 flex min-w-0">
+      <Link
+        to={to}
+        aria-current={on ? 'page' : undefined}
+        draggable={false}
+        className="no-press relative flex-1 grid place-items-center rounded-pill text-[10px] leading-3 font-[590]"
+      >
+        <motion.span className="relative grid place-items-center max-w-full" style={{ scale }}>
+          <motion.span aria-hidden="true" className="col-start-1 row-start-1 flex flex-col items-center gap-px max-w-full text-[color:var(--glass-label)]" style={{ opacity: plain }}>{body}</motion.span>
+          <motion.span className="col-start-1 row-start-1 flex flex-col items-center gap-px max-w-full text-accent" style={{ opacity: accent }}>{body}</motion.span>
+        </motion.span>
+      </Link>
+    </li>
   )
 }

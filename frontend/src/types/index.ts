@@ -111,6 +111,10 @@ export interface MediaItem {
   year:          number | null
   rating:        number | null
   voteCount:     number | null
+  /** Apple TV-style artwork (TMDB /images): textless key art, title logo, full-res backdrop */
+  keyArtPath?:       string | null
+  logoPath?:         string | null
+  heroBackdropPath?: string | null
   /** IMDb (official dataset, refreshed daily) */
   imdbId?:       string | null
   imdbRating?:   number | null

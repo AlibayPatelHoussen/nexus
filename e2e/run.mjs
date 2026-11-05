@@ -409,9 +409,17 @@ test('IMDb: ids from TMDB, ratings from the dataset, Top 10 ranked by IMDb', asy
   const list = await api('/api/media?type=film&limit=100', { token: admin.accessToken })
   const rated = list.json.data.items.filter((m) => m.imdbRating != null)
   assert(rated.length >= 3, 'films with an IMDb rating')
+  // Apple TV artwork from TMDB /images: textless key art, French logo, backdrop, served by the image proxy
+  const marty = list.json.data.items.find((m) => m.filePath?.includes('Marty'))
+  assert(marty?.keyArtPath && marty.logoPath && marty.heroBackdropPath, `artwork fields: ${JSON.stringify(marty)}`)
+  eq(sql(`SELECT logo_path FROM media_items WHERE file_path LIKE '%Marty%'`).endsWith(`/original/logo_fr_${tmdb}.png`), true, 'French logo')
+  const logo = await api(marty.logoPath, { raw: true })
+  eq(logo.status, 200, 'logo served'); assert((logo.headers.get('content-type') || '').startsWith('image/'), 'logo is an image')
   const page = await newPage(admin)
   await page.goto(`${B}/cinema`, { waitUntil: 'networkidle' })
   await page.waitForSelector('text=/^IMDb \\d,\\d$/', { timeout: 10000 })
+  // The billboard shows the title logo (alt = title) instead of plain text
+  await page.waitForSelector('section[aria-label="À la une"] img[data-logo]', { timeout: 10000 })
   await page.context().close()
 })
 

@@ -48,6 +48,10 @@ CREATE TABLE IF NOT EXISTS media_items (
   overview        TEXT,
   poster_path     VARCHAR(500),
   backdrop_path   VARCHAR(500),
+  key_art_path    VARCHAR(500),    -- textless poster (TMDB /images), billboard on iPhone
+  logo_path       VARCHAR(500),    -- title logo (transparent PNG)
+  hero_backdrop_path VARCHAR(500), -- textless backdrop, full resolution
+  artwork_checked_at TIMESTAMPTZ,
   genres          TEXT[],
   year            INTEGER,
   rating          DECIMAL(3,1),

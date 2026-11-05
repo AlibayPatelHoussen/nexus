@@ -42,9 +42,12 @@ async function send(res: Response, url: string | null | undefined, trusted = fal
   }
 }
 
-router.get('/media/:id/:field(poster|backdrop)', asyncHandler(async (req: Request, res: Response) => {
+const MEDIA_FIELDS: Record<string, string> = {
+  poster: 'poster_path', backdrop: 'backdrop_path', keyart: 'key_art_path', logo: 'logo_path', herobackdrop: 'hero_backdrop_path',
+}
+router.get('/media/:id/:field(poster|backdrop|keyart|logo|herobackdrop)', asyncHandler(async (req: Request, res: Response) => {
   if (!UUID.test(req.params.id)) { res.status(404).end(); return }
-  const col = req.params.field === 'poster' ? 'poster_path' : 'backdrop_path'
+  const col = MEDIA_FIELDS[req.params.field]
   const { rows } = await query(`SELECT ${col} AS url FROM media_items WHERE id = $1`, [req.params.id])
   await send(res, rows[0]?.url as string | undefined)
 }))
