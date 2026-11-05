@@ -57,7 +57,7 @@ export function SearchBarOpen({ value, onChange, onClose, placeholder }: {
   useEffect(() => { const t = setTimeout(() => input.current?.focus(), 60); return () => clearTimeout(t) }, [])
   return (
     <>
-      <motion.label layoutId="phone-search" transition={spring.sheet} className="flex-1 min-w-0 flex items-center gap-2 h-11 pl-3.5 pr-2 rounded-pill glass text-label" role="search">
+      <motion.label layoutId="phone-search" transition={spring.sheet} className="flex-1 min-w-0 flex items-center gap-2 h-11 pl-3.5 pr-2 rounded-pill glass-bar text-label" role="search">
         <motion.span layoutId="phone-search-icon" transition={spring.sheet} className="grid place-items-center flex-shrink-0 text-label2">
           <Search size={18} strokeWidth={2} />
         </motion.span>
@@ -81,7 +81,7 @@ export function SearchBarOpen({ value, onChange, onClose, placeholder }: {
       <motion.button
         type="button"
         onClick={onClose}
-        className="w-11 h-11 flex-shrink-0 grid place-items-center rounded-full glass text-label"
+        className="w-11 h-11 flex-shrink-0 grid place-items-center rounded-full glass-bar text-label"
         aria-label="Fermer la recherche"
         initial={{ opacity: 0, scale: 0.4 }}
         animate={{ opacity: 1, scale: 1 }}
