@@ -197,7 +197,9 @@ test('UI: catalogue (hero, rows, cleaned series title)', async () => {
   await page.waitForSelector('button[aria-label="Plus d’infos"]')   // billboard (Apple TV)
   assert(await page.$('text=Ajouts récents'), 'recent row')
   await page.screenshot({ path: `${SHOTS}/cinema.png` })
-  await page.click('[role="radio"]:has-text("Séries")')
+  // iPhone: « Films ⌄ » pull-down menu at the top left
+  await page.click('button[aria-label^="Section"]')
+  await page.click('[role="menuitemradio"]:has-text("Séries")')
   await page.waitForTimeout(800)
   const body = await page.textContent('body')
   assert(!/S02E12-22/.test(body), 'series title still contains the folder tags')
@@ -395,9 +397,11 @@ test('UI: search and genre "Tout voir" show a results grid', async () => {
   const page = await newPage(admin)
   await page.goto(`${B}/cinema`, { waitUntil: 'networkidle' })
   const title = sql(`SELECT title FROM media_items WHERE file_path LIKE '%Marty%'`)
+  // iPhone: the magnifying glass in the bar opens the search field
+  await page.click('button[aria-label^="Rechercher"]')
   await page.fill('input[placeholder^="Rechercher"]', title)
   await page.waitForSelector('text=/^1 résultat$/', { timeout: 10000 })
-  await page.fill('input[placeholder^="Rechercher"]', '')
+  await page.click('button[aria-label="Fermer la recherche"]')
   // Apple TV: the shelf title with its chevron opens the full list
   await page.waitForSelector('button[title^="Tout voir"]', { timeout: 10000 })
   await page.click('button[title^="Tout voir"]')

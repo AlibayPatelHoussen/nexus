@@ -38,16 +38,19 @@ export default function Hero({ items }: { items: MediaItem[] }) {
   const [index, setIndex] = useState(0)
   const [paused, setPaused] = useState(false)
   const [favs, setFavs] = useState<Record<string, boolean>>({})
+  const [dir, setDir] = useState(1)
+  const dragged = useRef(false)
   const art = useRef<HTMLDivElement>(null)
   const count = items.length
   const item = items[Math.min(index, count - 1)]
+  const go = useCallback((step: number) => { setDir(step); setIndex((i) => (i + step + count) % count) }, [count])
 
   // Auto-advance (paused while hovered / focused, and when reduced motion is on)
   useEffect(() => {
     if (count < 2 || paused || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return
-    const t = setTimeout(() => setIndex((i) => (i + 1) % count), ROTATE_MS)
+    const t = setTimeout(() => go(1), ROTATE_MS)
     return () => clearTimeout(t)
-  }, [index, count, paused])
+  }, [index, count, paused, go])
 
   // Parallax: the artwork scrolls at 60 % of the page speed (transform only)
   useEffect(() => {
@@ -85,22 +88,37 @@ export default function Hero({ items }: { items: MediaItem[] }) {
       aria-roledescription="carrousel"
       aria-label="À la une"
       className="relative overflow-hidden bg-black text-white select-none"
-      style={{ height: phone ? 'min(calc(100vw / 0.704), 86svh)' : 'min(calc(100vw * 9 / 16), 90vh)', minHeight: phone ? 480 : 440 }}
+      style={{ height: phone ? 'min(calc(100vw / 0.6), 84svh)' : 'min(calc(100vw * 9 / 16), 90vh)', minHeight: phone ? 560 : 440 }}
       onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)}
       onFocus={() => setPaused(true)} onBlur={() => setPaused(false)}
     >
+      {/* Swipe (touch or mouse) to the next / previous title: the artwork follows the finger */}
+      <motion.div
+        className="absolute inset-0"
+        drag={count > 1 ? 'x' : false}
+        dragConstraints={{ left: 0, right: 0 }}
+        dragElastic={0.22}
+        dragMomentum={false}
+        onDragStart={() => { dragged.current = true }}
+        onDragEnd={(_, info) => {
+          if (info.offset.x < -60 || info.velocity.x < -450) go(1)
+          else if (info.offset.x > 60 || info.velocity.x > 450) go(-1)
+          setTimeout(() => { dragged.current = false }, 0)
+        }}
+        onClickCapture={(e) => { if (dragged.current) { e.stopPropagation(); e.preventDefault() } }}
+      >
       <div ref={art} className="absolute inset-0 will-change-transform">
         <AnimatePresence initial={false}>
           <motion.div
             key={item.id}
             className="absolute inset-0"
-            initial={{ opacity: 0, scale: 1.04 }}
-            animate={{ opacity: 1, scale: 1 }}
-            exit={{ opacity: 0 }}
-            transition={{ opacity: { duration: 0.9, ease: [0, 0, 0.2, 1] }, scale: { duration: 8, ease: 'linear' } }}
+            initial={{ opacity: 0, scale: 1.04, x: dir * 40 }}
+            animate={{ opacity: 1, scale: 1, x: 0 }}
+            exit={{ opacity: 0, x: dir * -40 }}
+            transition={{ opacity: { duration: 0.7, ease: [0, 0, 0.2, 1] }, x: spring.soft, scale: { duration: 8, ease: 'linear' } }}
           >
             {image
-              ? <img src={image} alt="" className="w-full h-full object-cover" style={{ objectPosition: phone ? 'center top' : 'center 25%' }} />
+              ? <img src={image} alt="" draggable={false} className="w-full h-full object-cover" style={{ objectPosition: phone ? 'center top' : 'center 25%' }} />
               : <div className="w-full h-full bg-gradient-to-br from-[#2c2c2e] to-black" />}
           </motion.div>
         </AnimatePresence>
@@ -157,6 +175,8 @@ export default function Hero({ items }: { items: MediaItem[] }) {
         </motion.div>
       </AnimatePresence>
 
+      </motion.div>
+
       {/* Pagination: 20 px pitch, 8 px dots (active 9 px, white) */}
       {count > 1 && (
         <div className={cn('absolute flex justify-center bottom-5', phone ? 'inset-x-0 bottom-4' : 'right-0')} style={phone ? undefined : { left: 'var(--content-left)' }} role="tablist" aria-label="Titres à la une">
@@ -167,7 +187,7 @@ export default function Hero({ items }: { items: MediaItem[] }) {
               role="tab"
               aria-selected={i === index}
               aria-label={it.title}
-              onClick={() => setIndex(i)}
+              onClick={() => { setDir(i > index ? 1 : -1); setIndex(i) }}
               className="no-press w-5 h-5 grid place-items-center group"
             >
               <span className={cn(

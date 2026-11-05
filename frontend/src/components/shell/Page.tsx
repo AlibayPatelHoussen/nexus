@@ -24,6 +24,12 @@ interface PageProps {
   /** Full-bleed artwork at the top (Apple TV billboard): the toolbar / large title float over it,
       in white, and turn into the normal glass bar once it has scrolled away */
   hero?:      React.ReactNode
+  /** Phone: left of the navigation bar when there is no back button (e.g. a section menu) */
+  leading?:   React.ReactNode
+  /** Phone: replaces the whole navigation bar row (e.g. an open search field) */
+  barOverride?: React.ReactNode
+  /** Phone: show the title in the bar (false on the tab roots: the tab bar already says where you are) */
+  barTitle?:  boolean
   children:   React.ReactNode
   className?: string
 }
@@ -105,7 +111,7 @@ function DesktopPage({ title, subtitle, actions, accessory, back, bleed, narrow,
   )
 }
 
-function PhonePage({ title, actions, accessory, back, bleed, largeTitle = true, hero, children, className }: PageProps) {
+function PhonePage({ title, actions, accessory, back, bleed, largeTitle = true, hero, leading, barOverride, barTitle = true, children, className }: PageProps) {
   const { pathname } = useLocation()
   const parent = back ?? PHONE_PARENT[pathname]
   const titleRef = useRef<HTMLHeadingElement>(null)
@@ -133,19 +139,21 @@ function PhonePage({ title, actions, accessory, back, bleed, largeTitle = true, 
             barSolid ? 'edge-bar' : 'scheme-dark bg-transparent')}
           style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
         >
+          {barOverride ? <div className="flex items-center gap-2 h-[var(--navbar-h)] safe-x" style={{ ['--gutter' as string]: '12px' }}>{barOverride}</div> : (
           <div className="grid grid-cols-[1fr_auto_1fr] items-center h-[var(--navbar-h)] safe-x" style={{ ['--gutter' as string]: '8px' }}>
             <div className="justify-self-start min-w-0">
-              {parent && (
+              {parent ? (
                 <Link to={parent.to} aria-label={`Retour : ${parent.label}`}
                   className={cn('flex items-center justify-center w-11 h-11 ml-1 rounded-full text-label active:opacity-60', barSolid ? 'glass' : 'glass-clear')}>
                   <ChevronLeft size={26} strokeWidth={2.25} className="-ml-0.5" aria-hidden="true" />
                 </Link>
-              )}
+              ) : leading && <div className={cn('ml-1 rounded-pill', barSolid ? 'glass' : 'glass-clear')}>{leading}</div>}
             </div>
-            <div className="text-[17px] font-semibold text-label truncate max-w-[52vw] transition-opacity duration-fast" style={{ opacity: barSolid ? 1 : 0 }} aria-hidden={!barSolid}>{title}</div>
+            <div className="text-[17px] font-semibold text-label truncate max-w-[52vw] transition-opacity duration-fast" style={{ opacity: barSolid && barTitle ? 1 : 0 }} aria-hidden={!(barSolid && barTitle)}>{title}</div>
             {/* iOS 26: the bar buttons share one glass capsule */}
             <div className="justify-self-end pr-1">{actions && <div className={cn('flex items-center rounded-pill min-h-11', barSolid ? 'glass' : 'glass-clear')}>{actions}</div>}</div>
           </div>
+          )}
         </header>
         <div className="relative">
           {hero}
@@ -170,24 +178,27 @@ function PhonePage({ title, actions, accessory, back, bleed, largeTitle = true, 
         className={cn('sticky top-0 z-30 transition-[background-color,box-shadow] duration-fast', compact ? 'edge-bar' : 'bg-bg')}
         style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
       >
+        {barOverride ? <div className="flex items-center gap-2 h-[var(--navbar-h)] safe-x" style={{ ['--gutter' as string]: '12px' }}>{barOverride}</div> : (
         <div className="grid grid-cols-[1fr_auto_1fr] items-center h-[var(--navbar-h)] safe-x" style={{ ['--gutter' as string]: '8px' }}>
           <div className="justify-self-start min-w-0">
-            {parent && (
+            {parent ? (
               <Link to={parent.to} className="flex items-center text-accent-text text-[17px] min-h-[44px] pr-2 active:opacity-50">
                 <ChevronLeft size={28} strokeWidth={2} className="-mr-0.5 flex-shrink-0" aria-hidden="true" />
                 <span className="truncate">{parent.label}</span>
               </Link>
-            )}
+            ) : leading && <div className="ml-1 rounded-pill glass">{leading}</div>}
           </div>
           <div
             className="text-[17px] font-semibold text-label truncate max-w-[52vw] transition-opacity duration-fast"
-            style={{ opacity: compact ? 1 : 0 }}
-            aria-hidden={!compact}
+            style={{ opacity: compact && barTitle ? 1 : 0 }}
+            aria-hidden={!(compact && barTitle)}
           >
             {title}
           </div>
-          <div className="justify-self-end flex items-center gap-1 pr-1">{actions}</div>
+          {/* iOS 26: the bar buttons share one glass capsule */}
+          <div className="justify-self-end pr-1">{actions && <div className="flex items-center rounded-pill min-h-11 glass">{actions}</div>}</div>
         </div>
+        )}
       </header>
       {largeTitle && (
         <div className="gutter safe-x pt-0.5 pb-2">
@@ -195,7 +206,7 @@ function PhonePage({ title, actions, accessory, back, bleed, largeTitle = true, 
         </div>
       )}
       {!largeTitle && <h1 className="sr-only">{title}</h1>}
-      {accessory && <div className="gutter safe-x pb-3">{accessory}</div>}
+      {accessory && <div className={cn('gutter safe-x pb-3', !largeTitle && 'pt-3')}>{accessory}</div>}
       <div className={cn('flex-1 min-h-0', !bleed && 'gutter safe-x pb-6', !bleed && !largeTitle && !accessory && 'pt-4', className)}>{children}</div>
     </div>
   )

@@ -14,6 +14,7 @@ import EmptyState from '@/components/ui/EmptyState'
 import Skeleton from '@/components/ui/Skeleton'
 import Artwork from '@/components/media/Artwork'
 import { VideoSectionSwitch } from '@/components/media/MediaBrowser'
+import { SectionMenu } from '@/components/media/PhoneLibraryBar'
 import { formatDuration } from '@/pages/downloads/SearchView'
 import DownloadsButton from '@/components/downloads/DownloadsButton'
 
@@ -140,9 +141,11 @@ export default function YoutubePage() {
   }
 
   return (
-    <Page title={phone ? 'Médias' : 'YouTube'} actions={phone ? <DownloadsButton /> : undefined}
+    <Page title="YouTube" actions={phone ? <DownloadsButton /> : undefined}
+      largeTitle={!phone} barTitle={!phone}
+      leading={phone ? <SectionMenu value="youtube" /> : undefined}
       subtitle={!phone && data ? `${data.total ?? videos.length} vidéo${(data.total ?? videos.length) > 1 ? 's' : ''}` : undefined}
-      accessory={phone ? <div className="flex flex-col gap-3"><VideoSectionSwitch full value="youtube" />{controls}</div>
+      accessory={phone ? controls
         : <div className="flex flex-wrap items-center gap-4"><VideoSectionSwitch value="youtube" />{controls}</div>}>
       {body}
     </Page>
