@@ -4,6 +4,13 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Changed — iPhone: full-screen billboard, glass bar, Apple Music tab bar
+- Home-screen app: the status bar is translucent (`black-translucent`), so the artwork goes under it like the Apple TV app (a soft shade keeps the clock readable on light pages)
+- Médias, Manga, YouTube: no large title any more (the tab bar says where you are). At the top: « Films ⌄ » (a glass pull-down menu to switch Films / Séries / Animes / YouTube) and one glass capsule with the magnifying glass, Téléchargements and « … » (list view, filters, scan)
+- The magnifying glass morphs into a glass search field across the bar (spring), with a round « × » to close it
+- Billboard: swipe left / right (finger or mouse) to change title, the artwork follows the finger; taller on iPhone
+- Tab bar like Apple Music on iOS 26: touching it turns the selection into a clear glass lens, larger than a tab and spilling over the bar, that follows the finger; the tabs under it are tinted and magnified; letting go selects the tab and the lens settles back into the pill on a spring
+
 ### Changed — title page on iPhone like the Apple TV app
 - Taller artwork that goes progressively blurred and dark under the text; bold centred title, « Série · Drame · Comédie », a wide white « Lire le premier épisode / Reprendre · S1 É2 / Lire · S1 É3 » capsule and a round glass « + »; the synopsis on two lines with a glass « PLUS » capsule; « 2024 · 2 saisons ★ 7,4 » and badges
 - Back button and bar buttons in glass circles / one glass capsule (iOS 26)

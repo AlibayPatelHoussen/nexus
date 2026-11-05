@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, LayoutGrid, List, RotateCw, Search, SlidersHorizontal } from 'lucide-react'
+import { AlertTriangle, LayoutGrid, List, MoreHorizontal, RotateCw, Search } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { mediaService } from '@/services/mediaService'
 import { useDebounce } from '@/hooks/useDebounce'
@@ -22,6 +22,8 @@ import MediaRow, { type RowItem } from './MediaRow'
 import MediaCard from './MediaCard'
 import MediaList from './MediaList'
 import { MEDIA_GRID } from './layout'
+import { VIDEO_SECTIONS, SectionMenu, SearchButton, SearchBarOpen } from './PhoneLibraryBar'
+import { useContextMenu } from '@/components/ui/useContextMenu'
 
 export interface BrowserTab {
   key:       string
@@ -57,12 +59,7 @@ function pickFeatured(items: MediaItem[]): MediaItem[] {
   return [...list.slice(start), ...list.slice(0, start)].slice(0, 6)
 }
 
-export const VIDEO_SECTIONS = [
-  { value: 'films',   label: 'Films',   to: '/cinema' },
-  { value: 'series',  label: 'Séries',  to: '/cinema?type=series' },
-  { value: 'animes',  label: 'Animes',  to: '/animes' },
-  { value: 'youtube', label: 'YouTube', to: '/youtube' },
-]
+export { VIDEO_SECTIONS }
 
 /** Films / Séries / Animes / YouTube: one switch, same place on every video page. */
 export function VideoSectionSwitch({ value, full }: { value: string; full?: boolean }) {
@@ -93,6 +90,8 @@ export default function MediaBrowser({ title, tabs, yearFilter, emptyIcon, video
   const [scanning, setScanning] = useState(false)
   const [view,     setViewRaw]  = useState<View>(readView)
   const [filters,  setFilters]  = useState(false)
+  const [searchOpen, setSearchOpen] = useState(false)
+  const more = useContextMenu()
   const debouncedSearch = useDebounce(search, 400)
   const hasFilters = !!(debouncedSearch || genre || year)
 
@@ -203,24 +202,39 @@ export default function MediaBrowser({ title, tabs, yearFilter, emptyIcon, video
       )}
     </>
   )
-  const phoneActions = (
+  const sectionValue = type === 'anime' ? 'animes' : tab.key
+  const closeSearch = () => { setSearchOpen(false); setSearch(''); setPage(1) }
+  const phoneActions = searchOpen ? undefined : (
     <>
-      {videoSwitch && <DownloadsButton />}
-      <button type="button" className="w-11 h-11 grid place-items-center text-accent-text active:opacity-50" onClick={() => setView(view === 'grid' ? 'list' : 'grid')} aria-label={view === 'grid' ? 'Afficher en liste' : 'Afficher les affiches'}>
-        {view === 'grid' ? <List size={22} strokeWidth={1.75} /> : <LayoutGrid size={22} strokeWidth={1.75} />}
-      </button>
-      <button type="button" className="relative w-11 h-11 grid place-items-center text-accent-text active:opacity-50" onClick={() => setFilters(true)} aria-label="Filtres">
-        <SlidersHorizontal size={22} strokeWidth={1.75} />
+      <SearchButton onOpen={() => setSearchOpen(true)} label={`Rechercher ${tab.noun}`} />
+      <DownloadsButton />
+      <button
+        type="button"
+        className="relative w-11 h-11 grid place-items-center rounded-full text-label active:opacity-50"
+        aria-label="Plus d’options"
+        title="Plus d’options"
+        onClick={(e) => more.openFrom(e.currentTarget, [
+          { label: view === 'grid' ? 'Afficher en liste' : 'Afficher les affiches', onSelect: () => setView(view === 'grid' ? 'list' : 'grid') },
+          { label: hasFilters && (genre || year) ? 'Filtres (actifs)…' : 'Filtres…', onSelect: () => setFilters(true) },
+          ...(isAdmin ? [{ label: 'Analyser la bibliothèque', onSelect: () => void scan() }] : []),
+        ])}
+      >
+        <MoreHorizontal size={22} strokeWidth={2} />
         {(genre || year) && <span className="absolute top-2.5 right-2 w-2 h-2 rounded-full bg-accent" aria-hidden="true" />}
       </button>
     </>
   )
+  const phoneSearch = searchOpen
+    ? <SearchBarOpen value={search} onChange={(v) => { setSearch(v); setPage(1) }} onClose={closeSearch} placeholder={`Rechercher ${tab.noun}`} />
+    : undefined
 
   const accessory = phone ? (
-    <div className="flex flex-col gap-3">
-      {videoSwitch && <VideoSectionSwitch full value={type === 'anime' ? 'animes' : tab.key} />}
-      {searchField}
-    </div>
+    // iPhone: categories of a tab without the section menu (e.g. none for manga today)
+    !videoSwitch && tabs.length > 1 ? (
+      <SegmentedControl full label="Catégorie" value={tab.key}
+        onChange={(k) => setParams(k === tabs[0].key ? {} : { type: k })}
+        options={tabs.map((t) => ({ value: t.key, label: t.label }))} />
+    ) : undefined
   ) : (
     <div className="flex flex-wrap items-center gap-2">
       {videoSwitch && <VideoSectionSwitch value={type === 'anime' ? 'animes' : tab.key} />}
@@ -235,7 +249,7 @@ export default function MediaBrowser({ title, tabs, yearFilter, emptyIcon, video
     </div>
   )
 
-  const showHero = !books && view === 'grid' && !hasFilters && !isError && featured.length > 0
+  const showHero = !books && view === 'grid' && !hasFilters && !searchOpen && !isError && featured.length > 0
   const shelf = books ? 'book' as const : undefined
 
   /* ── Content ────────────────────────────────────────────────────────── */
@@ -293,10 +307,14 @@ export default function MediaBrowser({ title, tabs, yearFilter, emptyIcon, video
 
   return (
     <Page
-      title={phone && videoSwitch ? 'Médias' : title}
+      title={title}
       subtitle={catalog ? `${catalog.total} titre${catalog.total > 1 ? 's' : ''}` : undefined}
       actions={phone ? phoneActions : desktopActions}
       accessory={accessory}
+      largeTitle={!phone}
+      barTitle={!phone}
+      leading={phone && videoSwitch ? <SectionMenu value={sectionValue} /> : undefined}
+      barOverride={phone ? phoneSearch : undefined}
       hero={showHero ? <Hero items={featured} /> : undefined}
     >
       {tmdbStatus && !tmdbStatus.tmdb && (
@@ -309,6 +327,7 @@ export default function MediaBrowser({ title, tabs, yearFilter, emptyIcon, video
         </div>
       )}
       {content}
+      {more.element}
 
       {/* Phone: filters in a bottom sheet */}
       <Sheet open={filters} onClose={() => setFilters(false)} title="Filtres" phoneHeader={{
