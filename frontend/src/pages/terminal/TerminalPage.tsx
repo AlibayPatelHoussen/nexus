@@ -251,7 +251,7 @@ export default function TerminalPage() {
   const where = info ? `${info.user}@${info.host}` : 'Terminal'
   const smaller = () => setFontSize((f) => Math.max(9, f - 1))
   const bigger  = () => setFontSize((f) => Math.min(28, f + 1))
-  const icon = 'w-8 h-8 grid place-items-center rounded-[6px] text-label2 hoverable disabled:opacity-40'
+  const icon = 'w-8 h-8 grid place-items-center rounded-full text-label2 hoverable disabled:opacity-40'
 
   const actions = phone ? (
     <button type="button" className="w-11 h-11 grid place-items-center text-accent-text active:opacity-50" onClick={() => setMenuOpen(true)} aria-label="Options du terminal">

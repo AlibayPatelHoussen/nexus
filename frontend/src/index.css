@@ -88,6 +88,28 @@
     box-shadow: var(--glass-clear-rim), 0 4px 18px rgba(0, 0, 0, 0.18);
     color: #fff;
   }
+  /* Clear glass over video (player): clear variant + the HIG's ~35 % dimming for bright media */
+  .glass-media {
+    background: rgba(20, 20, 22, 0.42);
+    -webkit-backdrop-filter: blur(18px) saturate(180%);
+    backdrop-filter: blur(18px) saturate(180%);
+    box-shadow: var(--glass-clear-rim), 0 8px 28px rgba(0, 0, 0, 0.32);
+    color: #fff;
+  }
+  /* iOS 26 / macOS 26 bars: no background of their own and no hairline; the content
+     scrolling under them dissolves (blur + fade, the kit's "Scroll Edge Effect – Soft") */
+  .edge-bar { isolation: isolate; }
+  .edge-bar::before {
+    content: ""; position: absolute; inset: 0 0 -22px 0; z-index: -1; pointer-events: none;
+    background: linear-gradient(to bottom,
+      color-mix(in srgb, var(--bg) 94%, transparent) 0%,
+      color-mix(in srgb, var(--bg) 80%, transparent) 62%,
+      transparent 100%);
+    -webkit-backdrop-filter: blur(8px) saturate(160%);
+    backdrop-filter: blur(8px) saturate(160%);
+    -webkit-mask-image: linear-gradient(to bottom, #000 58%, transparent);
+    mask-image: linear-gradient(to bottom, #000 58%, transparent);
+  }
   /* Scroll edge effect under a floating bar: content dissolves instead of a hard line */
   .edge-fade-b { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent); }
   .hairline-b { box-shadow: inset 0 -0.5px 0 var(--separator); }
@@ -136,6 +158,12 @@
 /* Images fade in once loaded instead of popping */
 .nx-img { transition: opacity 300ms var(--ease-out); }
 .nx-img[data-loaded="false"] { opacity: 0; }
+
+/* Poster → title page (View Transitions): the artwork morphs on a spring-like curve, the rest cross-fades */
+::view-transition-group(media-art) { animation-duration: 480ms; animation-timing-function: cubic-bezier(0.32, 0.72, 0, 1); }
+::view-transition-old(root), ::view-transition-new(root) { animation-duration: 260ms; }
+::view-transition-image-pair(media-art) { isolation: auto; }
+::view-transition-old(media-art), ::view-transition-new(media-art) { height: 100%; object-fit: cover; }
 
 /* ── Apple TV shelves (tv.apple.com): rows of cards that snap, page gutter 40 / 25 px ──
    The number of cards across follows the width the shelf really has (container query). */

@@ -221,7 +221,7 @@ export default function TorrentSheet({ result, onClose }: { result: TorrentGroup
                 <label className="relative inline-flex items-center">
                   <span className="sr-only">Saison</span>
                   <select value={season.number} onChange={(e) => setSeasonNo(Number(e.target.value))}
-                    className="h-8 pl-3 pr-8 rounded-[8px] bg-fill text-label text-body appearance-none outline-none">
+                    className="h-8 pl-3.5 pr-8 rounded-pill bg-fill text-label text-body appearance-none outline-none">
                     {seasons.map((s) => <option key={s.number} value={s.number}>Saison {s.number}</option>)}
                   </select>
                   <span className="pointer-events-none absolute right-2.5 text-label2 text-caption" aria-hidden="true">▾</span>

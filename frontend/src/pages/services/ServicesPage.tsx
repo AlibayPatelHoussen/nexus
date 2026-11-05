@@ -44,7 +44,7 @@ export default function ServicesPage() {
   const sorted = [...services].sort((a, b) => Number(!isInstalled(a)) - Number(!isInstalled(b)))
   const current = services.find((s) => s.name === selected)
   const refresh = (
-    <button type="button" className={phone ? 'w-11 h-11 grid place-items-center text-accent-text active:opacity-50' : 'w-8 h-8 grid place-items-center rounded-[6px] text-label2 hoverable'}
+    <button type="button" className={phone ? 'w-11 h-11 grid place-items-center text-accent-text active:opacity-50' : 'w-8 h-8 grid place-items-center rounded-full text-label2 hoverable'}
       onClick={() => qc.invalidateQueries({ queryKey: ['services'] })} aria-label="Actualiser" title="Actualiser">
       <RotateCw size={phone ? 22 : 16} strokeWidth={phone ? 1.75 : 1.5} className={isFetching ? 'animate-spin' : ''} />
     </button>

@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, LayoutGrid, List, RotateCw, Search, SlidersHorizontal, X } from 'lucide-react'
+import { AlertTriangle, LayoutGrid, List, RotateCw, Search, SlidersHorizontal } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { mediaService } from '@/services/mediaService'
 import { useDebounce } from '@/hooks/useDebounce'
@@ -12,11 +12,11 @@ import { useShell } from '@/components/shell/shellContext'
 import SegmentedControl from '@/components/ui/SegmentedControl'
 import DownloadsButton from '@/components/downloads/DownloadsButton'
 import Button from '@/components/ui/Button'
+import SearchField from '@/components/ui/SearchField'
 import EmptyState from '@/components/ui/EmptyState'
 import Skeleton from '@/components/ui/Skeleton'
 import Sheet from '@/components/ui/Sheet'
 import { Group, ListRow } from '@/components/ui/GroupedList'
-import { cn } from '@/utils'
 import Hero from './Hero'
 import MediaRow, { type RowItem } from './MediaRow'
 import MediaCard from './MediaCard'
@@ -39,6 +39,8 @@ interface Props {
   emptyIcon?:  React.ReactNode
   /** Phone: Films · Séries · Animes switch at the top of the "Médias" tab */
   videoSwitch?: boolean
+  /** Apple Books presentation (manga): no billboard, book covers with their title */
+  books?: boolean
 }
 
 type View = 'grid' | 'list'
@@ -73,7 +75,7 @@ export function VideoSectionSwitch({ value, full }: { value: string; full?: bool
 }
 
 /** Library like the TV app: featured title, shelves; poster grid or detailed list. */
-export default function MediaBrowser({ title, tabs, yearFilter, emptyIcon, videoSwitch }: Props) {
+export default function MediaBrowser({ title, tabs, yearFilter, emptyIcon, videoSwitch, books }: Props) {
   const qc = useQueryClient()
   const { device } = useShell()
   const phone = device === 'phone'
@@ -161,25 +163,11 @@ export default function MediaBrowser({ title, tabs, yearFilter, emptyIcon, video
     />
   )
   const searchField = (
-    <label className={cn('relative flex items-center', phone ? 'w-full' : 'w-[200px]')}>
-      <span className="sr-only">Rechercher {tab.noun}</span>
-      <Search size={phone ? 16 : 13} strokeWidth={1.75} className="absolute left-2 text-label2 pointer-events-none" aria-hidden="true" />
-      <input
-        type="search"
-        value={search}
-        onChange={(e) => { setSearch(e.target.value); setPage(1) }}
-        placeholder={`Rechercher ${tab.noun}`}
-        className={cn(
-          'w-full bg-fill text-label placeholder:text-label2 outline-none focus:shadow-[0_0_0_3px_color-mix(in_srgb,var(--accent)_35%,transparent)]',
-          phone ? 'h-9 pl-8 pr-8 rounded-[10px] text-[17px]' : 'h-7 pl-7 pr-7 rounded-[7px] text-body',
-        )}
-      />
-      {search && (
-        <button type="button" className="absolute right-1.5 w-5 h-5 grid place-items-center rounded-full bg-label3 text-surface" onClick={() => { setSearch(''); setPage(1) }} aria-label="Effacer la recherche">
-          <X size={11} strokeWidth={2.5} />
-        </button>
-      )}
-    </label>
+    <SearchField
+      value={search} onChange={(v) => { setSearch(v); setPage(1) }}
+      label={`Rechercher ${tab.noun}`} placeholder={`Rechercher ${tab.noun}`}
+      className={phone ? 'w-full' : 'w-[200px]'}
+    />
   )
   const genreSelect = genres && genres.length > 0 && (
     <label className="relative inline-flex items-center">
@@ -209,7 +197,7 @@ export default function MediaBrowser({ title, tabs, yearFilter, emptyIcon, video
       {searchField}
       {viewSwitch}
       {isAdmin && (
-        <button type="button" className="w-8 h-8 grid place-items-center rounded-[6px] text-label2 hoverable disabled:opacity-40" onClick={scan} disabled={scanning} aria-label="Analyser la bibliothèque" title="Analyser la bibliothèque">
+        <button type="button" className="w-8 h-8 grid place-items-center rounded-full text-label2 hoverable disabled:opacity-40" onClick={scan} disabled={scanning} aria-label="Analyser la bibliothèque" title="Analyser la bibliothèque">
           <RotateCw size={16} strokeWidth={1.5} className={scanning ? 'animate-spin' : ''} />
         </button>
       )}
@@ -247,7 +235,8 @@ export default function MediaBrowser({ title, tabs, yearFilter, emptyIcon, video
     </div>
   )
 
-  const showHero = view === 'grid' && !hasFilters && !isError && featured.length > 0
+  const showHero = !books && view === 'grid' && !hasFilters && !isError && featured.length > 0
+  const shelf = books ? 'book' as const : undefined
 
   /* ── Content ────────────────────────────────────────────────────────── */
   let content: React.ReactNode
@@ -295,9 +284,9 @@ export default function MediaBrowser({ title, tabs, yearFilter, emptyIcon, video
     content = (
       <>
         {continueRow.length > 0 && <MediaRow title="Reprendre" items={continueRow} kind="wide" />}
-        <MediaRow title="Ajouts récents" items={items.slice(0, 24)} isLoading={isLoading} />
-        {topRated.length >= 3 && <MediaRow title="Top 10" items={topRated} kind="top10" />}
-        {genreRows.map((r) => <MediaRow key={r.genre} title={r.genre} items={r.items} onSeeAll={() => showGenre(r.genre)} />)}
+        <MediaRow title={books ? 'Nouveautés' : 'Ajouts récents'} items={items.slice(0, 24)} isLoading={isLoading} kind={shelf} />
+        {topRated.length >= 3 && <MediaRow title={books ? 'Les mieux notés' : 'Top 10'} items={topRated} kind={books ? 'book' : 'top10'} />}
+        {genreRows.map((r) => <MediaRow key={r.genre} title={r.genre} items={r.items} onSeeAll={() => showGenre(r.genre)} kind={shelf} />)}
       </>
     )
   }

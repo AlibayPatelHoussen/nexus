@@ -4,6 +4,33 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Changed — title page on iPhone like the Apple TV app
+- Taller artwork that goes progressively blurred and dark under the text; bold centred title, « Série · Drame · Comédie », a wide white « Lire le premier épisode / Reprendre · S1 É2 / Lire · S1 É3 » capsule and a round glass « + »; the synopsis on two lines with a glass « PLUS » capsule; « 2024 · 2 saisons ★ 7,4 » and badges
+- Back button and bar buttons in glass circles / one glass capsule (iOS 26)
+- « Saison 1 ⇅ »: the season is chosen in a Liquid Glass pull-down menu (new `PullDownMenu`, desktop too)
+- Episodes on iPhone: one card per episode, the still on top and the text on a blurred copy of it
+
+### Changed — Liquid Glass steps 6–7: YouTube and every page's toolbar
+- YouTube like the Apple TV app: 16:9 thumbnails with 14 pt corners and a hairline rim, spring lift and pointer reflection on hover, the duration in a small clear-glass capsule, a white progress bar; channels as horizontal shelves
+- Every page's toolbar (desktop) and navigation bar (iPhone) uses the iOS 26 / macOS 26 scroll edge effect instead of the old flat bar with a hairline: the content fades and blurs softly under the bar
+- Search fields are one shared capsule component (`SearchField`, iOS 26 / macOS 26); toolbar icon buttons and pop-up menus are round / capsules
+- Fixed: a text colour combined with a type size (`text-label` + `text-body`) lost its colour (class merging didn't know Nexus's type scale)
+
+### Changed — Liquid Glass step 5: Manga like Apple Books
+- Shelves of book covers: small 6 pt corners, a spine light and a soft shadow as if resting on a shelf, the title underneath; no billboard (« Nouveautés », « Les mieux notés », genres)
+- Title page: the whole cover with its shadow, title and capsule buttons
+- Reader: the chrome is floating clear glass (a capsule at the top with the chapter, a capsule at the bottom with the page slider), page arrows in glass, the chapters panel in glass; everything fades away while reading
+
+### Changed — Liquid Glass step 4: video player
+- The player's controls are clear Liquid Glass over the video (`.glass-media`: clear glass with the HIG's dimming for bright images): a 26 pt capsule control bar that fades in and settles on a spring, a round centre play button, the « Reprise à … » card and the « Retour » capsule
+
+### Changed — Liquid Glass step 3b: title pages like the Apple TV app
+- Films, séries and animes open on an immersive header: the artwork fills the top of the window (16:9 up to 80 % of its height, portrait key art on iPhone), with parallax; title, facts and rating, the white « Lecture / Reprendre · S1 É2 » capsule and the round glass « + » (Ma liste) over it; the episode up next and the synopsis beside them (under the artwork on iPhone). The back button is a round clear-glass button over the artwork on iPhone
+- The clicked poster grows into that header (View Transitions API, Chrome / Safari 18), the rest cross-fades; the page shows at once with what the card knew, the rest arrives after
+- Episodes: Apple TV row of 16:9 stills (« ÉPISODE 3 », title, synopsis, duration / date, progress, « Vu » badge, play button on hover); seasons as a capsule segmented control
+- Loading: a skeleton instead of a spinner; a missing artwork shows a clean placeholder
+- The page and its shelves share Apple TV's 40 / 25 px gutter. Manga keeps its whole cover (Apple Books, next step)
+
 ### Changed — Liquid Glass step 3a: Films / Séries / Animes like the Apple TV app
 - Billboard (values measured on tv.apple.com): full-bleed artwork, 16:9 up to 90 % of the window, under the floating sidebar too (portrait key art on iPhone); the same three-layer gradient; title, facts and synopsis bottom-left (centred on iPhone); a white « Lecture » capsule (40 px), round clear-glass « + » (favourites) and « i » (details); carousel of up to 6 titles with cross-fade, slow Ken Burns zoom and pagination dots (20 px pitch); parallax while scrolling; pauses on hover
 - The toolbar (desktop) and the large title (iPhone) float over the billboard in white, and become the glass bar once it has scrolled away

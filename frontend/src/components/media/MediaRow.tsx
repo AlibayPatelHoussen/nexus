@@ -18,7 +18,7 @@ interface MediaRowProps {
   onSeeAll?:  () => void
   isLoading?: boolean
   /** poster shelf · wide 16:9 cards ("Reprendre") · top10 (big ranks + genre) */
-  kind?:      'poster' | 'wide' | 'top10'
+  kind?:      'poster' | 'wide' | 'top10' | 'book'
 }
 
 const isRowItem = (x: MediaItem | RowItem): x is RowItem => 'item' in x
@@ -63,7 +63,7 @@ export default function MediaRow({ title, items, onSeeAll, isLoading, kind = 'po
                   <MediaCard
                     key={r.item.id + (r.subtitle ?? '')}
                     item={r.item} progress={r.progress} duration={r.duration} subtitle={r.subtitle}
-                    shape={kind === 'wide' ? 'wide' : 'poster'}
+                    shape={kind === 'wide' ? 'wide' : kind === 'book' ? 'book' : 'poster'}
                     rank={kind === 'top10' ? i + 1 : undefined}
                     caption={kind === 'top10' ? r.item.genres?.[0] : undefined}
                   />

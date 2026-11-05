@@ -1,11 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useQuery } from '@tanstack/react-query'
-import { Download as DownloadIcon, Search, X } from 'lucide-react'
+import { Download as DownloadIcon, Search } from 'lucide-react'
 import toast from 'react-hot-toast'
 import type { Socket } from 'socket.io-client'
 import { SOURCE_INFO, downloadsService, type DownloadKind, type DownloadSource, type SearchResult, type TorrentGroup } from '@/services/downloadsService'
 import { useShell } from '@/components/shell/shellContext'
 import SegmentedControl from '@/components/ui/SegmentedControl'
+import SearchField from '@/components/ui/SearchField'
 import EmptyState from '@/components/ui/EmptyState'
 import Skeleton from '@/components/ui/Skeleton'
 import Spinner from '@/components/ui/Spinner'
@@ -123,17 +124,10 @@ export default function SearchView({ socket }: { socket: Socket | null }) {
 
   const field = (
     <form onSubmit={submit} className={cn('relative flex items-center', phone ? 'w-full' : 'w-full max-w-[520px]')} role="search">
-      <Search size={phone ? 16 : 14} strokeWidth={1.75} className="absolute left-2.5 text-label2 pointer-events-none" aria-hidden="true" />
-      <input
-        type="search" value={input} onChange={(e) => setInput(e.target.value)} enterKeyHint="search"
-        placeholder="Anime, manga, film, série, vidéo YouTube…" aria-label="Rechercher un titre à télécharger"
-        className={cn('w-full bg-fill text-label placeholder:text-label2 outline-none focus:shadow-[0_0_0_3px_color-mix(in_srgb,var(--accent)_35%,transparent)]',
-          phone ? 'h-9 pl-8 pr-8 rounded-[10px] text-[17px]' : 'h-8 pl-8 pr-8 rounded-[8px] text-body')}
+      <SearchField
+        value={input} onChange={setInput} enterKeyHint="search" className="w-full"
+        placeholder="Anime, manga, film, série, vidéo YouTube…" label="Rechercher un titre à télécharger"
       />
-      {input && (
-        <button type="button" className="absolute right-2 w-5 h-5 grid place-items-center rounded-full bg-label3 text-surface"
-          onClick={() => setInput('')} aria-label="Effacer"><X size={11} strokeWidth={2.5} /></button>
-      )}
     </form>
   )
 

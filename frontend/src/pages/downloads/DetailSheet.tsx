@@ -260,7 +260,7 @@ function StandardSheet({ result, onClose }: { result: SearchResult | null; onClo
                 <label className="relative inline-flex items-center">
                   <span className="sr-only">Saison</span>
                   <select value={season} onChange={(e) => setSeason(e.target.value)}
-                    className="h-8 pl-3 pr-8 rounded-[8px] bg-fill text-label text-body appearance-none outline-none">
+                    className="h-8 pl-3.5 pr-8 rounded-pill bg-fill text-label text-body appearance-none outline-none">
                     {seasonIds.map(([id, label]) => <option key={id} value={id}>{label}</option>)}
                   </select>
                   <span className="pointer-events-none absolute right-2.5 text-label2 text-caption" aria-hidden="true">▾</span>

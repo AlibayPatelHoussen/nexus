@@ -66,8 +66,8 @@ function DesktopPage({ title, subtitle, actions, accessory, back, bleed, narrow,
       <header
         className={cn(
           'sticky top-0 z-30 flex-shrink-0 transition-[background-color,box-shadow,color] duration-300',
-          hero ? 'order-1 -mb-[var(--hero-bar-h)] h-[var(--hero-bar-h)]' : 'material-bar hairline-b',
-          hero && (onMedia ? 'scheme-dark bg-transparent' : 'material-bar hairline-b'),
+          hero ? 'order-1 -mb-[var(--hero-bar-h)] h-[var(--hero-bar-h)]' : 'edge-bar',
+          hero && (onMedia ? 'scheme-dark bg-transparent' : 'edge-bar'),
         )}
         style={{ paddingTop: 'env(safe-area-inset-top, 0px)', ['--hero-bar-h' as string]: accessory ? '96px' : '52px' }}
       >
@@ -76,7 +76,7 @@ function DesktopPage({ title, subtitle, actions, accessory, back, bleed, narrow,
             <button
               type="button"
               onClick={toggleSidebar}
-              className="w-8 h-8 grid place-items-center rounded-[6px] text-label2 hoverable -ml-1"
+              className="w-8 h-8 grid place-items-center rounded-full text-label2 hoverable -ml-1"
               aria-label={sidebarOpen ? 'Masquer la barre latérale' : 'Afficher la barre latérale'}
               aria-controls="nexus-sidebar"
               aria-expanded={sidebarOpen}
@@ -85,7 +85,7 @@ function DesktopPage({ title, subtitle, actions, accessory, back, bleed, narrow,
             </button>
           )}
           {back && (
-            <Link to={back.to} className="w-8 h-8 grid place-items-center rounded-[6px] text-label2 hoverable -ml-1" aria-label={`Retour : ${back.label}`} title={back.label}>
+            <Link to={back.to} className="w-8 h-8 grid place-items-center rounded-full text-label2 hoverable -ml-1" aria-label={`Retour : ${back.label}`} title={back.label}>
               <ChevronLeft size={20} strokeWidth={1.75} />
             </Link>
           )}
@@ -97,7 +97,8 @@ function DesktopPage({ title, subtitle, actions, accessory, back, bleed, narrow,
         </div>
         {accessory && <div className="px-4 pb-2.5">{accessory}</div>}
       </header>
-      <div className={cn('flex-1 min-h-0 order-3', !bleed && 'px-[var(--page-x)] py-5', hero && 'pt-8', className)}>
+      <div className={cn('flex-1 min-h-0 order-3', !bleed && 'px-[var(--page-x)] py-5', hero && 'pt-8', className)}
+        style={hero ? { ['--page-x' as string]: 'var(--shelf-x)' } : undefined}>
         {narrow && !bleed ? <div className="max-w-[880px] mx-auto">{children}</div> : children}
       </div>
     </div>
@@ -109,6 +110,7 @@ function PhonePage({ title, actions, accessory, back, bleed, largeTitle = true, 
   const parent = back ?? PHONE_PARENT[pathname]
   const titleRef = useRef<HTMLHeadingElement>(null)
   const [compact, setCompact] = useState(!largeTitle)
+  const scrolledPastHero = useScrolledPast(typeof window === 'undefined' ? 400 : window.innerHeight * 0.55, !!hero, true)
   useEffect(() => { document.title = `${title} — Nexus` }, [title])
 
   // The small title appears once the large one has scrolled under the bar
@@ -123,29 +125,41 @@ function PhonePage({ title, actions, accessory, back, bleed, largeTitle = true, 
   if (hero) {
     // Apple TV (iPhone): the large title and its accessory float over the billboard, in white;
     // the navigation bar is transparent until the billboard has scrolled away.
+    const barSolid = scrolledPastHero
     return (
       <div className="flex flex-col min-h-full">
         <header
           className={cn('sticky top-0 z-30 transition-[background-color,box-shadow] duration-300 -mb-[calc(var(--navbar-h)+env(safe-area-inset-top,0px))]',
-            compact ? 'material-bar hairline-b' : 'scheme-dark bg-transparent')}
+            barSolid ? 'edge-bar' : 'scheme-dark bg-transparent')}
           style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
         >
           <div className="grid grid-cols-[1fr_auto_1fr] items-center h-[var(--navbar-h)] safe-x" style={{ ['--gutter' as string]: '8px' }}>
-            <div />
-            <div className="text-[17px] font-semibold text-label truncate max-w-[52vw] transition-opacity duration-fast" style={{ opacity: compact ? 1 : 0 }} aria-hidden={!compact}>{title}</div>
-            <div className="justify-self-end flex items-center gap-1 pr-1">{actions}</div>
+            <div className="justify-self-start min-w-0">
+              {parent && (
+                <Link to={parent.to} aria-label={`Retour : ${parent.label}`}
+                  className={cn('flex items-center justify-center w-11 h-11 ml-1 rounded-full text-label active:opacity-60', barSolid ? 'glass' : 'glass-clear')}>
+                  <ChevronLeft size={26} strokeWidth={2.25} className="-ml-0.5" aria-hidden="true" />
+                </Link>
+              )}
+            </div>
+            <div className="text-[17px] font-semibold text-label truncate max-w-[52vw] transition-opacity duration-fast" style={{ opacity: barSolid ? 1 : 0 }} aria-hidden={!barSolid}>{title}</div>
+            {/* iOS 26: the bar buttons share one glass capsule */}
+            <div className="justify-self-end pr-1">{actions && <div className={cn('flex items-center rounded-pill min-h-11', barSolid ? 'glass' : 'glass-clear')}>{actions}</div>}</div>
           </div>
         </header>
         <div className="relative">
           {hero}
           <div className="absolute inset-x-0 top-0 scheme-dark" style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + var(--navbar-h))' }}>
-            <div className="gutter safe-x pt-0.5 pb-2">
-              <h1 ref={titleRef} className="text-largetitle text-label [text-shadow:0_1px_12px_rgba(0,0,0,0.25)]">{title}</h1>
-            </div>
+            {largeTitle ? (
+              <div className="gutter safe-x pt-0.5 pb-2">
+                <h1 ref={titleRef} className="text-largetitle text-label [text-shadow:0_1px_12px_rgba(0,0,0,0.25)]">{title}</h1>
+              </div>
+            ) : <h1 className="sr-only">{title}</h1>}
             {accessory && <div className="gutter safe-x pb-3">{accessory}</div>}
           </div>
         </div>
-        <div className={cn('flex-1 min-h-0 gutter safe-x pb-6 pt-7', className)}>{children}</div>
+        {/* Same gutter as the shelves (Apple TV: 25 px) */}
+        <div className={cn('flex-1 min-h-0 safe-x pb-6 pt-7', className)} style={{ ['--page-x' as string]: 'var(--shelf-x)', ['--gutter' as string]: 'var(--shelf-x)' }}>{children}</div>
       </div>
     )
   }
@@ -153,7 +167,7 @@ function PhonePage({ title, actions, accessory, back, bleed, largeTitle = true, 
   return (
     <div className={cn('flex flex-col', bleed ? 'h-full' : 'min-h-full')}>
       <header
-        className={cn('sticky top-0 z-30 transition-[background-color,box-shadow] duration-fast', compact ? 'material-bar hairline-b' : 'bg-bg')}
+        className={cn('sticky top-0 z-30 transition-[background-color,box-shadow] duration-fast', compact ? 'edge-bar' : 'bg-bg')}
         style={{ paddingTop: 'env(safe-area-inset-top, 0px)' }}
       >
         <div className="grid grid-cols-[1fr_auto_1fr] items-center h-[var(--navbar-h)] safe-x" style={{ ['--gutter' as string]: '8px' }}>

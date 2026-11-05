@@ -4,7 +4,9 @@ import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, Check, Play, Plus, RotateCw, Star, Tv } from 'lucide-react'
 import MediaRow from '@/components/media/MediaRow'
+import DetailHero from '@/components/media/DetailHero'
 import Artwork from '@/components/media/Artwork'
+import Skeleton from '@/components/ui/Skeleton'
 import ChaptersSection from '@/components/media/ChaptersSection'
 import { mediaService } from '@/services/mediaService'
 import { formatDuration, formatBytes } from '@/utils'
@@ -15,7 +17,6 @@ import Page from '@/components/shell/Page'
 import { useShell } from '@/components/shell/shellContext'
 import Button from '@/components/ui/Button'
 import EmptyState from '@/components/ui/EmptyState'
-import Spinner from '@/components/ui/Spinner'
 import { Group, ListRow } from '@/components/ui/GroupedList'
 import { useAuthStore } from '@/stores/authStore'
 import { rating } from '@/components/media/mediaActions'
@@ -42,10 +43,19 @@ export default function MediaDetailPage() {
   const [activeSeason, setActiveSeason] = useState<number | null>(null)
   const [scanning, setScanning] = useState(false)
 
-  const { data: media, isLoading, isError, refetch } = useQuery({
+  const { data: media, isLoading, isError, refetch, isPlaceholderData } = useQuery({
     queryKey: ['media', id],
     queryFn:  () => mediaService.getById(id!),
     enabled:  !!id,
+    // The card that was clicked already knows title and artwork: show them at once
+    // (the poster grows into the header), the rest arrives with the request
+    placeholderData: () => {
+      for (const [, data] of qc.getQueriesData<{ items?: MediaItem[] }>({ queryKey: ['media'] })) {
+        const hit = data?.items?.find?.((m) => m.id === id)
+        if (hit) return { ...hit, episodes: undefined, chapters: undefined } as MediaItem
+      }
+      return undefined
+    },
   })
 
   const isShowType = (t?: string) => t === 'serie' || t === 'anime'
@@ -102,7 +112,15 @@ export default function MediaDetailPage() {
   }
 
   if (isLoading) {
-    return <Page title="" back={libraryOf()}><div className="grid place-items-center min-h-[50vh]"><Spinner /></div></Page>
+    return (
+      <Page title="" back={libraryOf()} largeTitle={false}>
+        <div className="flex flex-col gap-4" aria-label="Chargement">
+          <Skeleton className="w-full aspect-video max-h-[60vh] rounded-card" />
+          <Skeleton className="h-8 w-1/2" />
+          <Skeleton className="h-4 w-1/3" />
+        </div>
+      </Page>
+    )
   }
 
   if (!media) {
@@ -181,7 +199,9 @@ export default function MediaDetailPage() {
   const playLabel = isShow
     ? episodes.length === 0
       ? 'Aucun épisode'
-      : `${nextResumes ? 'Reprendre' : 'Lecture'} · S${nextEpisode?.season ?? 1} É${nextEpisode?.episodeNumber}`
+      : episodesProgress.length === 0 && nextEpisode?.id === episodes[0]?.id
+        ? 'Lire le premier épisode'
+        : `${nextResumes ? 'Reprendre' : 'Lire'} · S${nextEpisode?.season ?? 1} É${nextEpisode?.episodeNumber}`
     : isReading
       ? chapters.length === 0 ? 'Aucun chapitre' : 'Lire'
       : progress && progressPct > 0 && progressPct < 95
@@ -191,7 +211,7 @@ export default function MediaDetailPage() {
 
   const scanButton = isAdmin && (isReading || isShow) && (
     phone ? (
-      <button type="button" className="w-11 h-11 grid place-items-center text-accent-text active:opacity-50 disabled:opacity-40" onClick={scan} disabled={scanning} aria-label="Analyser à nouveau">
+      <button type="button" className="w-11 h-11 grid place-items-center rounded-full text-label active:opacity-50 disabled:opacity-40" onClick={scan} disabled={scanning} aria-label="Analyser à nouveau" title="Analyser à nouveau">
         <RotateCw size={22} strokeWidth={1.75} className={scanning ? 'animate-spin' : ''} />
       </button>
     ) : (
@@ -202,8 +222,29 @@ export default function MediaDetailPage() {
   )
 
   return (
-    <Page title={media.title} subtitle={metaBits.join(' · ')} back={libraryOf(media.type)} actions={scanButton} largeTitle={false}>
-      {/* ── Header: artwork whole, details beside it (phone: stacked, centred) ── */}
+    <Page
+      title={media.title}
+      subtitle={metaBits.join(' · ')}
+      back={libraryOf(media.type)}
+      actions={scanButton}
+      largeTitle={false}
+      hero={isReading ? undefined : (
+        <DetailHero
+          media={media}
+          facts={metaBits}
+          rating={r}
+          playLabel={playLabel}
+          canPlay={canPlay}
+          onPlay={() => play()}
+          isFav={isFav}
+          onFav={() => favMut.mutate()}
+          favBusy={favMut.isPending}
+          upNext={nextEpisode && isShow && episodesProgress.length > 0 ? `S${nextEpisode.season ?? 1}, É${nextEpisode.episodeNumber}${nextEpisode.title ? ` · ${nextEpisode.title}` : ''}` : null}
+        />
+      )}
+    >
+      {/* ── Manga / webtoon (Apple Books until step 5): the cover whole, details beside it ── */}
+      {isReading && (
       <section className={cn('flex gap-6 lg:gap-8 mb-8', phone ? 'flex-col items-center text-center' : 'items-start')}>
         <Artwork
           src={media.posterPath || media.backdropPath}
@@ -213,7 +254,7 @@ export default function MediaDetailPage() {
           title={media.title}
           subtitle={media.year}
           loading="eager"
-          className={cn('flex-shrink-0 rounded-[10px]', media.posterPath || !media.backdropPath
+          className={cn('flex-shrink-0 rounded-[6px] shadow-[0_14px_34px_-10px_rgba(0,0,0,0.45)]', media.posterPath || !media.backdropPath
             ? 'w-[52vw] max-w-[220px] md:w-[200px] lg:w-[240px] md:max-w-none'
             : 'w-full max-w-[420px] md:w-[360px]')}
         />
@@ -246,6 +287,8 @@ export default function MediaDetailPage() {
           </p>
         </div>
       </section>
+      )}
+
 
       {/* Episodes (series / anime) */}
       {isShow && episodes.length > 0 && (
@@ -259,7 +302,7 @@ export default function MediaDetailPage() {
           onPlay={(epId) => play(epId)}
         />
       )}
-      {isShow && episodes.length === 0 && (
+      {isShow && episodes.length === 0 && !isPlaceholderData && (
         <section className="bg-surface rounded-card mb-10">
           <EmptyState
             icon={<Tv strokeWidth={1.25} />}
@@ -271,7 +314,7 @@ export default function MediaDetailPage() {
       )}
 
       {/* Chapters (manga / webtoon) */}
-      {isReading && <ChaptersSection chapters={chapters} onRead={(chapterId) => play(undefined, chapterId)} onScan={scan} scanning={scanning} />}
+      {isReading && !isPlaceholderData && <ChaptersSection chapters={chapters} onRead={(chapterId) => play(undefined, chapterId)} onScan={scan} scanning={scanning} />}
 
       {/* Automatic downloads of what comes next (off unless switched on) */}
       {isAdmin && (media.type === 'anime' || media.type === 'serie' || media.type === 'manga' || media.type === 'webtoon') && (
@@ -284,6 +327,7 @@ export default function MediaDetailPage() {
       {(media.genres?.length > 0 || media.year || media.duration || media.status || media.language || media.fileSize) ? (
       <div className="grid gap-8 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] mb-10">
         <Group header="Informations">
+          {media.originalTitle && media.originalTitle !== media.title && <ListRow title="Titre original" detail={media.originalTitle} />}
           {media.genres?.length > 0 && <ListRow title="Genres" detail={media.genres.join(', ')} />}
           {media.year && <ListRow title="Année" detail={String(media.year)} />}
           {media.duration ? <ListRow title="Durée" detail={formatDuration(media.duration)} /> : null}
