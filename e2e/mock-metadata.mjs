@@ -78,6 +78,15 @@ http.createServer((req, res) => {
     if ((m = p.match(/^\/3\/(movie|tv)\/(\d+)\/external_ids$/))) {
       return json(res, { id: Number(m[2]), imdb_id: `tt${m[2].padStart(7, '0')}` })
     }
+    // TMDB image catalogue: a textless poster, a French and an English logo, a textless backdrop
+    if ((m = p.match(/^\/3\/(movie|tv)\/(\d+)\/images$/))) {
+      const id = m[2]
+      return json(res, {
+        posters:   [{ file_path: `/keyart_${id}.jpg`, iso_639_1: null, vote_average: 6 }, { file_path: `/poster_fr_${id}.jpg`, iso_639_1: 'fr', vote_average: 9 }],
+        logos:     [{ file_path: `/logo_en_${id}.png`, iso_639_1: 'en', vote_average: 9 }, { file_path: `/logo_fr_${id}.png`, iso_639_1: 'fr', vote_average: 5 }],
+        backdrops: [{ file_path: `/herobackdrop_${id}.jpg`, iso_639_1: null, vote_average: 5 }],
+      })
+    }
     // IMDb dataset title.ratings.tsv.gz (every id the mock can hand out)
     if (p === '/imdb/title.ratings.tsv.gz') {
       res.writeHead(200, { 'Content-Type': 'application/gzip' })

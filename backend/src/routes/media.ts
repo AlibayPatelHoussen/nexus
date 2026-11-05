@@ -106,6 +106,10 @@ router.post('/scan/:type', asyncHandler(async (req: Request, res: Response) => {
     await MediaScanner.pruneDeleted(dbType)
     return fn()
   })
+  // New titles get their IMDb rating and artwork in the background
+  if (['films', 'series', 'animes'].includes(req.params.type) && process.env.IMDB_SYNC !== 'off') {
+    void syncImdb().catch((err) => logger.warn(`Enrichment after scan failed: ${err}`))
+  }
   res.json({ success: true, data: { scanned: count } })
 }))
 

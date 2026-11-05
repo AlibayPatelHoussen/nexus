@@ -4,6 +4,10 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Changed — Apple TV artwork, smoother tab bar
+- Billboard and title pages use TMDB's image catalogue (`/images`, migration 007): the best-voted **textless key art** on iPhone, the **full-resolution textless backdrop** on larger screens, and the show's **title logo** (French first, then English; PNG only) instead of plain text, like the Apple TV app. Full-resolution files are downscaled once by the image cache (1290 px portrait / 2560 px landscape, logos keep their transparency). Fetched after each scan and daily, with the IMDb ratings
+- Tab bar: no React render while the finger moves (motion values, springs, opacity cross-fade for the tint), so the lens follows at 60 fps; in dark mode the lens rim is much fainter (clear glass, not a white outline)
+
 ### Added — Top 10 ranked by IMDb
 - Every film / series / anime with a TMDB id gets its IMDb id from TMDB (`external_ids`); once a day the official IMDb dataset `title.ratings.tsv.gz` (non-commercial use, refreshed daily by IMDb) is streamed and the IMDb rating and vote count of the library's titles are stored (migration 006). Nothing is scraped from imdb.com
 - The Top 10 ranks by IMDb's weighted rating (IMDb Top 250 formula: m = 25 000 votes, C = 7.0) and shows « IMDb 8,7 » under each poster; TMDB's rating is the fallback when fewer than 3 titles have an IMDb score

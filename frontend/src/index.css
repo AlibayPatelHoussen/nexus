@@ -217,6 +217,7 @@
 /* iOS 26 tab bar lens (while the finger is on the bar): clear glass, a crisp
    bright edge, strong saturation of what is under it, a faint chromatic fringe */
 .tab-lens {
+  will-change: transform, opacity;
   background: rgba(255, 255, 255, 0.06);
   -webkit-backdrop-filter: blur(1.5px) saturate(190%) brightness(1.08);
   backdrop-filter: blur(1.5px) saturate(190%) brightness(1.08);
@@ -227,6 +228,27 @@
     inset 2px 0 3px rgba(255, 60, 140, 0.22),
     inset -2px 0 3px rgba(40, 170, 255, 0.22),
     0 6px 22px rgba(0, 0, 0, 0.22);
+}
+/* Dark: a much fainter rim, the lens must read as clear glass, not a white outline */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) .tab-lens {
+    background: rgba(255, 255, 255, 0.03);
+    box-shadow:
+      inset 0 0 0 0.5px rgba(255, 255, 255, 0.16),
+      inset 0 1px 1px rgba(255, 255, 255, 0.28),
+      inset 2px 0 3px rgba(255, 60, 140, 0.14),
+      inset -2px 0 3px rgba(40, 170, 255, 0.14),
+      0 6px 22px rgba(0, 0, 0, 0.35);
+  }
+}
+:root[data-theme="dark"] .tab-lens {
+  background: rgba(255, 255, 255, 0.03);
+  box-shadow:
+    inset 0 0 0 0.5px rgba(255, 255, 255, 0.16),
+    inset 0 1px 1px rgba(255, 255, 255, 0.28),
+    inset 2px 0 3px rgba(255, 60, 140, 0.14),
+    inset -2px 0 3px rgba(40, 170, 255, 0.14),
+    0 6px 22px rgba(0, 0, 0, 0.35);
 }
 @media (prefers-reduced-transparency: reduce) {
   .tab-lens { background: var(--glass-select); -webkit-backdrop-filter: none; backdrop-filter: none; }

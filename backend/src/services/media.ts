@@ -27,6 +27,10 @@ function mapMedia(row: Record<string, any>) {
     // Remote artwork goes through the backend image proxy / cache
     posterPath:    proxied('media', row['id'], 'poster', row['poster_path']),
     backdropPath:  proxied('media', row['id'], 'backdrop', row['backdrop_path']),
+    // Apple TV-style artwork (TMDB /images): textless key art, title logo, full-res backdrop
+    keyArtPath:       proxied('media', row['id'], 'keyart', row['key_art_path']),
+    logoPath:         proxied('media', row['id'], 'logo', row['logo_path']),
+    heroBackdropPath: proxied('media', row['id'], 'herobackdrop', row['hero_backdrop_path']),
     genres:        row['genres'],
     year:          row['year'],
     rating:        row['rating'] != null ? Number(row['rating']) : null,
@@ -106,7 +110,8 @@ export class MediaService {
       query(
         `SELECT id, type, title, original_title, poster_path, backdrop_path,
                 genres, year, rating, vote_count, status, overview, duration,
-                file_path, file_size, created_at, channel, imdb_id, imdb_rating, imdb_votes
+                file_path, file_size, created_at, channel, imdb_id, imdb_rating, imdb_votes,
+                key_art_path, logo_path, hero_backdrop_path
                FROM media_items
          ${where}
          ORDER BY ${validSort} ${validDir} NULLS LAST

@@ -10,6 +10,7 @@ import { useShell } from '@/components/shell/shellContext'
 import { spring } from '@/design/motion'
 import { cn } from '@/utils'
 import { isReading } from './mediaActions'
+import TitleLogo from './TitleLogo'
 
 const TYPE_LABEL: Record<string, string> = {
   film: 'Film', serie: 'Série', anime: 'Anime', manga: 'Manga', webtoon: 'Webtoon',
@@ -79,7 +80,8 @@ export default function Hero({ items }: { items: MediaItem[] }) {
 
   if (!item) return null
   const reading = isReading(item.type)
-  const image = phone ? (item.posterPath || item.backdropPath) : (item.backdropPath || item.posterPath)
+  // Apple TV: textless key art on iPhone, the full-resolution backdrop on larger screens
+  const image = phone ? (item.keyArtPath || item.posterPath || item.backdropPath) : (item.heroBackdropPath || item.backdropPath || item.posterPath)
   const facts = [TYPE_LABEL[item.type] ?? item.type, item.year, ...(item.genres?.slice(0, 2) ?? [])].filter(Boolean).join(' · ')
   const fav = favs[item.id] ?? !!(item as MediaItem & { isFavorite?: boolean }).isFavorite
 
@@ -138,8 +140,9 @@ export default function Hero({ items }: { items: MediaItem[] }) {
           transition={spring.soft}
         >
           <p className="text-[13px] font-semibold uppercase tracking-[0.06em] text-white/70">À la une</p>
-          <h2 className={cn('font-bold leading-[1.05] tracking-[-0.025em] text-white line-clamp-2 [text-wrap:balance]', phone ? 'text-[34px]' : 'text-[52px]')}>
-            {item.title}
+          <h2 className={cn('font-bold leading-[1.05] tracking-[-0.025em] text-white [text-wrap:balance]', phone ? 'text-[34px]' : 'text-[52px]')}>
+            <TitleLogo title={item.title} logo={item.logoPath} className="line-clamp-2"
+              logoClassName={cn('block', phone ? 'mx-auto max-h-[104px] max-w-[78vw]' : 'max-h-[150px] max-w-[min(440px,34vw)] object-left')} />
           </h2>
           <p className="text-[15px] text-white/70">{facts}</p>
           {item.overview && !phone && (

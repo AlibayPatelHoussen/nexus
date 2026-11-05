@@ -4,6 +4,7 @@ import readline from 'readline'
 import type { Readable } from 'stream'
 import { query } from '../config/database'
 import { logger } from '../utils/logger'
+import { linkArtwork } from './artwork'
 
 /*
  * IMDb ratings for the Top 10.
@@ -78,15 +79,16 @@ export async function refreshImdbRatings(): Promise<number> {
   return found.size
 }
 
-let running: Promise<{ linked: number; rated: number }> | null = null
-/** Both steps; one run at a time. */
+let running: Promise<{ linked: number; rated: number; artwork: number }> | null = null
+/** Enrichment after scans and once a day: IMDb ids + ratings, Apple TV-style artwork. One run at a time. */
 export function syncImdb() {
   if (running) return running
   running = (async () => {
     const linked = await linkImdbIds()
     const rated = await refreshImdbRatings()
-    logger.info(`IMDb: ${linked} new ids, ${rated} ratings updated`)
-    return { linked, rated }
+    const artwork = await linkArtwork()
+    logger.info(`IMDb: ${linked} new ids, ${rated} ratings updated; artwork for ${artwork} titles`)
+    return { linked, rated, artwork }
   })().finally(() => { running = null })
   return running
 }
