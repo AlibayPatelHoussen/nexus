@@ -393,6 +393,28 @@ test('UI: "Ma liste" toggles a favourite', async () => {
   await page.context().close()
 })
 
+test('IMDb: ids from TMDB, ratings from the dataset, Top 10 ranked by IMDb', async () => {
+  const user = await login('alice', 'User12345')
+  eq((await api('/api/media/imdb/refresh', { method: 'POST', token: user.accessToken })).status, 403, 'non-admin refused')
+  const r = await api('/api/media/imdb/refresh', { method: 'POST', token: admin.accessToken })
+  eq(r.status, 200, 'refresh')
+  assert(r.json.data.rated > 0, `ratings stored: ${JSON.stringify(r.json.data)}`)
+  // A film: IMDb id = tt + TMDB id, rating / votes from the dataset
+  const [tmdb, imdb, rating, votes] = sql(`SELECT tmdb_id, imdb_id, imdb_rating, imdb_votes FROM media_items WHERE file_path LIKE '%Marty%'`).split('|')
+  eq(imdb, `tt${tmdb.padStart(7, '0')}`, 'imdb id')
+  // Same formula as e2e/mock-metadata.mjs (importing it would start the mock)
+  const want = { rating: (50 + (Number(tmdb) * 37) % 45) / 10, votes: 1000 + (Number(tmdb) * 131) % 899000 }
+  eq(Number(rating), want.rating, 'imdb rating'); eq(Number(votes), want.votes, 'imdb votes')
+  // The API exposes them and the Top 10 shows the IMDb score of its first title
+  const list = await api('/api/media?type=film&limit=100', { token: admin.accessToken })
+  const rated = list.json.data.items.filter((m) => m.imdbRating != null)
+  assert(rated.length >= 3, 'films with an IMDb rating')
+  const page = await newPage(admin)
+  await page.goto(`${B}/cinema`, { waitUntil: 'networkidle' })
+  await page.waitForSelector('text=/^IMDb \\d,\\d$/', { timeout: 10000 })
+  await page.context().close()
+})
+
 test('UI: search and genre "Tout voir" show a results grid', async () => {
   const page = await newPage(admin)
   await page.goto(`${B}/cinema`, { waitUntil: 'networkidle' })

@@ -31,6 +31,9 @@ function mapMedia(row: Record<string, any>) {
     year:          row['year'],
     rating:        row['rating'] != null ? Number(row['rating']) : null,
     voteCount:     row['vote_count'],
+    imdbId:        row['imdb_id'] ?? null,
+    imdbRating:    row['imdb_rating'] != null ? Number(row['imdb_rating']) : null,
+    imdbVotes:     row['imdb_votes'] ?? null,
     status:        row['status'],
     language:      row['language'],
     fileSize:      row['file_size'],
@@ -103,7 +106,7 @@ export class MediaService {
       query(
         `SELECT id, type, title, original_title, poster_path, backdrop_path,
                 genres, year, rating, vote_count, status, overview, duration,
-                file_path, file_size, created_at, channel
+                file_path, file_size, created_at, channel, imdb_id, imdb_rating, imdb_votes
                FROM media_items
          ${where}
          ORDER BY ${validSort} ${validDir} NULLS LAST

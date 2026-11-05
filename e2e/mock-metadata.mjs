@@ -23,6 +23,12 @@ const port = Number(process.env.MOCK_PORT || 4010)
 const IMG = `http://localhost:${port}/img`
 export const requests = []
 
+// Fake IMDb ratings: rating 5.0–9.4 and 1 000–900 000 votes, derived from the id
+export const imdbRating = (id) => ({ rating: (50 + (id * 37) % 45) / 10, votes: 1000 + (id * 131) % 899000 })
+const IMDB_RATINGS = zlib.gzipSync(['tconst\taverageRating\tnumVotes',
+  ...Array.from({ length: 90000 }, (_, k) => { const id = k + 1000; const r = imdbRating(id); return `tt${String(id).padStart(7, '0')}\t${r.rating.toFixed(1)}\t${r.votes}` }),
+].join('\n'))
+
 const hash = (s) => [...s].reduce((h, c) => (h * 31 + c.charCodeAt(0)) >>> 0, 7) % 90000 + 1000
 const title = (q) => q.replace(/\b\w/g, (c) => c.toUpperCase())
 
@@ -68,6 +74,15 @@ http.createServer((req, res) => {
       }] })
     }
     let m
+    // TMDB external ids → IMDb id (tt + the TMDB id on 7 digits)
+    if ((m = p.match(/^\/3\/(movie|tv)\/(\d+)\/external_ids$/))) {
+      return json(res, { id: Number(m[2]), imdb_id: `tt${m[2].padStart(7, '0')}` })
+    }
+    // IMDb dataset title.ratings.tsv.gz (every id the mock can hand out)
+    if (p === '/imdb/title.ratings.tsv.gz') {
+      res.writeHead(200, { 'Content-Type': 'application/gzip' })
+      return res.end(IMDB_RATINGS)
+    }
     if ((m = p.match(/^\/3\/(movie|tv)\/(\d+)$/))) {
       const id = Number(m[2]); const tv = m[1] === 'tv'
       return json(res, {

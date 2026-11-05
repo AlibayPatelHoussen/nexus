@@ -42,6 +42,7 @@ CREATE TABLE IF NOT EXISTS media_items (
   anilist_id      INTEGER,
   mangadex_id     VARCHAR(100),
   mal_id          INTEGER,
+  imdb_id         VARCHAR(16),     -- from TMDB external_ids
 
   -- Metadata
   overview        TEXT,
@@ -51,6 +52,9 @@ CREATE TABLE IF NOT EXISTS media_items (
   year            INTEGER,
   rating          DECIMAL(3,1),
   vote_count      INTEGER,
+  imdb_rating     DECIMAL(3,1),    -- IMDb dataset title.ratings (daily)
+  imdb_votes      INTEGER,
+  imdb_checked_at TIMESTAMPTZ,     -- last TMDB external_ids lookup
   status          VARCHAR(50),
   language        VARCHAR(10),
 
@@ -68,6 +72,7 @@ CREATE TABLE IF NOT EXISTS media_items (
 
 CREATE INDEX IF NOT EXISTS idx_media_type     ON media_items(type);
 CREATE INDEX IF NOT EXISTS idx_media_tmdb     ON media_items(tmdb_id);
+CREATE INDEX IF NOT EXISTS idx_media_imdb     ON media_items(imdb_id);
 CREATE INDEX IF NOT EXISTS idx_media_anilist  ON media_items(anilist_id);
 CREATE INDEX IF NOT EXISTS idx_media_title    ON media_items USING gin(title gin_trgm_ops);
 
