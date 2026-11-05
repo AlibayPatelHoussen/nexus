@@ -4,6 +4,9 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Changed — no blur at the top of the screen
+- Every page: the top bar no longer blurs what scrolls under it (opaque page colour, then a short sharp fade), and its buttons (back, section menu, search / downloads / « … », open search field) no longer blur what is behind them and have no soft shadow halo (owner's request). Nothing else changes
+
 ### Changed — sharp top bar over the billboard
 - iPhone: the bar buttons floating over the artwork (« Films ⌄ », search / downloads / « … », back) keep their glass rim and a light tint but no longer blur the artwork under them (owner's request); once scrolled past the artwork they are regular glass again
 

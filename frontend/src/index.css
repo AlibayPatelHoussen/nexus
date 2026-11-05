@@ -92,8 +92,14 @@
      rim and a light tint, but no backdrop blur, so the artwork stays sharp */
   .glass-over-art {
     background: rgba(0, 0, 0, 0.18);
-    box-shadow: var(--glass-clear-rim), 0 4px 18px rgba(0, 0, 0, 0.18);
+    box-shadow: var(--glass-clear-rim);
     color: #fff;
+  }
+  /* Bar buttons at the top of every page (owner's request: nothing blurred at the top):
+     the glass fill and rim, no backdrop blur, no soft shadow halo */
+  .glass-bar {
+    background: var(--glass-fill);
+    box-shadow: var(--glass-rim);
   }
   /* Clear glass over video (player): clear variant + the HIG's ~35 % dimming for bright media */
   .glass-media {
@@ -108,14 +114,9 @@
   .edge-bar { isolation: isolate; }
   .edge-bar::before {
     content: ""; position: absolute; inset: 0 0 -22px 0; z-index: -1; pointer-events: none;
-    background: linear-gradient(to bottom,
-      color-mix(in srgb, var(--bg) 94%, transparent) 0%,
-      color-mix(in srgb, var(--bg) 80%, transparent) 62%,
-      transparent 100%);
-    -webkit-backdrop-filter: blur(8px) saturate(160%);
-    backdrop-filter: blur(8px) saturate(160%);
-    -webkit-mask-image: linear-gradient(to bottom, #000 58%, transparent);
-    mask-image: linear-gradient(to bottom, #000 58%, transparent);
+    /* No blur at the top of the screen (owner's request): the bar is the page colour,
+       then the content fades in sharply below it */
+    background: linear-gradient(to bottom, var(--bg) 0%, var(--bg) 72%, transparent 100%);
   }
   /* Scroll edge effect under a floating bar: content dissolves instead of a hard line */
   .edge-fade-b { -webkit-mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent); mask-image: linear-gradient(to bottom, #000 calc(100% - 28px), transparent); }
