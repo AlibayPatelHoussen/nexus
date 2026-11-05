@@ -4,6 +4,9 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Changed — sharp top bar over the billboard
+- iPhone: the bar buttons floating over the artwork (« Films ⌄ », search / downloads / « … », back) keep their glass rim and a light tint but no longer blur the artwork under them (owner's request); once scrolled past the artwork they are regular glass again
+
 ### Changed — Apple TV artwork, smoother tab bar
 - Billboard and title pages use TMDB's image catalogue (`/images`, migration 007): the best-voted **textless key art** on iPhone, the **full-resolution textless backdrop** on larger screens, and the show's **title logo** (French first, then English; PNG only) instead of plain text, like the Apple TV app. Full-resolution files are downscaled once by the image cache (1290 px portrait / 2560 px landscape, logos keep their transparency). Fetched after each scan and daily, with the IMDb ratings
 - Tab bar: no React render while the finger moves (motion values, springs, opacity cross-fade for the tint), so the lens follows at 60 fps; in dark mode the lens rim is much fainter (clear glass, not a white outline)
