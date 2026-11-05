@@ -88,6 +88,13 @@
     box-shadow: var(--glass-clear-rim), 0 4px 18px rgba(0, 0, 0, 0.18);
     color: #fff;
   }
+  /* Bar buttons floating over the billboard (owner's request): the clear-glass
+     rim and a light tint, but no backdrop blur, so the artwork stays sharp */
+  .glass-over-art {
+    background: rgba(0, 0, 0, 0.18);
+    box-shadow: var(--glass-clear-rim), 0 4px 18px rgba(0, 0, 0, 0.18);
+    color: #fff;
+  }
   /* Clear glass over video (player): clear variant + the HIG's ~35 % dimming for bright media */
   .glass-media {
     background: rgba(20, 20, 22, 0.42);

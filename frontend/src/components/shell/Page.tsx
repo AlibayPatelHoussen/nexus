@@ -144,14 +144,14 @@ function PhonePage({ title, actions, accessory, back, bleed, largeTitle = true, 
             <div className="justify-self-start min-w-0">
               {parent ? (
                 <Link to={parent.to} aria-label={`Retour : ${parent.label}`}
-                  className={cn('flex items-center justify-center w-11 h-11 ml-1 rounded-full text-label active:opacity-60', barSolid ? 'glass' : 'glass-clear')}>
+                  className={cn('flex items-center justify-center w-11 h-11 ml-1 rounded-full text-label active:opacity-60', barSolid ? 'glass' : 'glass-over-art')}>
                   <ChevronLeft size={26} strokeWidth={2.25} className="-ml-0.5" aria-hidden="true" />
                 </Link>
-              ) : leading && <div className={cn('ml-1 rounded-pill', barSolid ? 'glass' : 'glass-clear')}>{leading}</div>}
+              ) : leading && <div className={cn('ml-1 rounded-pill', barSolid ? 'glass' : 'glass-over-art')}>{leading}</div>}
             </div>
             <div className="text-[17px] font-semibold text-label truncate max-w-[52vw] transition-opacity duration-fast" style={{ opacity: barSolid && barTitle ? 1 : 0 }} aria-hidden={!(barSolid && barTitle)}>{title}</div>
             {/* iOS 26: the bar buttons share one glass capsule */}
-            <div className="justify-self-end pr-1">{actions && <div className={cn('flex items-center rounded-pill min-h-11', barSolid ? 'glass' : 'glass-clear')}>{actions}</div>}</div>
+            <div className="justify-self-end pr-1">{actions && <div className={cn('flex items-center rounded-pill min-h-11', barSolid ? 'glass' : 'glass-over-art')}>{actions}</div>}</div>
           </div>
           )}
         </header>
