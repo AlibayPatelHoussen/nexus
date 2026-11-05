@@ -1,6 +1,7 @@
 import { Router, Request, Response } from 'express'
 import asyncHandler from 'express-async-handler'
 import { authenticate, requireAdmin } from '../middleware/auth'
+import { syncImdb } from '../services/imdb'
 import { logger } from '../utils/logger'
 import { MediaService } from '../services/media'
 import { MediaScanner, hasTmdbKey } from '../services/scanner'
@@ -75,6 +76,11 @@ router.post('/scan',       asyncHandler((_req, res) => {
   MediaScanner.exclusive('all', () => MediaScanner.scanAll())
     .catch((err: unknown) => logger.error('Scan error', { err }))
   res.status(202).json({ success: true, message: 'Scan started' })
+}))
+
+// IMDb ids + ratings now (otherwise daily)
+router.post('/imdb/refresh', requireAdmin, asyncHandler(async (_req, res: Response) => {
+  res.json({ success: true, data: await syncImdb() })
 }))
 
 router.post('/prune', asyncHandler(async (_req, res: Response) => {

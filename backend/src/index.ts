@@ -26,6 +26,7 @@ import './services/downloadNotifications'
 import { startDownloadWorker } from './services/downloads'
 import { startFollowChecker } from './services/follows'
 import { startCatalogueRefresher } from './services/catalogue'
+import { startImdbSync } from './services/imdb'
 import terminalRoutes from './routes/terminal'
 import imagesRoutes   from './routes/images'
 import { registerSocketHandlers } from './socket'
@@ -146,6 +147,7 @@ if (require.main === module) {
     startDownloadWorker().catch((err: Error) => logger.error(`Download worker: ${err.message}`))
     startFollowChecker()
     startCatalogueRefresher()
+    startImdbSync()
   })
 }
 

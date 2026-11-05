@@ -4,6 +4,11 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Added — Top 10 ranked by IMDb
+- Every film / series / anime with a TMDB id gets its IMDb id from TMDB (`external_ids`); once a day the official IMDb dataset `title.ratings.tsv.gz` (non-commercial use, refreshed daily by IMDb) is streamed and the IMDb rating and vote count of the library's titles are stored (migration 006). Nothing is scraped from imdb.com
+- The Top 10 ranks by IMDb's weighted rating (IMDb Top 250 formula: m = 25 000 votes, C = 7.0) and shows « IMDb 8,7 » under each poster; TMDB's rating is the fallback when fewer than 3 titles have an IMDb score
+- `POST /api/media/imdb/refresh` (admin) runs it now; `IMDB_RATINGS_URL`, `IMDB_SYNC=off` for tests
+
 ### Changed — iPhone: full-screen billboard, glass bar, Apple Music tab bar
 - Home-screen app: the status bar is translucent (`black-translucent`), so the artwork goes under it like the Apple TV app (a soft shade keeps the clock readable on light pages)
 - Médias, Manga, YouTube: no large title any more (the tab bar says where you are). At the top: « Films ⌄ » (a glass pull-down menu to switch Films / Séries / Animes / YouTube) and one glass capsule with the magnifying glass, Téléchargements and « … » (list view, filters, scan)

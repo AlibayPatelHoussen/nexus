@@ -46,6 +46,12 @@ interface Props {
 }
 
 type View = 'grid' | 'list'
+
+/** IMDb's weighted rating: v/(v+m)·R + m/(v+m)·C (m = 25 000 votes, C = 7.0) */
+function imdbScore(i: MediaItem) {
+  const v = i.imdbVotes ?? 0, R = i.imdbRating ?? 0, m = 25_000, C = 7.0
+  return (v / (v + m)) * R + (m / (v + m)) * C
+}
 const VIEW_KEY = 'nexus-media-view'
 const readView = (): View => { try { return localStorage.getItem(VIEW_KEY) === 'list' ? 'list' : 'grid' } catch { return 'grid' } }
 
@@ -127,10 +133,16 @@ export default function MediaBrowser({ title, tabs, yearFilter, emptyIcon, video
       item: w as unknown as MediaItem, progress: w.progress, duration: w.duration ?? undefined,
       subtitle: w.episodeNumber != null ? `S${w.season ?? 1}, É${w.episodeNumber}` : undefined,
     })), [continueW, type])
-  const topRated = useMemo(() => items
-    .filter((i) => i.rating != null && Number(i.rating) > 0)
-    .sort((a, b) => Number(b.rating) - Number(a.rating))
-    .slice(0, 10), [items])
+  // Top 10: IMDb's score when the titles have one (weighted like IMDb's Top 250, so
+  // a 9.0 with 40 votes does not beat an 8.6 with 1 million), else TMDB's rating
+  const topRated = useMemo(() => {
+    const imdb = items.filter((i) => i.imdbRating != null && (i.imdbVotes ?? 0) > 0)
+    if (!books && imdb.length >= 3) return [...imdb].sort((a, b) => imdbScore(b) - imdbScore(a)).slice(0, 10)
+    return items
+      .filter((i) => i.rating != null && Number(i.rating) > 0)
+      .sort((a, b) => Number(b.rating) - Number(a.rating))
+      .slice(0, 10)
+  }, [items, books])
   const genreRows = useMemo(() => {
     const counts = new Map<string, number>()
     for (const i of items) for (const g of i.genres ?? []) counts.set(g, (counts.get(g) ?? 0) + 1)

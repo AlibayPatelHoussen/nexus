@@ -65,7 +65,9 @@ export default function MediaRow({ title, items, onSeeAll, isLoading, kind = 'po
                     item={r.item} progress={r.progress} duration={r.duration} subtitle={r.subtitle}
                     shape={kind === 'wide' ? 'wide' : kind === 'book' ? 'book' : 'poster'}
                     rank={kind === 'top10' ? i + 1 : undefined}
-                    caption={kind === 'top10' ? r.item.genres?.[0] : undefined}
+                    caption={kind === 'top10'
+                      ? (r.item.imdbRating != null ? `IMDb ${r.item.imdbRating.toLocaleString('fr-FR', { minimumFractionDigits: 1, maximumFractionDigits: 1 })}` : r.item.genres?.[0])
+                      : undefined}
                   />
                 )
               })}

@@ -111,6 +111,10 @@ export interface MediaItem {
   year:          number | null
   rating:        number | null
   voteCount:     number | null
+  /** IMDb (official dataset, refreshed daily) */
+  imdbId?:       string | null
+  imdbRating?:   number | null
+  imdbVotes?:    number | null
   status:        string | null
   language:      string | null
   fileSize:      number | null
