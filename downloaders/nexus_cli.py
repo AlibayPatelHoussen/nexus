@@ -318,19 +318,53 @@ def ytdlp_reason(line):
     return text[:200]
 
 
-def ytdlp_run(args, item, on_line=None):
+# A dead connection makes yt-dlp give up (and retry) instead of waiting forever
+YTDLP_NETWORK = ["--socket-timeout", "30", "--retries", "10", "--fragment-retries", "10"]
+STALL_SECONDS = 90     # no data for this long while downloading: yt-dlp is restarted (it resumes)
+STALL_RESTARTS = 3
+
+
+def ytdlp_run(args, item, on_line=None, stall_seconds=None):
     """Runs yt-dlp with progress lines. Returns (returncode, other stdout lines).
-    Its error output still goes to the log; the last ERROR line is kept in last_ytdlp_error."""
+    Its error output still goes to the log; the last ERROR line is kept in last_ytdlp_error.
+    A download that stops receiving data (YouTube sometimes just stops sending) is
+    restarted, like a pause / resume by hand: yt-dlp continues the partial file."""
+    stall = STALL_SECONDS if stall_seconds is None else stall_seconds
+    for attempt in range(STALL_RESTARTS + 1):
+        code, others, stalled = _ytdlp_once(args, item, on_line, stall)
+        if not stalled:
+            return code, others
+        print(f"yt-dlp: no data for {stall} s, restart {attempt + 1}/{STALL_RESTARTS}")
+    return code, others
+
+
+def _ytdlp_once(args, item, on_line, stall):
     global last_ytdlp_error
     last_ytdlp_error = None
-    cmd = [*ytdlp_cmd(), *YTDLP_PROGRESS, *args]
+    cmd = [*ytdlp_cmd(), *YTDLP_PROGRESS, *YTDLP_NETWORK, *args]
     throttle = Throttle()
     others = []
     try:
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+        # Own process group: a stalled yt-dlp is stopped with its children (ffmpeg…)
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True)
     except FileNotFoundError:
         emit("error", message="yt-dlp n'est pas installé", item=item, fatal=False)
-        return 127, []
+        return 127, [], False
+    import threading
+    # Watchdog: only while data is being downloaded (merging / embedding prints nothing for a while)
+    state = {"last": time.monotonic(), "downloading": False, "stalled": False}
+
+    def watchdog():
+        while proc.poll() is None:
+            time.sleep(1)
+            if state["downloading"] and time.monotonic() - state["last"] > stall:
+                state["stalled"] = True
+                try:
+                    os.killpg(proc.pid, 9)
+                except OSError:
+                    proc.kill()
+                return
+    threading.Thread(target=watchdog, daemon=True).start()
 
     def read_errors():
         global last_ytdlp_error
@@ -338,12 +372,13 @@ def ytdlp_run(args, item, on_line=None):
             sys.stderr.write(err)
             if err.startswith("ERROR"):
                 last_ytdlp_error = err.strip()
-    import threading
     reader = threading.Thread(target=read_errors, daemon=True)
     reader.start()
     num = lambda v: float(v) if v not in (None, "", "NA", "None") else None
     for line in proc.stdout:
         line = line.rstrip("\n")
+        state["last"] = time.monotonic()
+        state["downloading"] = line.startswith(NXP)
         if line.startswith(NXP):
             parts = line[len(NXP):].split("|")
             if len(parts) >= 5:
@@ -356,7 +391,7 @@ def ytdlp_run(args, item, on_line=None):
             print(line)
     proc.wait()
     reader.join(timeout=5)
-    return proc.returncode, others
+    return proc.returncode, others, state["stalled"]
 
 
 # ── Series folders ────────────────────────────────────────────────────────────
