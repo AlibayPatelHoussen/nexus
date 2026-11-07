@@ -4,6 +4,9 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Changed — touch screens feel like an installed app
+- iPhone / iPad / Android: a long press no longer selects text, opens the link or image menu or a link preview, images cannot be dragged and double tap does not zoom. Nexus' own long-press menus still open; text fields and logs (service journal) keep copy / paste. Mouse and trackpad unchanged
+
 ### Fixed — « PLUS » on the synopsis on desktop
 - Title pages on a computer: a long synopsis is cut at 5 lines with the « PLUS » capsule (like the Apple TV app and the iPhone), which shows all of it; it used to be cut with no way to read the rest
 

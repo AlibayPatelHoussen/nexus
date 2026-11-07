@@ -166,7 +166,7 @@ function ServiceDetail({ service, showTitle }: { service: ServiceInfo; showTitle
           <h3 className="text-subhead text-label2">Journal</h3>
           <Button variant="plain" size="small" onClick={() => refetch()}>Actualiser</Button>
         </div>
-        <div className="rounded-[10px] p-3 max-h-72 overflow-auto font-mono text-[11.5px] leading-relaxed" style={{ background: 'var(--term-bg)', color: 'var(--term-fg)', boxShadow: 'inset 0 0 0 .5px var(--separator)' }}>
+        <div className="selectable rounded-[10px] p-3 max-h-72 overflow-auto font-mono text-[11.5px] leading-relaxed" style={{ background: 'var(--term-bg)', color: 'var(--term-fg)', boxShadow: 'inset 0 0 0 .5px var(--separator)' }}>
           {loadingLogs ? <SkeletonRows rows={3} /> : !logs?.length ? (
             <span className="text-label2">Aucune entrée dans le journal.</span>
           ) : logs.map((line, i) => (

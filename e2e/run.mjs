@@ -207,6 +207,27 @@ test('UI: catalogue (hero, rows, cleaned series title)', async () => {
   await page.context().close()
 })
 
+test('UI: touch screens feel like an app (no text selection / browser menu on long press), desktop unchanged', async () => {
+  const look = async (width) => {
+    const page = await newPage(admin, { width, height: width < 600 ? 844 : 900 })
+    await page.goto(`${B}/cinema`, { waitUntil: 'networkidle' })
+    const out = await page.evaluate(() => {
+      const sel = (el) => getComputedStyle(el).userSelect || getComputedStyle(el).webkitUserSelect
+      const input = document.createElement('input'); document.body.appendChild(input)
+      const link = document.querySelector('a[href]')
+      const e = new MouseEvent('contextmenu', { bubbles: true, cancelable: true }); link.dispatchEvent(e)
+      return { text: sel(document.querySelector('h1, h2, p') ?? document.body), input: sel(input), menuBlocked: e.defaultPrevented }
+    })
+    await page.context().close()
+    return out
+  }
+  const phone = await look(390)
+  eq(phone.text, 'none', 'phone: text not selectable'); eq(phone.input, 'text', 'phone: fields stay selectable')
+  eq(phone.menuBlocked, true, 'phone: no browser menu on a long press')
+  const desk = await look(1440)
+  assert(desk.text !== 'none', `desktop: text selectable (${desk.text})`); eq(desk.menuBlocked, false, 'desktop: right click untouched')
+})
+
 test('UI: a long synopsis is cut, « PLUS » shows it all (iPhone and desktop)', async () => {
   const id = sql(`SELECT id FROM media_items WHERE type='serie' AND poster_path IS NOT NULL ORDER BY title LIMIT 1`)
   const before = sql(`SELECT overview FROM media_items WHERE id='${id}'`)
