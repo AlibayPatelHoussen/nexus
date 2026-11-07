@@ -385,6 +385,9 @@ def _ytdlp_once(args, item, on_line, stall):
                 done, total, estimate, speed, eta = (num(x) for x in parts[:5])
                 video_progress(item, done or 0, total or estimate, speed, eta=eta, throttle=throttle)
         elif line:
+            if line.startswith("[Merger]"):
+                # Merging a big video takes a while with no progress: say so (do not pause it!)
+                emit("progress", item="Assemblage de l'image et du son…", percent=100)
             others.append(line)
             if on_line:
                 on_line(line)
