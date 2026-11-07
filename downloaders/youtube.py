@@ -170,7 +170,10 @@ def json_download(args):
     # /media/youtube/{Chaîne}/{Titre} [id].mp4 + .jpg (same name) + .info.json
     code, _ = nexus_cli.ytdlp_run([
         "-f", "bestvideo+bestaudio/best", "--merge-output-format", "mp4",
-        "-o", os.path.join(dest, "%(channel,uploader|Inconnu)s", "%(title)s [%(id)s].%(ext)s"),
+        # Video / audio parts and temporary files in a hidden folder: the library never sees them
+        # (yt-dlp ignores the temp path when -o is absolute, hence -P home + a relative -o)
+        "-P", dest, "-P", "temp:" + os.path.join(dest, ".part-youtube"),
+        "-o", os.path.join("%(channel,uploader|Inconnu)s", "%(title)s [%(id)s].%(ext)s"),
         "--write-thumbnail", "--convert-thumbnails", "jpg", "--embed-thumbnail",
         "--embed-metadata", "--write-info-json", "--no-playlist", "--no-warnings",
         "--print", "after_move:NXFILE|%(filepath)s",

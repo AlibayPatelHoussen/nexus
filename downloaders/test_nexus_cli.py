@@ -4,6 +4,7 @@ import json
 import os
 import sys
 import tempfile
+import time
 import unittest
 from pathlib import Path
 
@@ -205,6 +206,42 @@ class YtdlpJsRuntime(unittest.TestCase):
 
     def test_old_ytdlp_without_the_option(self):
         self.assertEqual(self.run_with(["node"], "--format FORMAT"), ["yt-dlp"])
+
+
+class YtdlpStall(unittest.TestCase):
+    """A download that stops receiving data is restarted by itself (like a pause / resume)."""
+
+    def test_restarted_after_a_stall(self):
+        with tempfile.TemporaryDirectory() as d:
+            count = Path(d) / "runs"
+            fake = Path(d) / "yt-dlp"
+            # 1st run: some progress then silence (stalled); 2nd run: finishes
+            fake.write_text(
+                "#!/bin/sh\n"
+                f"n=$(cat {count} 2>/dev/null || echo 0); n=$((n+1)); echo $n > {count}\n"
+                "case \"$*\" in *--help*) exit 0;; esac\n"
+                "echo 'NXP|100|1000|1000|10|5'\n"
+                f"if [ $n -le 2 ]; then sleep 30; fi\n"
+                "echo 'NXP|1000|1000|1000|10|0'\necho 'NXFILE|/x.mp4'\nexit 0\n")
+            fake.chmod(0o755)
+            old = os.environ["PATH"]
+            os.environ["PATH"] = f"{d}:/usr/bin:/bin"
+            nexus_cli._js_args = None
+            out, err = sys.stdout, sys.stderr
+            sys.stdout, sys.stderr = io.StringIO(), io.StringIO()
+            try:
+                started = time.monotonic()
+                code, lines = nexus_cli.ytdlp_run(["x"], "x", stall_seconds=2)
+                took = time.monotonic() - started
+            finally:
+                os.environ["PATH"] = old
+                nexus_cli._js_args = None
+                sys.stdout, sys.stderr = out, err
+            runs = int(count.read_text())
+        self.assertEqual(code, 0)
+        self.assertIn("NXFILE|/x.mp4", lines)
+        self.assertLess(took, 20)          # did not wait for the 30 s sleep
+        self.assertGreaterEqual(runs, 2)   # restarted
 
 
 if __name__ == "__main__":

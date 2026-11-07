@@ -277,6 +277,13 @@ export function parseEpisodeInfo(fileName: string, folders: string[] = []): Epis
 }
 
 /** Recursively list video files under `root` (max depth 4, hidden folders / samples skipped). */
+/**
+ * A yt-dlp intermediate file, not a video: the separate video / audio streams
+ * (« Titre [id].f251.webm ») and the file being merged (« Titre [id].temp.mp4 »).
+ */
+export const isPartialDownload = (name: string) =>
+  /\.f\d+(-[a-z0-9]+)?\.[a-z0-9]+$/i.test(name) || /\.temp\.[a-z0-9]+$/i.test(name) || /\.(part|ytdl)$/i.test(name)
+
 async function listVideoFiles(root: string, depth = 0): Promise<string[]> {
   if (depth > 4) return []
   const out: string[] = []
@@ -287,7 +294,7 @@ async function listVideoFiles(root: string, depth = 0): Promise<string[]> {
     const full = path.join(root, e.name)
     if (e.isDirectory()) out.push(...await listVideoFiles(full, depth + 1))
     else if (e.isFile() && VIDEO_EXTS.includes(path.extname(e.name).toLowerCase())
-      && !/(^|[^a-z])sample([^a-z]|$)/i.test(e.name)) out.push(full)
+      && !/(^|[^a-z])sample([^a-z]|$)/i.test(e.name) && !isPartialDownload(e.name)) out.push(full)
   }
   return out
 }
@@ -982,10 +989,15 @@ export class MediaScanner {
         if (e.name.startsWith('.')) continue          // .part- files being downloaded
         const full = path.join(d, e.name)
         if (e.isDirectory() && depth < 2) await walk(full, depth + 1)
-        else if (e.isFile() && VIDEO_EXTS.includes(path.extname(e.name).toLowerCase())) videos.push(full)
+        else if (e.isFile() && VIDEO_EXTS.includes(path.extname(e.name).toLowerCase()) && !isPartialDownload(e.name)) videos.push(full)
       }
     }
     await walk(dir, 0)
+    // Intermediate files picked up by an earlier scan while a download was running
+    const { rows: partial } = await query<{ id: string; file_path: string }>(`SELECT id, file_path FROM media_items WHERE type = 'youtube'`)
+    for (const r of partial) {
+      if (isPartialDownload(path.basename(r.file_path))) await query('DELETE FROM media_items WHERE id = $1', [r.id])
+    }
     let count = 0
     for (const video of videos) {
       try {
