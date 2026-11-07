@@ -5,6 +5,7 @@ import type { Readable } from 'stream'
 import { query } from '../config/database'
 import { logger } from '../utils/logger'
 import { linkArtwork } from './artwork'
+import { linkAnimesToTmdb } from './scanner'
 
 /*
  * IMDb ratings for the Top 10.
@@ -84,6 +85,9 @@ let running: Promise<{ linked: number; rated: number; artwork: number }> | null 
 export function syncImdb() {
   if (running) return running
   running = (async () => {
+    // Animes not linked to TMDB yet first: they then get IMDb ratings and artwork in this run
+    const animes = await linkAnimesToTmdb().catch((err) => { logger.warn(`Anime TMDB link failed: ${err}`); return 0 })
+    if (animes) logger.info(`TMDB: ${animes} animes linked`)
     const linked = await linkImdbIds()
     const rated = await refreshImdbRatings()
     const artwork = await linkArtwork()

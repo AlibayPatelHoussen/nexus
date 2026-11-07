@@ -189,6 +189,36 @@ export async function findAnimeOnTMDB(names: (string | null | undefined)[], year
   return null
 }
 
+/**
+ * Animes not linked to their TMDB series yet (scanned before the TMDB look-up existed,
+ * or when it could not find them): looked up again by the background enrichment, so a
+ * better search reaches the library without a new scan. A TMDB poster / backdrop
+ * replaces the AniList cover / banner; the artwork step then adds the logo and key art.
+ */
+export async function linkAnimesToTmdb(limit = 100): Promise<number> {
+  if (!hasTmdbKey()) return 0
+  const { rows } = await query<{ id: string; title: string; file_path: string; year: number | null }>(
+    `SELECT id, title, file_path, year FROM media_items WHERE type = 'anime' AND tmdb_id IS NULL ORDER BY created_at DESC LIMIT $1`, [limit])
+  let linked = 0
+  for (const r of rows) {
+    const folder = parseFilename(path.basename(r.file_path)).title
+    const tmdb = await findAnimeOnTMDB([folder, r.title], r.year)
+    if (!tmdb?.id) continue
+    await query(
+      `UPDATE media_items SET tmdb_id = $2,
+         poster_path   = CASE WHEN $3::text IS NOT NULL AND COALESCE(poster_path, '') NOT LIKE $5 || '%' THEN $3 ELSE poster_path END,
+         backdrop_path = CASE WHEN $4::text IS NOT NULL AND COALESCE(backdrop_path, '') NOT LIKE $5 || '%' THEN $4 ELSE backdrop_path END,
+         overview      = COALESCE(overview, $6),
+         artwork_checked_at = NULL
+       WHERE id = $1 AND tmdb_id IS NULL`,
+      [r.id, tmdb.id, tmdb.poster_path ? `${TMDB_IMG}/w500${tmdb.poster_path}` : null,
+        tmdb.backdrop_path ? `${TMDB_IMG}/w1280${tmdb.backdrop_path}` : null, TMDB_IMG, tmdb.overview || null])
+    linked++
+    logger.info(`Anime « ${r.title} » linked to TMDB ${tmdb.id}`)
+  }
+  return linked
+}
+
 async function getTMDBDetails(id: number, type: 'movie' | 'tv'): Promise<TmdbResult | null> {
   if (!hasTmdbKey()) return null
   try {
