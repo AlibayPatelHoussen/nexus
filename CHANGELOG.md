@@ -4,6 +4,10 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Fixed — big YouTube videos killed while being merged
+- The 15 s stall restart stopped big videos while their image and sound were being merged (yt-dlp says nothing then): it now knows when the download is over (yt-dlp's post-processing progress) and never stops the merge; the queue shows « Assemblage de l'image et du son… »
+- Videos whose image and sound were complete in the working folder are merged when downloaded again (no new download); a failure always says why (« YouTube n'envoie plus rien », yt-dlp's last message…)
+
 ### Fixed — YouTube downloads that freeze, half-downloaded files in the library
 - A video stopped while its image and sound were being merged (a pause during the long silent merge) was then reported « déjà présent » and never finished: only a finished video counts now; downloading it again merges the complete streams already on disk (sizes checked against YouTube's) instead of downloading gigabytes again, otherwise downloads it again and removes the old pieces
 - The queue shows « Assemblage de l'image et du son… » during the merge, so it no longer looks stuck

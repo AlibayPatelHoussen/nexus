@@ -261,10 +261,15 @@ def http_download(session, url, output, item, headers=None, timeout=30):
 
 NXP = "NXP|"   # marker of yt-dlp progress lines
 
+NXPP = "NXPP|"  # marker of yt-dlp post-processing lines (merge, thumbnail, metadata…)
+
 YTDLP_PROGRESS = [
     "--newline", "--progress",
     "--progress-template",
     "download:" + NXP + "%(progress.downloaded_bytes)s|%(progress.total_bytes)s|%(progress.total_bytes_estimate)s|%(progress.speed)s|%(progress.eta)s",
+    # Printed even when --print makes yt-dlp quiet (no « [Merger] » line then): tells when
+    # the download is over and the long, silent merge of image and sound runs
+    "--progress-template", "postprocess:" + NXPP + "%(progress.status)s|%(progress.postprocessor)s",
 ]
 
 
@@ -330,11 +335,14 @@ def ytdlp_run(args, item, on_line=None, stall_seconds=None):
     A download that stops receiving data (YouTube sometimes just stops sending) is
     restarted, like a pause / resume by hand: yt-dlp continues the partial file."""
     stall = STALL_SECONDS if stall_seconds is None else stall_seconds
+    global last_ytdlp_error
     for attempt in range(STALL_RESTARTS + 1):
         code, others, stalled = _ytdlp_once(args, item, on_line, stall)
         if not stalled:
             return code, others
-        print(f"yt-dlp: no data for {stall} s, restart {attempt + 1}/{STALL_RESTARTS}")
+        if attempt < STALL_RESTARTS:
+            print(f"yt-dlp: no data for {stall} s, restart {attempt + 1}/{STALL_RESTARTS}")
+    last_ytdlp_error = f"YouTube n'envoie plus rien ({STALL_RESTARTS} relances)"
     return code, others
 
 
@@ -366,23 +374,36 @@ def _ytdlp_once(args, item, on_line, stall):
                 return
     threading.Thread(target=watchdog, daemon=True).start()
 
+    tail = {"line": None}
+
     def read_errors():
         global last_ytdlp_error
         for err in proc.stderr:
             sys.stderr.write(err)
             if err.startswith("ERROR"):
                 last_ytdlp_error = err.strip()
+            elif err.strip() and not err.startswith("WARNING"):
+                tail["line"] = err.strip()      # « yt-dlp: error: … », a Python traceback's last line…
     reader = threading.Thread(target=read_errors, daemon=True)
     reader.start()
     num = lambda v: float(v) if v not in (None, "", "NA", "None") else None
     for line in proc.stdout:
         line = line.rstrip("\n")
         state["last"] = time.monotonic()
+        if line.startswith(NXPP):
+            # Post-processing (merge, thumbnail…): nothing is downloaded any more
+            state["downloading"] = False
+            status, _, pp = line[len(NXPP):].partition("|")
+            if status == "started" and pp == "Merger":
+                emit("progress", item="Assemblage de l'image et du son…", percent=100)
+            continue
         state["downloading"] = line.startswith(NXP)
         if line.startswith(NXP):
             parts = line[len(NXP):].split("|")
             if len(parts) >= 5:
                 done, total, estimate, speed, eta = (num(x) for x in parts[:5])
+                if total and done is not None and done >= total:
+                    state["downloading"] = False      # this file is complete: what follows is not a stall
                 video_progress(item, done or 0, total or estimate, speed, eta=eta, throttle=throttle)
         elif line:
             if line.startswith("[Merger]"):
@@ -394,6 +415,9 @@ def _ytdlp_once(args, item, on_line, stall):
             print(line)
     proc.wait()
     reader.join(timeout=5)
+    if proc.returncode and not last_ytdlp_error:
+        # Failed without an « ERROR: » line: keep what it said last, else its exit code
+        last_ytdlp_error = tail["line"] or f"yt-dlp s'est arrêté (code {proc.returncode})"
     return proc.returncode, others, state["stalled"]
 
 

@@ -68,6 +68,25 @@ class Leftovers(unittest.TestCase):
                                  capture_output=True, text=True).stdout.split()
         self.assertEqual(sorted(streams), ["audio", "video"])
 
+    @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg missing")
+    def test_streams_in_the_working_folder_are_merged(self):
+        # The owner's server: streams complete in .part-youtube, the .info.json next to where the video goes
+        work = self.dest / ".part-youtube" / "Mastu"
+        work.mkdir(parents=True)
+        video, audio = work / f"{NAME}.f401.mp4", work / f"{NAME}.f251-1.webm"
+        subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "testsrc=size=64x48:rate=5:duration=1", "-c:v", "mpeg4", str(video)], check=True)
+        subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "sine=duration=1", "-c:a", "libopus", str(audio)], check=True)
+        (work / f"{NAME}.temp.mp4").write_bytes(b"half")
+        (work / f"{NAME}.jpg").write_bytes(b"jpg")
+        (self.chan / f"{NAME}.info.json").write_text(json.dumps({"requested_formats": [
+            {"format_id": "401", "filesize": video.stat().st_size}, {"format_id": "251-1", "filesize": audio.stat().st_size}]}))
+        self.assertIsNone(ns["_existing"](self.dest, VID))
+        final = ns["_finish_leftovers"](self.dest, VID, VID)
+        self.assertEqual(final, self.chan / f"{NAME}.mp4")
+        self.assertTrue((self.chan / f"{NAME}.jpg").exists())       # thumbnail next to the video
+        self.assertEqual(sorted(p.name for p in work.iterdir()), [])
+        self.assertEqual(ns["_existing"](self.dest, VID), final)
+
     def test_incomplete_streams_are_downloaded_again(self):
         video = self.touch(f"{NAME}.f401.mp4", b"x" * 10)
         self.touch(f"{NAME}.f251.webm", b"y" * 10)
