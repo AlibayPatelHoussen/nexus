@@ -13,10 +13,18 @@ describe('pickArtwork (TMDB /images → Apple TV artwork)', () => {
     expect(a.backdrop).toMatch(/\/original\/bg\.jpg$/)
   })
 
-  it('prefers a French logo, then English, never an SVG', () => {
+  it('prefers a French logo, then English; a PNG over an SVG, an SVG over nothing', () => {
     expect(pickArtwork({ logos: [img('/en.png', 'en', 9), img('/fr.png', 'fr', 3), img('/fr.svg', 'fr', 10)] }).logo).toMatch(/\/fr\.png$/)
     expect(pickArtwork({ logos: [img('/en.png', 'en'), img('/de.png', 'de', 9)] }).logo).toMatch(/\/en\.png$/)
-    expect(pickArtwork({ logos: [img('/only.svg', 'fr')] }).logo).toBeNull()
+    expect(pickArtwork({ logos: [img('/only.svg', 'fr')] }).logo).toMatch(/\/only\.svg$/)
+    expect(pickArtwork({ logos: [img('/ja.svg', 'ja')] }).logo).toMatch(/\/ja\.svg$/)   // any logo rather than none
+    expect(pickArtwork({ logos: [img('/x.gif', 'fr')] }).logo).toBeNull()
+  })
+
+  it('a picture rated by one person does not beat the official key art', () => {
+    const fan = { file_path: '/chibi.jpg', iso_639_1: null, vote_average: 10, vote_count: 1 }
+    const official = { file_path: '/key.jpg', iso_639_1: null, vote_average: 6.2, vote_count: 40 }
+    expect(pickArtwork({ posters: [fan, official] }).keyArt).toMatch(/\/key\.jpg$/)
   })
 
   it('returns nulls when TMDB has nothing', () => {

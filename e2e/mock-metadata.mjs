@@ -50,6 +50,10 @@ http.createServer((req, res) => {
     // ── Images (TMDB / AniList style) ──
     if (p.startsWith('/img/')) {
       if (/missing/.test(p)) { res.writeHead(404); return res.end() }
+      if (p.endsWith('.svg')) {   // TMDB title logos are often SVG (with a script, like a hostile file)
+        res.writeHead(200, { 'Content-Type': 'image/svg+xml' })
+        return res.end('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="120"><script>alert(1)</script><rect width="400" height="120" fill="#e33"/></svg>')
+      }
       const wide = /backdrop|still|banner/.test(p)
       res.writeHead(200, { 'Content-Type': 'image/png' })
       return res.end(png(wide ? 320 : 200, wide ? 180 : 300, colour(p)))
@@ -83,6 +87,14 @@ http.createServer((req, res) => {
     // TMDB image catalogue: a textless poster, a French and an English logo, a textless backdrop
     if ((m = p.match(/^\/3\/(movie|tv)\/(\d+)\/images$/))) {
       const id = m[2]
+      // The anime (One Piece): SVG logos only, like many anime on TMDB
+      if (Number(id) === hash('One Piece')) {
+        return json(res, {
+          posters:   [{ file_path: `/keyart_${id}.jpg`, iso_639_1: null, vote_average: 6, vote_count: 40 }, { file_path: `/chibi_${id}.jpg`, iso_639_1: null, vote_average: 10, vote_count: 1 }],
+          logos:     [{ file_path: `/logo_en_${id}.svg`, iso_639_1: 'en', vote_average: 5 }],
+          backdrops: [{ file_path: `/herobackdrop_${id}.jpg`, iso_639_1: null, vote_average: 5 }],
+        })
+      }
       return json(res, {
         posters:   [{ file_path: `/keyart_${id}.jpg`, iso_639_1: null, vote_average: 6 }, { file_path: `/poster_fr_${id}.jpg`, iso_639_1: 'fr', vote_average: 9 }],
         logos:     [{ file_path: `/logo_en_${id}.png`, iso_639_1: 'en', vote_average: 9 }, { file_path: `/logo_fr_${id}.png`, iso_639_1: 'fr', vote_average: 5 }],

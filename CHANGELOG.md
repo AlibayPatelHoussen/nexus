@@ -4,6 +4,10 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Fixed — title logos in SVG, better key art
+- Title logos that TMDB only has as SVG (many animes, e.g. Attack on Titan) are now used: the image cache turns them into PNG (an SVG is never served). French, then English, then textless, then any language
+- Key art / backdrops / logos: the vote average is weighted by the number of votes, so a fan picture rated 10 by one person (Attack on Titan's chibi poster) no longer beats the official key art. Every title's artwork is looked up again after the update
+
 ### Fixed — animes get real posters and the title logo
 - The TMDB search also tries the folder name first and every title without its season / subtitle (AniList has one entry per season or movie, « Shingeki no Kyojin: The Final Season », TMDB one series « L'Attaque des Titans »), and is no longer skipped when AniList matched a movie / OVA
 - Animes: besides AniList, the library scan finds the anime's TMDB series (animated series only, never a live-action remake; the closest to the AniList year), so animes get what films and series have: a poster with the title instead of AniList's textless cover, the title logo on the « À la une » billboard and the title page, textless key art and the IMDb rating. Already scanned animes are updated by the next library scan
