@@ -4,6 +4,9 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Fixed — a series downloaded twice made two folders
+- Every download of a series (movix, OxTorrent, automatic downloads) goes into the folder already there for it — same TMDB id, or same name once spaces, underscores and punctuation are ignored — instead of starting a second one (« Georgie & Mandy's First Marriage » and « Georgie_&_Mandy's_First_Marriage »). A second folder that already exists is merged into the first when the series is opened in Téléchargements or downloaded again
+
 ### Changed — One Piece colour and black & white are one manga
 - anime-sama: another edition of the same scans (« Scans (noir et blanc) », colour) is no longer a separate result: it is a version of the manga, chosen like VF / VOSTFR (« Noir et blanc » / « Couleur »). Black & white comes first and is the default: it is the weekly release (One Piece: 1199 chapters, colour 1004). Downloaded into the manga's own folder (« One Piece/VF Noir et blanc »), so the library shows one manga, with its poster; editions downloaded before move there by themselves. One-shots and spin-offs stay separate
 - Library: a manga with several versions (VF / VOSTFR, colour / black & white) shows one at a time with a version choice above its chapters; the reader stays in the version of the chapter opened
