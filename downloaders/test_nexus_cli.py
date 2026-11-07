@@ -284,10 +284,12 @@ class YtdlpStall(unittest.TestCase):
             return code, lines, int(count.read_text()), emitted
 
     def test_the_silent_merge_is_not_a_stall(self):
-        # The owner's server: --print makes yt-dlp quiet, the merge of a big video prints nothing for minutes
+        # The owner's server: --print makes yt-dlp quiet, the merge of a big video prints nothing for
+        # minutes on stdout; the post-processing progress goes to stderr (checked there)
         code, lines, runs, emitted = self.run_fake(
-            "echo 'NXP|500|1000|1000|10|5'\necho 'NXP|1000|1000|1000|10|0'\n"
-            "echo 'NXPP|started|Merger'\nsleep 4\necho 'NXPP|finished|Merger'\necho 'NXFILE|/x.mp4'\n", stall=2)
+            # On a restart the streams are already there: progress without a total (as on the server)
+            "echo 'NXP|500|NA|NA|10|5'\n"
+            "echo 'NXPP|started|Merger' >&2\nsleep 4\necho 'NXPP|finished|Merger' >&2\necho 'NXFILE|/x.mp4'\n", stall=2)
         self.assertEqual((code, runs), (0, 1))          # never restarted
         self.assertIn("NXFILE|/x.mp4", lines)
         self.assertIn("Assemblage", emitted)
