@@ -71,6 +71,8 @@ http.createServer((req, res) => {
         id, overview: `Synopsis de ${q}.`, poster_path: `/poster_${id}.jpg`, backdrop_path: `/backdrop_${id}.jpg`,
         vote_average: 7.4, vote_count: 1234,
         ...(tv ? { name: title(q), first_air_date: '2024-10-17' } : { title: title(q), release_date: '2025-01-01' }),
+        // TMDB genre 16 = Animation (an anime's TMDB series)
+        genre_ids: /piece/i.test(q) ? [16, 10759] : [18],
       }] })
     }
     let m

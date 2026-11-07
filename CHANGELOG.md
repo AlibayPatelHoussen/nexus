@@ -4,6 +4,9 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Fixed — animes get real posters and the title logo
+- Animes: besides AniList, the library scan finds the anime's TMDB series (animated series only, never a live-action remake; the closest to the AniList year), so animes get what films and series have: a poster with the title instead of AniList's textless cover, the title logo on the « À la une » billboard and the title page, textless key art and the IMDb rating. Already scanned animes are updated by the next library scan
+
 ### Fixed — tab bar: the selection is already there when the lens lets go
 - iPhone tab bar: while the finger drags the lens, the (hidden) selection pill follows the tab under it, so when the finger lifts the pill appears in place right away instead of sliding over from the old tab afterwards; the tab's tint follows at once too
 

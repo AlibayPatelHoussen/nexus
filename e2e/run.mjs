@@ -485,6 +485,10 @@ test('IMDb: ids from TMDB, ratings from the dataset, Top 10 ranked by IMDb', asy
   const marty = list.json.data.items.find((m) => m.filePath?.includes('Marty'))
   assert(marty?.keyArtPath && marty.logoPath && marty.heroBackdropPath, `artwork fields: ${JSON.stringify(marty)}`)
   eq(sql(`SELECT logo_path FROM media_items WHERE file_path LIKE '%Marty%'`).endsWith(`/original/logo_fr_${tmdb}.png`), true, 'French logo')
+  // Animes too: their TMDB series gives a poster with the title (not the textless AniList cover) and the logo
+  const op = sql(`SELECT tmdb_id || '|' || poster_path || '|' || coalesce(logo_path, '-') FROM media_items WHERE type='anime' LIMIT 1`).split('|')
+  assert(op[0] && /\/poster_\d+\.jpg$/.test(op[1]), `anime poster from TMDB: ${op.join('|')}`)
+  assert(/\/logo_fr_\d+\.png$/.test(op[2]), `anime title logo: ${op.join('|')}`)
   const logo = await api(marty.logoPath, { raw: true })
   eq(logo.status, 200, 'logo served'); assert((logo.headers.get('content-type') || '').startsWith('image/'), 'logo is an image')
   const page = await newPage(admin)
@@ -710,14 +714,18 @@ test('images: the proxy caches (second request does not reach the source)', asyn
 
 test('images: a missing image shows a clean placeholder', async () => {
   const id = sql(`SELECT id FROM media_items WHERE type='anime' LIMIT 1`)
-  const old = sql(`SELECT poster_path FROM media_items WHERE id='${id}'`)
-  sql(`UPDATE media_items SET poster_path='http://localhost:4010/img/missing.png' WHERE id='${id}'`)
+  // Every picture of the title is missing (poster, and the TMDB key art / backdrops animes now have)
+  const cols = ['poster_path', 'key_art_path', 'hero_backdrop_path', 'backdrop_path']
+  const old = sql(`SELECT ${cols.map((c) => `coalesce(${c}, '')`).join(` || '|' || `)} FROM media_items WHERE id='${id}'`).split('|')
+  sql(`UPDATE media_items SET ${cols.map((c) => `${c}='http://localhost:4010/img/missing.png'`).join(', ')} WHERE id='${id}'`)
   try {
     const page = await newPage(admin)
     await page.goto(`${B}/media/${id}`, { waitUntil: 'networkidle' })
     await page.waitForSelector('section [role="img"]', { timeout: 10000 })
     await page.context().close()
-  } finally { sql(`UPDATE media_items SET poster_path='${old}' WHERE id='${id}'`) }
+  } finally {
+    sql(`UPDATE media_items SET ${cols.map((c, i) => `${c}=${old[i] ? `'${old[i]}'` : 'NULL'}`).join(', ')} WHERE id='${id}'`)
+  }
 })
 
 test('detail page: artwork is whole (contain), 2:3, and never covered by the text', async () => {
