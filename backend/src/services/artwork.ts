@@ -8,9 +8,9 @@ import { cachedImage } from './images'
  * Apple TV-style artwork from TMDB's image catalogue (`/movie|tv/{id}/images`):
  *  - key art: the best-voted poster WITHOUT text (iso_639_1 = null), full
  *    resolution, for the billboard and the title page on iPhone;
- *  - logo: the title treatment, French first, then English, then textless; a PNG
- *    before an SVG (rasterised to PNG by the image cache, never served as SVG), and
- *    only one with a transparent background;
+ *  - logo: the title treatment (PNG), French first, then English, then textless; for
+ *    a title with no PNG logo, an SVG one with a transparent background (rasterised
+ *    to PNG by the image cache, never served as SVG);
  *  - the owner can choose them by hand (« Image et logo… »): then they are locked;
  *  - hero backdrop: the best-voted textless backdrop, full resolution.
  * Full-resolution files are downscaled once by the image cache (images.ts).
@@ -33,15 +33,14 @@ const ranked = (list: TmdbImage[]) => {
 }
 const LOGO_LANGS = ['fr', 'en', null] as const
 
-/** Every usable title logo, best first: French, English, then textless; a PNG before an
- *  SVG of the same language (an SVG is turned into a PNG by the image cache). Other
- *  languages are left out (a Japanese promo logo is worse than the title in text). */
+/** Every usable title logo, best first: the PNG logos first (French, English, then
+ *  language-free — the rule Nexus always had), then the SVG ones in the same order,
+ *  only for titles with no PNG logo at all (Attack on Titan). Other languages are left
+ *  out (a Japanese promo logo is worse than the title in text). */
 export function logoCandidates(logos: TmdbImage[] = []): TmdbImage[] {
-  const usable = logos.filter((l) => /\.(png|svg)$/i.test(l.file_path))
-  return LOGO_LANGS.flatMap((lang) => {
-    const same = usable.filter((l) => (l.iso_639_1 ?? null) === lang)
-    return [...ranked(same.filter((l) => /\.png$/i.test(l.file_path))), ...ranked(same.filter((l) => /\.svg$/i.test(l.file_path)))]
-  })
+  const byLang = (ext: RegExp) => LOGO_LANGS.flatMap((lang) =>
+    ranked(logos.filter((l) => ext.test(l.file_path) && (l.iso_639_1 ?? null) === lang)))
+  return [...byLang(/\.png$/i), ...byLang(/\.svg$/i)]
 }
 
 const original = (i: TmdbImage | undefined) => (i ? `${TMDB_IMG}/original${i.file_path}` : null)
@@ -66,8 +65,11 @@ export async function isTransparentLogo(file: string | Buffer): Promise<boolean>
   } catch { return false }
 }
 
-/** The first logo of the list that really is a transparent title treatment. */
-async function firstTransparentLogo(logos: TmdbImage[]): Promise<string | null> {
+/** The logo to use: the best PNG (as always), else the first SVG with a transparent
+ *  background (an SVG in a plain box, like Bleach's, is worse than the title in text). */
+async function chooseLogo(logos: TmdbImage[]): Promise<string | null> {
+  const png = logos.find((l) => /\.png$/i.test(l.file_path))
+  if (png) return original(png)
   for (const l of logos.slice(0, 6)) {
     const url = original(l)!
     try {
@@ -118,7 +120,7 @@ export async function linkArtwork(limit = 300, onlyId?: string): Promise<number>
     try {
       const data = await tmdbImages(kind, r.tmdb_id)
       const a = pickArtwork(data)
-      const logo = await firstTransparentLogo(logoCandidates(data.logos))
+      const logo = await chooseLogo(logoCandidates(data.logos))
       await query(
         `UPDATE media_items SET key_art_path = $2, logo_path = $3, hero_backdrop_path = $4, artwork_checked_at = NOW() WHERE id = $1 AND NOT artwork_locked`,
         [r.id, a.keyArt, logo, a.backdrop])

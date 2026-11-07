@@ -62,7 +62,9 @@ http.createServer((req, res) => {
       if (/missing/.test(p)) { res.writeHead(404); return res.end() }
       if (p.endsWith('.svg')) {   // TMDB title logos are often SVG (with a script, like a hostile file)
         res.writeHead(200, { 'Content-Type': 'image/svg+xml' })
-        return res.end('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="120"><script>alert(1)</script><rect x="60" y="30" width="280" height="60" fill="#e33"/></svg>')
+        // logo_box: the logo in a plain box (like Bleach's); otherwise a transparent logo
+        const shape = /logo_box/.test(p) ? '<rect width="400" height="120" fill="#fff"/><rect x="60" y="30" width="280" height="60" fill="#e33"/>' : '<rect x="60" y="30" width="280" height="60" fill="#e33"/>'
+        return res.end(`<svg xmlns="http://www.w3.org/2000/svg" width="400" height="120"><script>alert(1)</script>${shape}</svg>`)
       }
       // Title logos: transparent, except a « logo » in a plain box (like Bleach's)
       if (/\/logo_/.test(p) && !/logo_box/.test(p)) {
@@ -106,7 +108,7 @@ http.createServer((req, res) => {
       if (Number(id) === hash('One Piece')) {
         return json(res, {
           posters:   [{ file_path: `/keyart_${id}.jpg`, iso_639_1: null, vote_average: 6, vote_count: 40 }, { file_path: `/chibi_${id}.jpg`, iso_639_1: null, vote_average: 10, vote_count: 1 }],
-          logos:     [{ file_path: `/logo_box_fr_${id}.png`, iso_639_1: 'fr', vote_average: 9 }, { file_path: `/logo_ja_${id}.png`, iso_639_1: 'ja', vote_average: 10 },
+          logos:     [{ file_path: `/logo_box_fr_${id}.svg`, iso_639_1: 'fr', vote_average: 9 }, { file_path: `/logo_ja_${id}.png`, iso_639_1: 'ja', vote_average: 10 },
             { file_path: `/logo_en_${id}.svg`, iso_639_1: 'en', vote_average: 5 }],
           backdrops: [{ file_path: `/herobackdrop_${id}.jpg`, iso_639_1: null, vote_average: 5 }],
         })

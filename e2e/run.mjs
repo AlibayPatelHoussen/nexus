@@ -514,8 +514,8 @@ test('IMDb: ids from TMDB, ratings from the dataset, Top 10 ranked by IMDb', asy
   // Animes too: their TMDB series gives a poster with the title (not the textless AniList cover) and the logo
   const op = sql(`SELECT tmdb_id || '|' || poster_path || '|' || coalesce(logo_path, '-') || '|' || coalesce(key_art_path, '-') FROM media_items WHERE type='anime' LIMIT 1`).split('|')
   assert(op[0] && /\/poster_\d+\.jpg$/.test(op[1]), `anime poster from TMDB: ${op.join('|')}`)
-  // Its French logo sits in a plain box (Bleach) and its other one is Japanese: the English SVG
-  // logo is taken, and served as a PNG (never as SVG)
+  // No PNG logo (Attack on Titan): its French SVG sits in a plain box (Bleach) and its PNG is
+  // Japanese, so the English SVG is taken, and served as a PNG (never as SVG)
   assert(/\/logo_en_\d+\.svg$/.test(op[2]), `anime title logo: ${op.join('|')}`)
   const anime = (await api('/api/media?type=anime&limit=10', { token: admin.accessToken })).json.data.items[0]
   const svgLogo = await api(anime.logoPath, { raw: true })

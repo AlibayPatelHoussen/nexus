@@ -14,14 +14,15 @@ describe('pickArtwork (TMDB /images → Apple TV artwork)', () => {
     expect(a.backdrop).toMatch(/\/original\/bg\.jpg$/)
   })
 
-  it('prefers a French logo, then English, then textless; a PNG over an SVG; never another language', () => {
+  it('prefers a French PNG logo, then English, then textless; an SVG only with no PNG at all; never another language', () => {
     expect(pickArtwork({ logos: [img('/en.png', 'en', 9), img('/fr.png', 'fr', 3), img('/fr.svg', 'fr', 10)] }).logo).toMatch(/\/fr\.png$/)
+    expect(pickArtwork({ logos: [img('/fr.svg', 'fr', 10), img('/null.png', null, 2)] }).logo).toMatch(/\/null\.png$/)   // as before: any PNG first
     expect(pickArtwork({ logos: [img('/en.png', 'en'), img('/de.png', 'de', 9)] }).logo).toMatch(/\/en\.png$/)
     expect(pickArtwork({ logos: [img('/only.svg', 'fr')] }).logo).toMatch(/\/only\.svg$/)
     expect(pickArtwork({ logos: [img('/ja.png', 'ja', 10)] }).logo).toBeNull()          // a Japanese promo logo: the title in text instead
     expect(pickArtwork({ logos: [img('/x.gif', 'fr')] }).logo).toBeNull()
     expect(logoCandidates([img('/n.png', null), img('/e.svg', 'en'), img('/f.svg', 'fr'), img('/e.png', 'en', 2)]).map((l) => l.file_path))
-      .toEqual(['/f.svg', '/e.png', '/e.svg', '/n.png'])
+      .toEqual(['/e.png', '/n.png', '/f.svg', '/e.svg'])
   })
 
   it('key art: the best-rated textless poster (as before)', () => {
