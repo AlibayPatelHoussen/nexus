@@ -166,11 +166,11 @@ export default function MediaDetailPage() {
     ? Math.round((progress.progress / progress.duration) * 100)
     : 0
 
-  function play(episodeId?: string, chapterId?: string) {
+  function play(episodeId?: string, chapterId?: string, version?: string) {
     if (isReading) {
       const chapId = chapterId || chapters[0]?.id
       if (!chapId) { toast.error('Aucun chapitre : lance une analyse.'); return }
-      navigate(`/reader/${id}?ch=${chapId}`)
+      navigate(`/reader/${id}?ch=${chapId}${version ? `&lang=${encodeURIComponent(version)}` : ''}`)
     } else if (isShow) {
       // A series is never played as a whole: always open a specific episode
       const epId = episodeId || resumeEpisode?.id || episodes[0]?.id
@@ -314,7 +314,7 @@ export default function MediaDetailPage() {
       )}
 
       {/* Chapters (manga / webtoon) */}
-      {isReading && !isPlaceholderData && <ChaptersSection chapters={chapters} onRead={(chapterId) => play(undefined, chapterId)} onScan={scan} scanning={scanning} />}
+      {isReading && !isPlaceholderData && <ChaptersSection chapters={chapters} onRead={(chapterId, version) => play(undefined, chapterId, version)} onScan={scan} scanning={scanning} />}
 
       {/* Automatic downloads of what comes next (off unless switched on) */}
       {isAdmin && (media.type === 'anime' || media.type === 'serie' || media.type === 'manga' || media.type === 'webtoon') && (

@@ -2,7 +2,7 @@ import fs from 'fs/promises'
 import path from 'path'
 import { query, withTransaction } from '../config/database'
 import { ConflictError } from '../utils/errors'
-import { findChapters } from './chapters'
+import { chapterVersion, findChapters } from './chapters'
 import { logger } from '../utils/logger'
 import axios from 'axios'
 
@@ -818,22 +818,24 @@ export class MediaScanner {
     const chapterRows = found.map((c, i) => {
       const n = parseChapterNumber(c.name)
       // No number in the name ("Prologue", "Oneshot"…): keep the folder order
-      return { chapPath: c.path, chapNum: n > 0 || /\b0+\b/.test(c.name) ? n : i + 1, pageCount: c.pageCount }
+      return { chapPath: c.path, chapNum: n > 0 || /\b0+\b/.test(c.name) ? n : i + 1, pageCount: c.pageCount,
+        version: chapterVersion(mangaPath, c.path) }
     })
 
     // Upsert on folder_path so existing chapters keep their id (and therefore
     // users' read_history), then drop chapters whose folder disappeared.
     // Done atomically so a failing scan never leaves a manga without chapters.
     await withTransaction(async (client) => {
-      for (const { chapPath, chapNum, pageCount } of chapterRows) {
+      for (const { chapPath, chapNum, pageCount, version } of chapterRows) {
         await client.query(
           `INSERT INTO chapters (media_item_id, chapter_number, title, folder_path, page_count, language)
-           VALUES ($1, $2, NULL, $3, $4, NULL)
+           VALUES ($1, $2, NULL, $3, $4, $5)
            ON CONFLICT (folder_path) DO UPDATE SET
              media_item_id  = EXCLUDED.media_item_id,
              chapter_number = EXCLUDED.chapter_number,
-             page_count     = EXCLUDED.page_count`,
-          [mediaId, chapNum, chapPath, pageCount],
+             page_count     = EXCLUDED.page_count,
+             language       = EXCLUDED.language`,
+          [mediaId, chapNum, chapPath, pageCount, version],
         )
       }
       await client.query(

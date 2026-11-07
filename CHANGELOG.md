@@ -4,6 +4,10 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Changed — One Piece colour and black & white are one manga
+- anime-sama: another edition of the same scans (« Scans (noir et blanc) », colour) is no longer a separate result: it is a version of the manga, chosen like VF / VOSTFR (« Noir et blanc » / « Couleur »). Black & white comes first and is the default: it is the weekly release (One Piece: 1199 chapters, colour 1004). Downloaded into the manga's own folder (« One Piece/VF Noir et blanc »), so the library shows one manga, with its poster; editions downloaded before move there by themselves. One-shots and spin-offs stay separate
+- Library: a manga with several versions (VF / VOSTFR, colour / black & white) shows one at a time with a version choice above its chapters; the reader stays in the version of the chapter opened
+
 ### Security — server journals are admin-only
 - `GET /api/system/logs` and `GET /api/services/:name/logs` now require an admin (a regular account could read the whole system journal). Services page: regular accounts still see each service's state, but no longer the Start / Stop / Restart buttons or the journal (both answered 403)
 - multer 1.x → 2.x (known denial-of-service fixes); CI runs on Node 22 (Node 20 is end-of-life)

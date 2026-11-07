@@ -3,7 +3,7 @@ import { isAxiosError } from 'axios'
 import toast from 'react-hot-toast'
 import { useState } from 'react'
 import { api } from '@/services/api'
-import { downloadsService, type Follow } from '@/services/downloadsService'
+import { downloadsService, langLabel, type Follow } from '@/services/downloadsService'
 import { Group, ListRow } from '@/components/ui/GroupedList'
 import Toggle from '@/components/ui/Toggle'
 import Spinner from '@/components/ui/Spinner'
@@ -41,7 +41,7 @@ export default function FollowGroup({ mediaId, kind }: { mediaId: string; kind: 
     }
   }
 
-  const where = target ? [kind !== 'manga' ? seasonLabel(target.follow?.options.season ?? target.season) : null, target.follow?.options.lang ?? target.lang].filter(Boolean).join(' · ') : ''
+  const where = target ? [kind !== 'manga' ? seasonLabel(target.follow?.options.season ?? target.season) : null, langLabel(target.follow?.options.lang ?? target.lang)].filter(Boolean).join(' · ') : ''
   const subtitle = isLoading
     ? <span className="inline-flex items-center gap-1.5"><Spinner size={12} />Recherche du titre sur le site…</span>
     : error

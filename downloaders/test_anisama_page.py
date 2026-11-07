@@ -92,5 +92,72 @@ class Page(unittest.TestCase):
         self.assertEqual(vt("Naruto", {"name": "Scans", "seg": "scan_one_shot"}), "Naruto — one shot")
 
 
+class EditionsTest(unittest.TestCase):
+    """One Piece: colour and black & white scans are versions of ONE manga, like VF / VOSTFR."""
+
+    def setUp(self):
+        import tempfile
+        from pathlib import Path
+        self.tmp = tempfile.TemporaryDirectory()
+        self.ns = {"re": re, "Path": Path, "DOWNLOAD_DIR": Path(self.tmp.name)}
+        i = SRC.index('EDITIONS = {')
+        exec(SRC[i:SRC.index("\ndef _title_of", i)], self.ns)
+        for name in ("_variant_title", "slugify"):
+            i = SRC.index(f"def {name}")
+            exec(SRC[i:SRC.index("\ndef ", i + 5)], self.ns)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    NB = {"seg": "scan_noir-et-blanc", "name": "Scans (noir et blanc)", "langs": ["VF"], "edition": "NB"}
+
+    def test_edition_of(self):
+        ed = self.ns["_edition_of"]
+        self.assertEqual(ed({"name": "Scans (noir et blanc)", "seg": "scan_noir-et-blanc"}), "NB")
+        self.assertEqual(ed({"name": "Scans", "seg": "scan_couleur"}), "CO")
+        self.assertEqual(ed({"name": "Version colorisée", "seg": "scan2"}), "CO")
+        self.assertIsNone(ed({"name": "Naruto Gaiden", "seg": "scan_one_shot"}))
+
+    def test_split_lang(self):
+        sp = self.ns["_split_lang"]
+        self.assertEqual(sp("VFNB"), ("VF", "NB"))
+        self.assertEqual(sp("VOSTFRCO"), ("VOSTFR", "CO"))
+        self.assertEqual(sp("VF"), ("VF", None))
+        self.assertEqual(sp("VOSTFR"), ("VOSTFR", None))
+
+    def test_options_one_language(self):
+        opts = self.ns["_scan_options"](["VF"], [self.NB, {"seg": "scan_one_shot", "name": "Gaiden", "langs": ["VF"], "edition": None}])
+        # Real One Piece page: « Scans (couleur) » = scan/vf, « Scans (noir et blanc) » = scan_noir-et-blanc/vf;
+        # black & white (the weekly one) comes first, so it is the default
+        self.assertEqual([(o["lang"], o["seg"], o["folder"], o["label"]) for o in opts], [
+            ("VFNB", "scan_noir-et-blanc", "VF Noir et blanc", "Noir et blanc"),
+            ("VF", "scan", "VF", "Couleur"),
+        ])
+
+    def test_options_two_languages(self):
+        nb = {**self.NB, "langs": ["VF", "VOSTFR"]}
+        labels = [o["label"] for o in self.ns["_scan_options"](["VF"], [nb])]
+        self.assertEqual(labels, ["Noir et blanc · VF", "Noir et blanc · VOSTFR", "Couleur · VF"])
+
+    def test_options_without_editions(self):
+        opts = self.ns["_scan_options"](["VF", "VOSTFR"], [])
+        self.assertEqual([(o["lang"], o["label"]) for o in opts], [("VF", "VF"), ("VOSTFR", "VOSTFR")])
+
+    def test_old_id_keeps_plain_code(self):
+        opts = self.ns["_scan_options"](["VF"], [self.NB], only="scan_noir-et-blanc")
+        self.assertEqual([(o["lang"], o["folder"]) for o in opts], [("VF", "VF Noir et blanc")])
+
+    def test_old_edition_folder_moves_into_the_manga(self):
+        root = self.ns["DOWNLOAD_DIR"]
+        old = root / "One Piece — Scans (noir et blanc)" / "VF"
+        old.mkdir(parents=True)
+        (old / "Chapitre 1.pdf").write_bytes(b"%PDF")
+        (root / "One Piece" / "VF").mkdir(parents=True)
+        self.ns["_move_old_editions"]("One Piece", [self.NB])
+        self.assertTrue((root / "One Piece" / "VF Noir et blanc" / "Chapitre 1.pdf").exists())
+        self.assertFalse((root / "One Piece — Scans (noir et blanc)").exists())
+        self.ns["_move_old_editions"]("One Piece", [self.NB])     # nothing left to move: no error
+
+
 if __name__ == "__main__":
     unittest.main()

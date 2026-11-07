@@ -57,6 +57,19 @@ export async function findChapters(root: string): Promise<FoundChapter[]> {
   return out.sort((a, b) => natural(a.path, b.path))
 }
 
+/**
+ * The version a chapter belongs to: the first folder under the manga when it
+ * names one (« VF », « VOSTFR », « VF Noir et blanc »), as the downloads lay
+ * them out (« One Piece/VF/Chapitre 1.pdf »); null for other layouts.
+ */
+export function chapterVersion(root: string, chapterPath: string): string | null {
+  const rel = path.relative(root, chapterPath)
+  if (!rel || rel.startsWith('..')) return null
+  const first = rel.split(path.sep)[0]
+  if (first === rel && chapterKind(rel) !== 'images') return null      // a file right in the manga folder
+  return /^(VF|VOSTFR|VO|VA|VUS|VQ|FR|EN|RAW)(\s.*)?$/i.test(first) ? first.slice(0, 40) : null
+}
+
 // ── CBZ / ZIP pages ───────────────────────────────────
 const zipCache = new Map<string, { mtime: number; zip: AdmZip; pages: string[] }>()
 

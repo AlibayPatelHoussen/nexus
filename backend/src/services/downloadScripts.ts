@@ -57,6 +57,15 @@ export function destFor(kind: Kind): string {
 }
 
 export const LANG_RE = /^[A-Z0-9]{2,8}$/
+
+/** anime-sama scan editions: « VFNB » = VF, black & white; « VFCO » = VF, colour */
+const EDITIONS: Record<string, string> = { NB: 'noir et blanc', CO: 'couleur' }
+
+/** « VFNB » → « VF noir et blanc »; other codes as they are. */
+export function langLabel(code: string): string {
+  const m = /^([A-Z0-9]{2,6}?)(NB|CO)$/.exec(code)
+  return m ? `${m[1]} ${EDITIONS[m[2]]}` : code
+}
 export const SEASON_RE = /^((saison\d{1,3}|kai\d{0,2}|film\d{0,2}|oav\d{0,2})(hs)?|saison\d{1,3}-\d{1,3}|speciaux|specials?|\d{1,3})$/
 
 /** A list of episode / chapter numbers -> compact text for the script ("1-3,7"). */

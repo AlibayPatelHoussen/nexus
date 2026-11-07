@@ -700,6 +700,29 @@ test('manga chapters: listed on the title page, a click opens the reader (CBZ pa
   await page.context().close()
 })
 
+test('manga editions: colour and black & white are ONE manga with a version choice', async () => {
+  eq(sql(`SELECT count(*) FROM media_items WHERE type='manga' AND file_path LIKE '%/Edition Manga%'`), '1', 'one manga')
+  eq(sql(`SELECT string_agg(c.language || ':' || c.chapter_number::text, ',' ORDER BY c.language, c.chapter_number) FROM chapters c JOIN media_items m ON m.id=c.media_item_id WHERE m.file_path LIKE '%/Edition Manga'`),
+    'VF:1.0,VF:2.0,VF Noir et blanc:1.0', 'chapter versions')
+  const id = sql(`SELECT id FROM media_items WHERE file_path LIKE '%/Edition Manga'`)
+  const page = await newPage(admin)
+  await page.goto(`${B}/media/${id}`, { waitUntil: 'networkidle' })
+  await page.waitForSelector('[role="radiogroup"][aria-label="Version"]')
+  const rows = page.locator('[role="list"] button:has-text("Chapitre")')
+  eq(await rows.count(), 1, 'black & white chapters first (the weekly release)')
+  await page.click('[role="radiogroup"][aria-label="Version"] >> text=Couleur')
+  for (let i = 0; i < 50 && await rows.count() !== 2; i++) await sleep(100)
+  eq(await rows.count(), 2, 'colour chapters')
+  await page.click('[role="radiogroup"][aria-label="Version"] >> text=Noir et blanc')
+  for (let i = 0; i < 50 && await rows.count() !== 1; i++) await sleep(100)
+  await sleep(600)   // the segment's thumb slides
+  await page.screenshot({ path: `${SHOTS}/manga-editions.png` })
+  await rows.first().click()
+  await page.waitForURL('**/reader/**')
+  assert(decodeURIComponent(page.url()).includes('lang=VF Noir et blanc'), `reader opens the black & white edition: ${page.url()}`)
+  await page.context().close()
+})
+
 test('manga chapters: clear message when there is none', async () => {
   const id = sql(`SELECT id FROM media_items WHERE file_path LIKE '%/Empty Manga'`)
   const page = await newPage(admin)

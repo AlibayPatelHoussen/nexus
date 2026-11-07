@@ -1,10 +1,10 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, Check } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { isAxiosError } from 'axios'
 import {
-  SOURCE_INFO, downloadsService, originalImage, type DetailChapter, type DetailEpisode, type SearchResult, type TorrentGroup,
+  SOURCE_INFO, downloadsService, langLabel, originalImage, type DetailChapter, type DetailEpisode, type SearchResult, type TorrentGroup,
 } from '@/services/downloadsService'
 import { useShell } from '@/components/shell/shellContext'
 import Sheet from '@/components/ui/Sheet'
@@ -143,6 +143,12 @@ function StandardSheet({ result, onClose }: { result: SearchResult | null; onClo
     return film.length ? film : ['VF', 'VOSTFR']
   }, [details, season, r?.kind])
 
+  // « Couleur » / « Noir et blanc · VF » (anime-sama editions), else the code
+  const langName = useCallback((l: string) => {
+    const entry = (details?.langs ?? []).find((x) => typeof x !== 'string' && x.lang === l)
+    return (typeof entry === 'object' && entry?.label) || langLabel(l)
+  }, [details])
+
   useEffect(() => { setSeason(''); setLang(''); setSelected(new Set()) }, [r?.id])
   useEffect(() => { if (!season && seasonIds.length) setSeason(seasonIds[0][0]) }, [seasonIds, season])
   useEffect(() => {
@@ -267,9 +273,9 @@ function StandardSheet({ result, onClose }: { result: SearchResult | null; onClo
                 </label>
               )}
               {langsForSeason.length > 1 && (
-                <SegmentedControl label="Langue" value={lang} onChange={setLang} options={langsForSeason.map((l) => ({ value: l, label: l }))} />
+                <SegmentedControl label={r.kind === 'manga' ? 'Version' : 'Langue'} value={lang} onChange={setLang} options={langsForSeason.map((l) => ({ value: l, label: langName(l) }))} />
               )}
-              {langsForSeason.length === 1 && <span className="text-subhead text-label2">{langsForSeason[0]}</span>}
+              {langsForSeason.length === 1 && <span className="text-subhead text-label2">{langName(langsForSeason[0])}</span>}
             </div>
             {multi && (items.length
               ? <ItemPicker items={items} selected={selected} onChange={setSelected} noun={r.kind === 'manga' ? 'chapitre' : 'épisode'} />
@@ -281,7 +287,7 @@ function StandardSheet({ result, onClose }: { result: SearchResult | null; onClo
                   <p className="text-body text-label">Télécharger automatiquement les {r.kind === 'manga' ? 'nouveaux chapitres' : 'nouveaux épisodes'}</p>
                   <p className="text-caption text-label2 mt-0.5">
                     {follow?.enabled
-                      ? `${[follow.options.season ? seasonIds.find(([id]) => id === String(follow.options.season))?.[1] ?? follow.options.season : null, follow.options.lang].filter(Boolean).join(' · ')} · vérifié chaque jour${follow.last_error ? ` · dernier essai : ${follow.last_error}` : ''}`
+                      ? `${[follow.options.season ? seasonIds.find(([id]) => id === String(follow.options.season))?.[1] ?? follow.options.season : null, follow.options.lang && langName(follow.options.lang)].filter(Boolean).join(' · ')} · vérifié chaque jour${follow.last_error ? ` · dernier essai : ${follow.last_error}` : ''}`
                       : 'Désactivé : rien ne se télécharge sans toi.'}
                   </p>
                 </div>
