@@ -207,6 +207,29 @@ test('UI: catalogue (hero, rows, cleaned series title)', async () => {
   await page.context().close()
 })
 
+test('UI: tab bar, the selection pill is already under the chosen tab when the lens lets go', async () => {
+  const page = await newPage(admin)
+  await page.goto(`${B}/dashboard`, { waitUntil: 'networkidle' })
+  const bar = await page.waitForSelector('nav[aria-label="Onglets"] ul')
+  const box = await bar.boundingBox()
+  const items = await page.$$('nav[aria-label="Onglets"] li')
+  const target = await items[2].boundingBox()
+  const y = box.y + box.height / 2
+  await page.mouse.move(box.x + 30, y); await page.mouse.down()
+  for (let i = 1; i <= 8; i++) { await page.mouse.move(box.x + 30 + (target.x + target.width / 2 - box.x - 30) * i / 8, y); await sleep(20) }
+  await sleep(150)
+  await page.mouse.up()
+  await sleep(60)                                              // well under the old slide (≈ 400 ms)
+  const at = await page.evaluate(() => {
+    const pill = document.querySelector('[data-tab-pill]')
+    const li = document.querySelectorAll('nav[aria-label="Onglets"] li')[2]
+    return { index: pill.dataset.tabPill, pill: pill.getBoundingClientRect().left, tab: li.getBoundingClientRect().left }
+  })
+  eq(at.index, '2', 'pill on the chosen tab')
+  assert(Math.abs(at.pill - at.tab) < 8, `pill already in place on release (pill ${at.pill}, tab ${at.tab})`)
+  await page.context().close()
+})
+
 test('UI: touch screens feel like an app (no text selection / browser menu on long press), desktop unchanged', async () => {
   const look = async (width) => {
     const page = await newPage(admin, { width, height: width < 600 ? 844 : 900 })

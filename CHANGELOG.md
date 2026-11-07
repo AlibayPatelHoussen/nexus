@@ -4,6 +4,9 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Fixed — tab bar: the selection is already there when the lens lets go
+- iPhone tab bar: while the finger drags the lens, the (hidden) selection pill follows the tab under it, so when the finger lifts the pill appears in place right away instead of sliding over from the old tab afterwards; the tab's tint follows at once too
+
 ### Added — « MOINS » folds the synopsis back
 - Title pages (iPhone and desktop): once « PLUS » has shown the whole synopsis, a « MOINS » capsule under it cuts it again
 

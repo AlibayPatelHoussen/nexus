@@ -41,7 +41,11 @@ export default function TabBar() {
   const rect = useRef<DOMRect | null>(null)
   const [width, setWidth] = useState(0)
   const [pressing, setPressing] = useState(false)
+  // Tab under the finger while pressing, then the tab picked until the route catches up:
+  // the (hidden) pill follows it at once, so it is already in place when the lens lets go
+  const [under, setUnder] = useState<number | null>(null)
   const handled = useRef(false)
+  useEffect(() => { if (!pressing && under != null && (under === active || active < 0)) setUnder(null) }, [pressing, under, active])
 
   useLayoutEffect(() => {
     const el = bar.current
@@ -82,19 +86,32 @@ export default function TabBar() {
     center.jump(from); finger.jump(from)
     finger.set(x)
     touch.set(1)
+    setUnder(indexAt(x))
     setPressing(true)
   }
-  const onPointerMove = (e: React.PointerEvent) => { if (pressing) finger.set(relX(e.clientX)) }
+  const onPointerMove = (e: React.PointerEvent) => {
+    if (!pressing) return
+    const x = relX(e.clientX)
+    finger.set(x)
+    setUnder(indexAt(x))
+  }
   const end = (select: boolean, clientX?: number) => {
     if (!pressing) return
     setPressing(false)
     touch.set(0)
     if (select && clientX != null) {
       const i = indexAt(relX(clientX))
+      setUnder(i)
       navigator.vibrate?.(8)
       if (tabs[i]) navigate(tabs[i].to)   // the same tab again goes back to its root
+    } else {
+      setUnder(null)
     }
   }
+  const pill = under ?? active
+  // The pill moves instantly when the finger chose the tab (it is hidden under the lens);
+  // it slides on a spring only when the tab changes some other way (back, keyboard…)
+  const pillMove = under != null ? { duration: 0 } : SETTLE
 
   return (
     <nav
@@ -118,15 +135,16 @@ export default function TabBar() {
       >
         {tabW > 0 && (
           <>
-            {/* Resting pill under the selected tab (slides on a spring when the tab changes) */}
-            {active >= 0 && (
+            {/* Resting pill under the selected tab (already under the finger's tab when the lens lets go) */}
+            {pill >= 0 && (
               <motion.span
                 aria-hidden="true"
+                data-tab-pill={pill}
                 className="absolute z-0 left-0 rounded-pill pointer-events-none bg-[color:var(--glass-select)]"
                 style={{ top: PAD, bottom: PAD, width: tabW }}
                 initial={false}
-                animate={{ x: PAD + active * tabW, opacity: pressing ? 0 : 1, scale: pressing ? 1.15 : 1 }}
-                transition={SETTLE}
+                animate={{ x: PAD + pill * tabW, opacity: pressing ? 0 : 1, scale: pressing ? 1.15 : 1 }}
+                transition={{ ...SETTLE, x: pillMove }}
               />
             )}
             {/* The glass lens: only while touching; grows in, follows the finger, shrinks back */}
@@ -146,7 +164,7 @@ export default function TabBar() {
             to={t.to}
             label={t.label}
             Icon={t.icon}
-            on={i === active}
+            on={i === (pressing ? active : pill)}
             centre={PAD + (i + 0.5) * tabW}
             reach={lensW * 0.6}
             lensCenter={center}
