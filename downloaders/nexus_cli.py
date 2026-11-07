@@ -41,10 +41,16 @@ def early_json() -> bool:
     return True
 
 
+import threading
+_EMIT_LOCK = threading.Lock()
+
+
 def emit(obj_type: str, **fields) -> None:
     out = _OUT or sys.stdout
-    out.write(json.dumps({"type": obj_type, **fields}, ensure_ascii=False) + "\n")
-    out.flush()
+    line = json.dumps({"type": obj_type, **fields}, ensure_ascii=False) + "\n"
+    with _EMIT_LOCK:      # yt-dlp's stderr reader emits from another thread
+        out.write(line)
+        out.flush()
 
 
 def fail(message: str, code: int = 1):
@@ -376,9 +382,21 @@ def _ytdlp_once(args, item, on_line, stall):
 
     tail = {"line": None}
 
+    def post_processing(line):
+        # Post-processing (merge, thumbnail…): nothing is downloaded any more, the long
+        # silent merge of a big video must not be taken for a stall
+        state["last"] = time.monotonic()
+        state["downloading"] = False
+        status, _, pp = line[len(NXPP):].strip().partition("|")
+        if status == "started" and pp == "Merger":
+            emit("progress", item="Assemblage de l'image et du son…", percent=100)
+
     def read_errors():
         global last_ytdlp_error
         for err in proc.stderr:
+            if err.startswith(NXPP):       # yt-dlp writes post-processing progress on stderr
+                post_processing(err)
+                continue
             sys.stderr.write(err)
             if err.startswith("ERROR"):
                 last_ytdlp_error = err.strip()
@@ -390,12 +408,8 @@ def _ytdlp_once(args, item, on_line, stall):
     for line in proc.stdout:
         line = line.rstrip("\n")
         state["last"] = time.monotonic()
-        if line.startswith(NXPP):
-            # Post-processing (merge, thumbnail…): nothing is downloaded any more
-            state["downloading"] = False
-            status, _, pp = line[len(NXPP):].partition("|")
-            if status == "started" and pp == "Merger":
-                emit("progress", item="Assemblage de l'image et du son…", percent=100)
+        if line.startswith(NXPP):        # (yt-dlp prints them on stderr; handled there too)
+            post_processing(line)
             continue
         state["downloading"] = line.startswith(NXP)
         if line.startswith(NXP):

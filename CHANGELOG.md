@@ -4,6 +4,10 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Fixed — the merge of big YouTube videos was still stopped
+- yt-dlp reports the merge on its error output, which Nexus did not read for that: the merge of a big video was still stopped every 15 s. Checked on the server; the merge now always goes to the end
+- deno is installed with yt-dlp (the server's Node 20 is too old for YouTube's checks), so formats do not go missing and 403s do not come back
+
 ### Fixed — big YouTube videos killed while being merged
 - The 15 s stall restart stopped big videos while their image and sound were being merged (yt-dlp says nothing then): it now knows when the download is over (yt-dlp's post-processing progress) and never stops the merge; the queue shows « Assemblage de l'image et du son… »
 - Videos whose image and sound were complete in the working folder are merged when downloaded again (no new download); a failure always says why (« YouTube n'envoie plus rien », yt-dlp's last message…)

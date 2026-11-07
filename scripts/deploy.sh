@@ -66,12 +66,13 @@ if ! python3 -c "import guessit" &> /dev/null; then
 fi
 
 # ── yt-dlp: YouTube changes often, an old yt-dlp gets « HTTP Error 403 » ──
-# « [default] » also installs yt-dlp-ejs (what yt-dlp runs in Node / deno to pass YouTube's checks)
+# « [default,deno] » also installs yt-dlp-ejs and deno (the JavaScript runtime yt-dlp uses by
+# default for YouTube's checks; the server's Node 20 is too old for it)
 echo "📦 Updating yt-dlp (YouTube downloads)..."
-if ! python3 -m pip install --user --upgrade --quiet --break-system-packages "yt-dlp[default]" 2>/dev/null \
-   && ! python3 -m pip install --user --upgrade --quiet "yt-dlp[default]"; then
+if ! python3 -m pip install --user --upgrade --quiet --break-system-packages "yt-dlp[default,deno]" 2>/dev/null \
+   && ! python3 -m pip install --user --upgrade --quiet "yt-dlp[default,deno]"; then
   echo "⚠️  yt-dlp could not be updated: YouTube downloads may fail (HTTP 403)."
-  echo "   Update it with: python3 -m pip install --user -U --break-system-packages 'yt-dlp[default]'"
+  echo "   Update it with: python3 -m pip install --user -U --break-system-packages 'yt-dlp[default,deno]'"
 fi
 
 # ── Install dependencies (including devDeps for build) ─
