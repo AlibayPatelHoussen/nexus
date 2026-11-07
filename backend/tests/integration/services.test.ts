@@ -54,3 +54,27 @@ describe('POST /api/services/:name/toggle', () => {
     expect(res.status).toBe(422)
   })
 })
+
+describe('logs are admin-only', () => {
+  it('GET /api/services/:name/logs returns 403 for non-admin user', async () => {
+    const res = await request(app)
+      .get('/api/services/jellyfin/logs')
+      .set('Authorization', `Bearer ${token('user')}`)
+    expect(res.status).toBe(403)
+  })
+
+  it('GET /api/system/logs returns 403 for non-admin user', async () => {
+    const res = await request(app)
+      .get('/api/system/logs')
+      .set('Authorization', `Bearer ${token('user')}`)
+    expect(res.status).toBe(403)
+  })
+
+  it('GET /api/system/logs works for admin', async () => {
+    const res = await request(app)
+      .get('/api/system/logs?lines=5')
+      .set('Authorization', `Bearer ${token('admin')}`)
+    expect(res.status).toBe(200)
+    expect(Array.isArray(res.body.data)).toBe(true)
+  })
+})

@@ -25,7 +25,8 @@ router.post('/:name/toggle', requireAdmin, asyncHandler(async (req: Request, res
   res.json({ success: true })
 }))
 
-router.get('/:name/logs', asyncHandler(async (req: Request, res: Response) => {
+// Service journals can hold paths, IPs or tokens: admins only
+router.get('/:name/logs', requireAdmin, asyncHandler(async (req: Request, res: Response) => {
   const { name } = req.params
   const lines = parseInt(req.query.lines as string || '50')
   const logs = await ServicesService.getLogs(name, lines)
