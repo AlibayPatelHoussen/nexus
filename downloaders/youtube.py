@@ -142,11 +142,66 @@ def json_search(query, limit):
         nexus_cli.fail("Recherche YouTube impossible")
 
 
+# yt-dlp's intermediate files: separate streams (« Titre [id].f401.mp4 »), merge file (« .temp.mp4 »)
+PARTIAL = re.compile(r"\.f\d+(-[a-z0-9]+)?\.[a-z0-9]+(\.part)?$|\.temp\.[a-z0-9]+$|\.(part|ytdl)$", re.I)
+
+
+def _files_of(dest, vid):
+    """Files of this video in the library, never those of the hidden working folders."""
+    root = Path(dest)
+    for p in root.rglob(f"*[[]{vid}[]].*"):
+        if p.is_file() and not any(part.startswith(".") for part in p.relative_to(root).parts):
+            yield p
+
+
 def _existing(dest, vid):
-    for p in Path(dest).rglob(f"*[[]{vid}[]].*"):
-        if p.suffix.lower() in (".mp4", ".mkv", ".webm") and not p.name.startswith(".part-"):
+    """The finished video (a stream or a half-merged file left by a stopped download does not count)."""
+    for p in _files_of(dest, vid):
+        if p.suffix.lower() in (".mp4", ".mkv", ".webm") and not PARTIAL.search(p.name):
             return p
     return None
+
+
+def _leftovers(dest, vid):
+    return [p for p in _files_of(dest, vid) if PARTIAL.search(p.name)]
+
+
+def _finish_leftovers(dest, vid, item):
+    """A download stopped while merging (pause, restart…) leaves the complete video and audio
+    streams: merge them instead of downloading gigabytes again. Only when both streams have
+    the exact sizes YouTube announced (.info.json); returns the final path or None."""
+    left = [p for p in _leftovers(dest, vid) if re.search(r"\.f\d+(-[a-z0-9]+)?\.[a-z0-9]+$", p.name, re.I)]
+    if len(left) < 2:
+        return None
+    info_file = next((p for p in _files_of(dest, vid) if p.name.endswith(".info.json")), None)
+    try:
+        info = json.loads(info_file.read_text(encoding="utf-8")) if info_file else {}
+    except (OSError, ValueError):
+        return None
+    sizes = {str(f.get("format_id")): f.get("filesize") for f in info.get("requested_formats") or []}
+    streams = []
+    for fid, size in sizes.items():
+        part = next((p for p in left if re.search(rf"\.f{re.escape(fid)}(-[a-z0-9]+)?\.[a-z0-9]+$", p.name, re.I)), None)
+        if not part or not size or part.stat().st_size != size:
+            return None
+        streams.append(part)
+    if len(streams) < 2:
+        return None
+    final = info_file.with_name(info_file.name[:-len(".info.json")] + ".mp4")
+    nexus_cli.emit("progress", item="Assemblage de l'image et du son…", percent=100)
+    tmp = final.with_name(".part-" + final.name)
+    cmd = ["ffmpeg", "-y", "-v", "error"]
+    for st in streams:
+        cmd += ["-i", str(st)]
+    cmd += ["-map", "0", *sum((["-map", str(i)] for i in range(1, len(streams))), []), "-c", "copy", "-f", "mp4", str(tmp)]
+    if subprocess.run(cmd).returncode != 0 or not tmp.exists():
+        tmp.unlink(missing_ok=True)
+        return None
+    tmp.replace(final)
+    for p in _leftovers(dest, vid):
+        p.unlink(missing_ok=True)
+    print(f"youtube: {vid} merged from the streams already downloaded")
+    return final
 
 
 def json_download(args):
@@ -163,6 +218,11 @@ def json_download(args):
         nexus_cli.emit("done", ok=0, failed=0, skipped=1)
         return 0
     nexus_cli.emit("item_start", name=item, index=1, total=1)
+    merged = _finish_leftovers(dest, vid, item)
+    if merged:
+        nexus_cli.emit("item_done", name=merged.stem, path=str(merged))
+        nexus_cli.emit("done", ok=1, failed=0, skipped=0)
+        return 0
     final = {}
     def on_line(line):
         if line.startswith("NXFILE|"):
@@ -181,6 +241,8 @@ def json_download(args):
     ], item, on_line)
     path = final.get("path")
     if code == 0 and path and os.path.exists(path):
+        for p in _leftovers(dest, vid):      # streams of an earlier, stopped attempt
+            p.unlink(missing_ok=True)
         nexus_cli.emit("item_done", name=Path(path).stem, path=path)
         nexus_cli.emit("done", ok=1, failed=0, skipped=0)
         return 0

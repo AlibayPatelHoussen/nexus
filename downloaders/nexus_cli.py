@@ -319,9 +319,9 @@ def ytdlp_reason(line):
 
 
 # A dead connection makes yt-dlp give up (and retry) instead of waiting forever
-YTDLP_NETWORK = ["--socket-timeout", "30", "--retries", "10", "--fragment-retries", "10"]
-STALL_SECONDS = 90     # no data for this long while downloading: yt-dlp is restarted (it resumes)
-STALL_RESTARTS = 3
+YTDLP_NETWORK = ["--socket-timeout", "15", "--retries", "10", "--fragment-retries", "10"]
+STALL_SECONDS = 15     # no data for this long while downloading: yt-dlp is restarted (it resumes)
+STALL_RESTARTS = 10
 
 
 def ytdlp_run(args, item, on_line=None, stall_seconds=None):
@@ -385,6 +385,9 @@ def _ytdlp_once(args, item, on_line, stall):
                 done, total, estimate, speed, eta = (num(x) for x in parts[:5])
                 video_progress(item, done or 0, total or estimate, speed, eta=eta, throttle=throttle)
         elif line:
+            if line.startswith("[Merger]"):
+                # Merging a big video takes a while with no progress: say so (do not pause it!)
+                emit("progress", item="Assemblage de l'image et du son…", percent=100)
             others.append(line)
             if on_line:
                 on_line(line)

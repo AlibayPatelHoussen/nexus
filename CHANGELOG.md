@@ -5,7 +5,9 @@ All notable changes to Nexus will be documented here.
 ## [Unreleased]
 
 ### Fixed — YouTube downloads that freeze, half-downloaded files in the library
-- A YouTube download that stops receiving data is restarted by itself after 90 s (it continues where it stopped, like a pause / resume by hand), up to 3 times; a dead connection now times out instead of waiting forever
+- A video stopped while its image and sound were being merged (a pause during the long silent merge) was then reported « déjà présent » and never finished: only a finished video counts now; downloading it again merges the complete streams already on disk (sizes checked against YouTube's) instead of downloading gigabytes again, otherwise downloads it again and removes the old pieces
+- The queue shows « Assemblage de l'image et du son… » during the merge, so it no longer looks stuck
+- A YouTube download that stops receiving data is restarted by itself after 15 s (it continues where it stopped, like a pause / resume by hand), up to 10 times; a dead connection now times out instead of waiting forever
 - The video / audio parts yt-dlp writes while downloading go to a hidden folder, so « YouTube » no longer shows « … [id].f251 » / « … .temp » cards without a thumbnail; those already listed are removed at the next scan
 
 ### Fixed — YouTube downloads failed with « HTTP Error 403 »
