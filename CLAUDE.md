@@ -32,8 +32,8 @@ npm workspaces (`frontend`, `backend`); run from the repo root unless noted.
   via `config/database.ts` `query()`, no ORM). Rows are mapped to camelCase API objects in the
   services (e.g. `mapMedia` in `services/media.ts`). Socket.io namespaces in `socket.ts`: live stats,
   terminal (node-pty), download progress. Admin-only areas use `requireAdmin`.
-- **Database**: `db/schema.sql` is the full current schema (fresh installs); every change also gets a
-  numbered file in `db/migrations/` (see its README). Both must stay in sync.
+- **Database**: `backend/src/db/schema.sql` is the full current schema (fresh installs); every change also gets a
+  numbered file in `backend/src/db/migrations/` (see its README). Both must stay in sync.
 - **Media library**: `services/scanner.ts` walks the media folders, looks titles up on TMDB / AniList /
   MangaDex and upserts `media_items` / episodes / chapters. Background enrichment (`services/imdb.ts`,
   `services/artwork.ts`, after scans and daily): IMDb ids + ratings from the official dataset, Apple

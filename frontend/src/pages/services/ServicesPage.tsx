@@ -11,9 +11,9 @@ import Button from '@/components/ui/Button'
 import Sheet from '@/components/ui/Sheet'
 import EmptyState from '@/components/ui/EmptyState'
 import { SkeletonRows } from '@/components/ui/Skeleton'
-import Spinner from '@/components/ui/Spinner'
 import { useConfirm } from '@/components/ui/useConfirm'
 import { cn, formatBytes, formatUptime } from '@/utils'
+import { useAuthStore } from '@/stores/authStore'
 import { SERVICE_STATE as STATE, isInstalled, isRunning, isStopped } from '@/services/serviceState'
 
 const summary = (list: ServiceInfo[]) => {
@@ -95,12 +95,15 @@ export default function ServicesPage() {
 function ServiceDetail({ service, showTitle }: { service: ServiceInfo; showTitle?: boolean }) {
   const qc = useQueryClient()
   const confirm = useConfirm()
+  // Starting / stopping a service and reading its journal are admin-only (the API answers 403)
+  const isAdmin = useAuthStore((s) => s.user?.role === 'admin')
   const isOn = isRunning(service)
   const installed = isInstalled(service)
   const since = service.since ? Math.max(0, (Date.now() - Date.parse(service.since)) / 1000) : null
   const { data: logs, isLoading: loadingLogs, refetch } = useQuery({
     queryKey: ['service-logs', service.name],
     queryFn:  () => servicesService.getLogs(service.name, 80),
+    enabled: isAdmin,
     retry: false,
   })
 
@@ -149,28 +152,28 @@ function ServiceDetail({ service, showTitle }: { service: ServiceInfo; showTitle
       {service.status === 'waiting' && (
         <p className="text-caption text-label2 px-1 -mt-2">Le service se lance tout seul dès qu’on l’utilise, puis s’arrête quand plus personne ne s’en sert.</p>
       )}
-      {installed ? (
+      {!installed ? (
+        <p className="text-subhead text-label2 px-1">Aucune unité systemd « {service.units?.join(' », « ') || service.name} » n’existe sur le serveur.</p>
+      ) : isAdmin && (
         <div className="flex flex-wrap gap-2 max-md:grid max-md:grid-cols-3">
           <Button variant={isOn ? 'secondary' : 'primary'} disabled={isOn || mut.isPending} onClick={() => run('start')} className="max-md:min-h-[44px]">Démarrer</Button>
           <Button disabled={!isOn || mut.isPending} onClick={() => run('stop')} className="max-md:min-h-[44px]">Arrêter</Button>
           <Button disabled={mut.isPending} onClick={() => run('restart')} className="max-md:min-h-[44px]">Redémarrer</Button>
         </div>
-      ) : (
-        <p className="text-subhead text-label2 px-1">Aucune unité systemd « {service.units?.join(' », « ') || service.name} » n’existe sur le serveur.</p>
       )}
-      <section aria-label="Journal">
+      {isAdmin && <section aria-label="Journal">
         <div className="flex items-center justify-between mb-1.5 px-1">
           <h3 className="text-subhead text-label2">Journal</h3>
           <Button variant="plain" size="small" onClick={() => refetch()}>Actualiser</Button>
         </div>
         <div className="rounded-[10px] p-3 max-h-72 overflow-auto font-mono text-[11.5px] leading-relaxed" style={{ background: 'var(--term-bg)', color: 'var(--term-fg)', boxShadow: 'inset 0 0 0 .5px var(--separator)' }}>
-          {loadingLogs ? <Spinner size={16} /> : !logs?.length ? (
+          {loadingLogs ? <SkeletonRows rows={3} /> : !logs?.length ? (
             <span className="text-label2">Aucune entrée dans le journal.</span>
           ) : logs.map((line, i) => (
             <div key={i} className={cn('whitespace-pre-wrap break-all', /error|failed/i.test(line) && 'text-danger-text')}>{line}</div>
           ))}
         </div>
-      </section>
+      </section>}
     </div>
   )
 }

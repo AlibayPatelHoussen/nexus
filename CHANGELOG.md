@@ -4,6 +4,10 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Security — server journals are admin-only
+- `GET /api/system/logs` and `GET /api/services/:name/logs` now require an admin (a regular account could read the whole system journal). Services page: regular accounts still see each service's state, but no longer the Start / Stop / Restart buttons or the journal (both answered 403)
+- multer 1.x → 2.x (known denial-of-service fixes); CI runs on Node 22 (Node 20 is end-of-life)
+
 ### Changed — no blur at the top of the screen
 - Every page: the top bar no longer blurs what scrolls under it (opaque page colour, then a short sharp fade), and its buttons (back, section menu, search / downloads / « … », open search field) no longer blur what is behind them and have no soft shadow halo (owner's request). Nothing else changes
 
