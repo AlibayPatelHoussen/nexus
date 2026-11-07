@@ -146,11 +146,17 @@ def json_search(query, limit):
 PARTIAL = re.compile(r"\.f\d+(-[a-z0-9]+)?\.[a-z0-9]+(\.part)?$|\.temp\.[a-z0-9]+$|\.(part|ytdl)$", re.I)
 
 
-def _files_of(dest, vid):
-    """Files of this video in the library, never those of the hidden working folders."""
+TEMP_DIR = ".part-youtube"
+
+
+def _files_of(dest, vid, working=False):
+    """Files of this video in the library, never those of the hidden working folders
+    (with working=True, also those of yt-dlp's own folder, .part-youtube)."""
     root = Path(dest)
     for p in root.rglob(f"*[[]{vid}[]].*"):
-        if p.is_file() and not any(part.startswith(".") for part in p.relative_to(root).parts):
+        parts = p.relative_to(root).parts
+        hidden = [x for x in parts[:-1] if x.startswith(".")]
+        if p.is_file() and not parts[-1].startswith(".") and (not hidden or (working and hidden == [TEMP_DIR] and parts[0] == TEMP_DIR)):
             yield p
 
 
@@ -163,7 +169,7 @@ def _existing(dest, vid):
 
 
 def _leftovers(dest, vid):
-    return [p for p in _files_of(dest, vid) if PARTIAL.search(p.name)]
+    return [p for p in _files_of(dest, vid, working=True) if PARTIAL.search(p.name)]
 
 
 def _finish_leftovers(dest, vid, item):
@@ -194,12 +200,20 @@ def _finish_leftovers(dest, vid, item):
     for st in streams:
         cmd += ["-i", str(st)]
     cmd += ["-map", "0", *sum((["-map", str(i)] for i in range(1, len(streams))), []), "-c", "copy", "-f", "mp4", str(tmp)]
+    final.parent.mkdir(parents=True, exist_ok=True)
     if subprocess.run(cmd).returncode != 0 or not tmp.exists():
         tmp.unlink(missing_ok=True)
         return None
     tmp.replace(final)
     for p in _leftovers(dest, vid):
         p.unlink(missing_ok=True)
+    # The thumbnail yt-dlp had left in its working folder goes next to the video
+    for thumb in (p for p in _files_of(dest, vid, working=True) if p.suffix.lower() == ".jpg" and TEMP_DIR in p.parts):
+        target = final.with_suffix(".jpg")
+        if not target.exists():
+            thumb.replace(target)
+        else:
+            thumb.unlink(missing_ok=True)
     print(f"youtube: {vid} merged from the streams already downloaded")
     return final
 

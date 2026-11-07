@@ -262,6 +262,50 @@ class YtdlpStall(unittest.TestCase):
         self.assertLess(took, 20)          # did not wait for the 30 s sleep
         self.assertGreaterEqual(runs, 2)   # restarted
 
+    def run_fake(self, script, stall):
+        with tempfile.TemporaryDirectory() as d:
+            count = Path(d) / "runs"
+            fake = Path(d) / "yt-dlp"
+            fake.write_text("#!/bin/sh\ncase \"$*\" in *--help*) exit 0;; esac\n"
+                            f"n=$(cat {count} 2>/dev/null || echo 0); echo $((n+1)) > {count}\n" + script)
+            fake.chmod(0o755)
+            old = os.environ["PATH"]
+            os.environ["PATH"] = f"{d}:/usr/bin:/bin"
+            nexus_cli._js_args = None
+            out, err = sys.stdout, sys.stderr
+            sys.stdout, sys.stderr = io.StringIO(), io.StringIO()
+            try:
+                code, lines = nexus_cli.ytdlp_run(["x"], "x", stall_seconds=stall)
+                emitted = sys.stdout.getvalue()
+            finally:
+                os.environ["PATH"] = old
+                nexus_cli._js_args = None
+                sys.stdout, sys.stderr = out, err
+            return code, lines, int(count.read_text()), emitted
+
+    def test_the_silent_merge_is_not_a_stall(self):
+        # The owner's server: --print makes yt-dlp quiet, the merge of a big video prints nothing for minutes
+        code, lines, runs, emitted = self.run_fake(
+            "echo 'NXP|500|1000|1000|10|5'\necho 'NXP|1000|1000|1000|10|0'\n"
+            "echo 'NXPP|started|Merger'\nsleep 4\necho 'NXPP|finished|Merger'\necho 'NXFILE|/x.mp4'\n", stall=2)
+        self.assertEqual((code, runs), (0, 1))          # never restarted
+        self.assertIn("NXFILE|/x.mp4", lines)
+        self.assertIn("Assemblage", emitted)
+
+    def test_a_finished_file_waiting_is_not_a_stall(self):
+        code, _, runs, _ = self.run_fake("echo 'NXP|1000|1000|1000|10|0'\nsleep 4\necho 'NXFILE|/x.mp4'\n", stall=2)
+        self.assertEqual((code, runs), (0, 1))
+
+    def test_gives_up_with_a_reason(self):
+        old = nexus_cli.STALL_RESTARTS
+        nexus_cli.STALL_RESTARTS = 1
+        try:
+            code, _, runs, _ = self.run_fake("echo 'NXP|10|1000|1000|10|5'\nsleep 30\n", stall=1)
+        finally:
+            nexus_cli.STALL_RESTARTS = old
+        self.assertEqual(runs, 2)
+        self.assertIn("n'envoie plus rien", nexus_cli.ytdlp_reason(nexus_cli.last_ytdlp_error))
+
 
 if __name__ == "__main__":
     unittest.main()
