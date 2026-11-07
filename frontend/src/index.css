@@ -32,6 +32,19 @@
 
   ::selection { background: var(--accent-soft); }
 
+  /* Touch screens: behave like an installed app, not a web page. A long press does not
+     select text, open the link / image callout or a link preview, and images cannot be
+     dragged; text fields and .selectable areas (logs) keep normal selection.
+     Double tap does not zoom. The native context menu is blocked in installNativeFeel(). */
+  @media (hover: none) and (pointer: coarse) {
+    html { -webkit-text-size-adjust: 100%; text-size-adjust: 100%; touch-action: manipulation; }
+    body, body * { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+    img, a, svg, video { -webkit-user-drag: none; }
+    input, textarea, [contenteditable="true"], [contenteditable="true"] *, .selectable, .selectable * {
+      -webkit-user-select: text; user-select: text; -webkit-touch-callout: default;
+    }
+  }
+
   :focus { outline: none; }
   :focus-visible {
     outline: 3px solid color-mix(in srgb, var(--accent) 50%, transparent);

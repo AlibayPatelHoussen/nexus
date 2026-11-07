@@ -6,10 +6,13 @@ import { ConfirmProvider } from '@/components/ui/ConfirmDialog'
 import AppToaster from '@/components/ui/AppToaster'
 import App from './App'
 import { registerServiceWorker } from '@/services/pushService'
+import { installNativeFeel } from '@/services/nativeFeel'
 import './index.css'
 
 // Push notifications (PWA): the service worker only handles notifications
 void registerServiceWorker()
+// Touch screens: a long press never opens the browser's menus (feels like an installed app)
+installNativeFeel()
 
 const queryClient = new QueryClient({
   defaultOptions: {
