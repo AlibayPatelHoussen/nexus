@@ -366,7 +366,7 @@ def _ytdlp_once(args, item, on_line, stall):
         return 127, [], False
     import threading
     # Watchdog: only while data is being downloaded (merging / embedding prints nothing for a while)
-    state = {"last": time.monotonic(), "downloading": False, "stalled": False}
+    state = {"last": time.monotonic(), "downloading": False, "stalled": False, "merging": False}
 
     def watchdog():
         while proc.poll() is None:
@@ -388,8 +388,12 @@ def _ytdlp_once(args, item, on_line, stall):
         state["last"] = time.monotonic()
         state["downloading"] = False
         status, _, pp = line[len(NXPP):].strip().partition("|")
-        if status == "started" and pp == "Merger":
-            emit("progress", item="Assemblage de l'image et du son…", percent=100)
+        if pp == "Merger":
+            # stdout and stderr are read by two threads: a progress line read after this one
+            # must not turn the watchdog back on while the (silent) merge runs
+            state["merging"] = status == "started"
+            if status == "started":
+                emit("progress", item="Assemblage de l'image et du son…", percent=100)
 
     def read_errors():
         global last_ytdlp_error
@@ -411,7 +415,7 @@ def _ytdlp_once(args, item, on_line, stall):
         if line.startswith(NXPP):        # (yt-dlp prints them on stderr; handled there too)
             post_processing(line)
             continue
-        state["downloading"] = line.startswith(NXP)
+        state["downloading"] = line.startswith(NXP) and not state["merging"]
         if line.startswith(NXP):
             parts = line[len(NXP):].split("|")
             if len(parts) >= 5:
