@@ -144,5 +144,68 @@ class SeriesFolder(unittest.TestCase):
         self.assertEqual(nexus_cli.norm_title("Élite"), nexus_cli.norm_title("elite"))
 
 
+class YtdlpErrors(unittest.TestCase):
+    """The owner sees why a YouTube download failed, not just « impossible »."""
+
+    def test_reasons(self):
+        r = nexus_cli.ytdlp_reason
+        self.assertIn("robot", r("ERROR: [youtube] dQw4w9WgXcQ: Sign in to confirm you’re not a bot. Use --cookies-from-browser"))
+        self.assertIn("robot", r("ERROR: [youtube] dQw4w9WgXcQ: Sign in to confirm you're not a bot"))
+        self.assertEqual(r("ERROR: [youtube] dQw4w9WgXcQ: Private video. Sign in if you've been granted access"), "Vidéo privée")
+        self.assertIn("mettre à jour", r("ERROR: [youtube] abc: nsig extraction failed: Some formats may be missing"))
+        self.assertIn("trop ancien", r("ERROR: [youtube] abc: Requested format is not available"))
+        self.assertEqual(r("ERROR: [youtube] dQw4w9WgXcQ: Something new"), "Something new")
+        self.assertIsNone(r(None))
+
+    def test_last_error_is_kept(self):
+        with tempfile.TemporaryDirectory() as d:
+            fake = Path(d) / "yt-dlp"
+            fake.write_text("#!/bin/sh\necho 'WARNING: x' >&2\necho 'ERROR: [youtube] dQw4w9WgXcQ: Video unavailable' >&2\nexit 1\n")
+            fake.chmod(0o755)
+            old = os.environ["PATH"]
+            os.environ["PATH"] = f"{d}:{old}"
+            err = sys.stderr
+            sys.stderr = io.StringIO()
+            try:
+                code, _ = nexus_cli.ytdlp_run(["https://youtu.be/dQw4w9WgXcQ"], "x")
+            finally:
+                os.environ["PATH"] = old
+                logged, sys.stderr = sys.stderr.getvalue(), err
+        self.assertEqual(code, 1)
+        self.assertEqual(nexus_cli.ytdlp_reason(nexus_cli.last_ytdlp_error), "Vidéo indisponible ou supprimée")
+        self.assertIn("WARNING: x", logged)   # still in the log
+
+
+class YtdlpJsRuntime(unittest.TestCase):
+    """No deno on the owner's server: yt-dlp is told to use Node.js (YouTube needs a JS runtime)."""
+
+    def run_with(self, files, help_text):
+        with tempfile.TemporaryDirectory() as d:
+            for name in files:
+                p = Path(d) / name
+                p.write_text("#!/bin/sh\nexit 0\n")
+                p.chmod(0o755)
+            fake = Path(d) / "yt-dlp"
+            fake.write_text(f"#!/bin/sh\necho '{help_text}'\n")
+            fake.chmod(0o755)
+            old = os.environ["PATH"]
+            os.environ["PATH"] = d
+            nexus_cli._js_args = None
+            try:
+                return nexus_cli.ytdlp_cmd()
+            finally:
+                os.environ["PATH"] = old
+                nexus_cli._js_args = None
+
+    def test_node_when_no_deno(self):
+        self.assertEqual(self.run_with(["node"], "--js-runtimes RUNTIME"), ["yt-dlp", "--js-runtimes", "node"])
+
+    def test_deno_is_the_default(self):
+        self.assertEqual(self.run_with(["node", "deno"], "--js-runtimes RUNTIME"), ["yt-dlp"])
+
+    def test_old_ytdlp_without_the_option(self):
+        self.assertEqual(self.run_with(["node"], "--format FORMAT"), ["yt-dlp"])
+
+
 if __name__ == "__main__":
     unittest.main()

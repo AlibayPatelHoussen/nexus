@@ -125,7 +125,7 @@ def json_search(query, limit):
     else:
         args = ["--dump-json", "--flat-playlist", "--no-warnings", f"ytsearch{limit or 15}:{query}"]
     try:
-        r = subprocess.run(["yt-dlp", *args], capture_output=True, text=True, timeout=60)
+        r = subprocess.run([*nexus_cli.ytdlp_cmd(), *args], capture_output=True, text=True, timeout=60)
     except FileNotFoundError:
         nexus_cli.fail("yt-dlp n'est pas installé")
     except subprocess.TimeoutExpired:
@@ -181,7 +181,9 @@ def json_download(args):
         nexus_cli.emit("item_done", name=Path(path).stem, path=path)
         nexus_cli.emit("done", ok=1, failed=0, skipped=0)
         return 0
-    nexus_cli.emit("error", message="Téléchargement YouTube impossible", item=item, fatal=False)
+    reason = nexus_cli.ytdlp_reason(nexus_cli.last_ytdlp_error)
+    nexus_cli.emit("error", message=f"Téléchargement YouTube impossible : {reason}" if reason else "Téléchargement YouTube impossible",
+                   item=item, fatal=False)
     nexus_cli.emit("done", ok=0, failed=1, skipped=0)
     return 2
 
@@ -195,7 +197,7 @@ def json_main():
         m = re.fullmatch(r"youtube:([A-Za-z0-9_-]{11})", args.details)
         if not m:
             nexus_cli.fail("Identifiant invalide")
-        r = subprocess.run(["yt-dlp", "--dump-json", "--no-playlist", "--skip-download", "--no-warnings",
+        r = subprocess.run([*nexus_cli.ytdlp_cmd(), "--dump-json", "--no-playlist", "--skip-download", "--no-warnings",
                             _video_url(m.group(1))], capture_output=True, text=True, timeout=60)
         try:
             nexus_cli.emit("details", **_result(json.loads(r.stdout.splitlines()[0])))
