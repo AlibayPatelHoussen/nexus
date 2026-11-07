@@ -5,6 +5,7 @@ All notable changes to Nexus will be documented here.
 ## [Unreleased]
 
 ### Fixed — animes get real posters and the title logo
+- The TMDB search also tries the folder name first and every title without its season / subtitle (AniList has one entry per season or movie, « Shingeki no Kyojin: The Final Season », TMDB one series « L'Attaque des Titans »), and is no longer skipped when AniList matched a movie / OVA
 - Animes: besides AniList, the library scan finds the anime's TMDB series (animated series only, never a live-action remake; the closest to the AniList year), so animes get what films and series have: a poster with the title instead of AniList's textless cover, the title logo on the « À la une » billboard and the title page, textless key art and the IMDb rating. Already scanned animes are updated by the next library scan
 
 ### Fixed — tab bar: the selection is already there when the lens lets go

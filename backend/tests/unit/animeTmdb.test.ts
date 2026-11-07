@@ -1,4 +1,4 @@
-import { pickAnimeResult } from '../../src/services/scanner'
+import { animeSearchNames, pickAnimeResult } from '../../src/services/scanner'
 
 describe('anime → TMDB series (posters with the title, logo, key art)', () => {
   const live = { id: 111110, name: 'One Piece', first_air_date: '2023-08-31', genre_ids: [10759, 35, 18] }
@@ -14,5 +14,13 @@ describe('anime → TMDB series (posters with the title, logo, key art)', () => 
     const kai = { id: 61709, name: 'Dragon Ball Z Kai', first_air_date: '2009-04-05', genre_ids: [16] }
     expect(pickAnimeResult([kai, dbz], 1989)?.id).toBe(12971)
     expect(pickAnimeResult([kai, dbz])?.id).toBe(61709)          // no year: first animated result
+  })
+
+  it('also searches without the season / subtitle (AniList has one entry per season, TMDB one series)', () => {
+    expect(animeSearchNames(['Attack on Titan Final Season', 'Shingeki no Kyojin: The Final Season']))
+      .toEqual(['Attack on Titan Final Season', 'Shingeki no Kyojin: The Final Season', 'Attack on Titan', 'Shingeki no Kyojin'])
+    expect(animeSearchNames(['Attack on Titan Season 3 Part 2', null, 'Attack on Titan Season 3 Part 2'])).toEqual(['Attack on Titan Season 3 Part 2', 'Attack on Titan'])
+    expect(animeSearchNames(['Shingeki no Kyojin 2nd Season'])).toEqual(['Shingeki no Kyojin 2nd Season', 'Shingeki no Kyojin'])
+    expect(animeSearchNames(['One Piece'])).toEqual(['One Piece'])
   })
 })

@@ -156,9 +156,28 @@ export function pickAnimeResult(results: TmdbResult[], year?: number | null): Tm
  * art): AniList only has textless covers. Only animated series count (One Piece
  * the anime, never the 2023 live-action series), the closest to the AniList year.
  */
+/**
+ * Names to search TMDB with: AniList has one entry per season / movie (« Shingeki no
+ * Kyojin: The Final Season », « Attack on Titan Season 3 Part 2 ») while TMDB has the
+ * whole series, so each name is also tried without its subtitle and season / part tags.
+ */
+export function animeSearchNames(names: (string | null | undefined)[]): string[] {
+  const out: string[] = []
+  const add = (n: string) => { const t = n.replace(/\s+/g, ' ').trim(); if (t.length > 1 && !out.includes(t)) out.push(t) }
+  const bare = (n: string) => n
+    .replace(/\s*[:\-–—]\s+.*$/, '')                                                     // subtitle
+    .replace(/\b(the\s+)?final\s+season\b.*$/i, '')
+    .replace(/\b(season|saison|part|partie|cour)\s*\d+.*$/i, '')
+    .replace(/\b(\d+(st|nd|rd|th)\s+season|s\d{1,2})\b.*$/i, '')
+  const clean = names.filter((n): n is string => !!n?.trim())
+  clean.forEach(add)
+  clean.forEach((n) => add(bare(n)))
+  return out
+}
+
 export async function findAnimeOnTMDB(names: (string | null | undefined)[], year?: number | null): Promise<TmdbResult | null> {
   if (!hasTmdbKey()) return null
-  for (const name of [...new Set(names.filter((n): n is string => !!n?.trim()))]) {
+  for (const name of animeSearchNames(names)) {
     try {
       const { data } = await axios.get(`${TMDB_BASE}/search/tv`, { params: { api_key: TMDB_KEY!, query: name, language: 'fr-FR' } })
       const hit = pickAnimeResult((data.results ?? []) as TmdbResult[], year)
@@ -730,8 +749,9 @@ export class MediaScanner {
         const anilist = await searchAniList(title, 'ANIME')
         // The TMDB series (poster with the title, logo, key art), looked up once
         const known = await query<{ tmdb_id: number | null }>('SELECT tmdb_id FROM media_items WHERE file_path = $1', [animePath])
-        const tmdb = known.rows[0]?.tmdb_id || anilist?.format === 'MOVIE' ? null
-          : await findAnimeOnTMDB([anilist?.title?.english, anilist?.title?.romaji, title], anilist?.startDate?.year)
+        // The folder name first (AniList may have matched a movie / OVA / one season of it)
+        const tmdb = known.rows[0]?.tmdb_id ? null
+          : await findAnimeOnTMDB([title, anilist?.title?.english, anilist?.title?.romaji], anilist?.startDate?.year)
 
         const { rows } = await query(
           `INSERT INTO media_items
