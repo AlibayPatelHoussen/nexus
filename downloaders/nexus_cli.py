@@ -366,12 +366,16 @@ def _ytdlp_once(args, item, on_line, stall):
                 return
     threading.Thread(target=watchdog, daemon=True).start()
 
+    tail = {"line": None}
+
     def read_errors():
         global last_ytdlp_error
         for err in proc.stderr:
             sys.stderr.write(err)
             if err.startswith("ERROR"):
                 last_ytdlp_error = err.strip()
+            elif err.strip() and not err.startswith("WARNING"):
+                tail["line"] = err.strip()      # « yt-dlp: error: … », a Python traceback's last line…
     reader = threading.Thread(target=read_errors, daemon=True)
     reader.start()
     num = lambda v: float(v) if v not in (None, "", "NA", "None") else None
@@ -394,6 +398,9 @@ def _ytdlp_once(args, item, on_line, stall):
             print(line)
     proc.wait()
     reader.join(timeout=5)
+    if proc.returncode and not last_ytdlp_error:
+        # Failed without an « ERROR: » line: keep what it said last, else its exit code
+        last_ytdlp_error = tail["line"] or f"yt-dlp s'est arrêté (code {proc.returncode})"
     return proc.returncode, others, state["stalled"]
 
 

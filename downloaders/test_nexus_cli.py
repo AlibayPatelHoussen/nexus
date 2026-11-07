@@ -176,6 +176,25 @@ class YtdlpErrors(unittest.TestCase):
         self.assertEqual(nexus_cli.ytdlp_reason(nexus_cli.last_ytdlp_error), "Vidéo indisponible ou supprimée")
         self.assertIn("WARNING: x", logged)   # still in the log
 
+    def test_failure_without_error_line(self):
+        with tempfile.TemporaryDirectory() as d:
+            fake = Path(d) / "yt-dlp"
+            fake.write_text("#!/bin/sh\ncase \"$*\" in *--help*) exit 0;; esac\n"
+                            "echo 'Usage: yt-dlp [OPTIONS] URL' >&2\necho 'yt-dlp: error: no such option: --foo' >&2\nexit 2\n")
+            fake.chmod(0o755)
+            old = os.environ["PATH"]
+            os.environ["PATH"] = f"{d}:/usr/bin:/bin"
+            nexus_cli._js_args = None
+            err, sys.stderr = sys.stderr, io.StringIO()
+            try:
+                code, _ = nexus_cli.ytdlp_run(["x"], "x")
+            finally:
+                os.environ["PATH"] = old
+                nexus_cli._js_args = None
+                sys.stderr = err
+        self.assertEqual(code, 2)
+        self.assertEqual(nexus_cli.ytdlp_reason(nexus_cli.last_ytdlp_error), "yt-dlp: error: no such option: --foo")
+
 
 class YtdlpJsRuntime(unittest.TestCase):
     """No deno on the owner's server: yt-dlp is told to use Node.js (YouTube needs a JS runtime)."""

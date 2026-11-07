@@ -246,7 +246,8 @@ def json_download(args):
         nexus_cli.emit("item_done", name=Path(path).stem, path=path)
         nexus_cli.emit("done", ok=1, failed=0, skipped=0)
         return 0
-    reason = nexus_cli.ytdlp_reason(nexus_cli.last_ytdlp_error)
+    reason = nexus_cli.ytdlp_reason(nexus_cli.last_ytdlp_error) or (
+        "yt-dlp n'a pas indiqué le fichier final" if code == 0 else None)
     nexus_cli.emit("error", message=f"Téléchargement YouTube impossible : {reason}" if reason else "Téléchargement YouTube impossible",
                    item=item, fatal=False)
     nexus_cli.emit("done", ok=0, failed=1, skipped=0)
