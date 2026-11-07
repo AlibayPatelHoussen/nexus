@@ -103,6 +103,12 @@ export function cachedImage(url: string, trusted = false): Promise<{ file: strin
 
     let body: Buffer = Buffer.from(res.data)
     let outType = type
+    // SVG (TMDB title logos): rasterised to a transparent PNG, never served as SVG
+    // (an SVG opened from our origin could run scripts)
+    if (type === 'image/svg+xml') {
+      body = await sharp(body, { density: 288 }).resize({ width: 1200, withoutEnlargement: true }).png({ compressionLevel: 9 }).toBuffer()
+      outType = 'image/png'
+    }
     // TMDB full-resolution artwork (key art, backdrops: up to 4000 px, several MB):
     // downscaled once to what a 3x iPhone / 2x desktop needs, logos keep their alpha
     if (/\/t\/p\/original\//.test(url) && /^image\/(jpeg|png|webp)$/.test(type)) {

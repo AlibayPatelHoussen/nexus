@@ -6,7 +6,9 @@ import { logger } from '../utils/logger'
  * Apple TV-style artwork from TMDB's image catalogue (`/movie|tv/{id}/images`):
  *  - key art: the best-voted poster WITHOUT text (iso_639_1 = null), full
  *    resolution, for the billboard and the title page on iPhone;
- *  - logo: the title treatment (transparent PNG), French first, then English;
+ *  - logo: the title treatment, French first, then English, textless, any; a PNG
+ *    when there is one, else an SVG (rasterised to PNG by the image cache, never
+ *    served as SVG);
  *  - hero backdrop: the best-voted textless backdrop, full resolution.
  * Full-resolution files are downscaled once by the image cache (images.ts).
  */
@@ -18,15 +20,20 @@ const hasTmdbKey = () => !!TMDB_KEY && !/your_|_here|changeme|^x+$/i.test(TMDB_K
 
 interface TmdbImage { file_path: string; iso_639_1: string | null; vote_average?: number; vote_count?: number; width?: number; height?: number }
 
+/** Vote average weighted by the number of votes: a fan picture rated 10 by one person
+ *  does not beat the official key art rated 6 by forty (Attack on Titan's chibi poster). */
+const score = (i: TmdbImage) => { const n = i.vote_count ?? 0; return (n * (i.vote_average ?? 0) + 10 * 5) / (n + 10) }
 const best = (list: TmdbImage[]) =>
-  [...list].sort((a, b) => (b.vote_average ?? 0) - (a.vote_average ?? 0) || (b.vote_count ?? 0) - (a.vote_count ?? 0) || (b.width ?? 0) - (a.width ?? 0))[0]
+  [...list].sort((a, b) => score(b) - score(a) || (b.vote_count ?? 0) - (a.vote_count ?? 0) || (b.width ?? 0) - (a.width ?? 0))[0]
 
 /** Picks key art, logo and backdrop from a TMDB /images response. */
 export function pickArtwork(data: { posters?: TmdbImage[]; logos?: TmdbImage[]; backdrops?: TmdbImage[] }) {
   const textless = (l?: TmdbImage[]) => (l ?? []).filter((i) => !i.iso_639_1)
-  // PNG only: an SVG served from our origin could carry scripts
-  const logos = (data.logos ?? []).filter((l) => /\.png$/i.test(l.file_path))
-  const logo = best(logos.filter((l) => l.iso_639_1 === 'fr')) ?? best(logos.filter((l) => l.iso_639_1 === 'en')) ?? best(logos.filter((l) => !l.iso_639_1))
+  // PNG or SVG (many anime logos are SVG only); the image cache turns an SVG into a PNG
+  const logos = (data.logos ?? []).filter((l) => /\.(png|svg)$/i.test(l.file_path))
+  const pick = (list: TmdbImage[]) => best(list.filter((l) => /\.png$/i.test(l.file_path))) ?? best(list)
+  const logo = pick(logos.filter((l) => l.iso_639_1 === 'fr')) ?? pick(logos.filter((l) => l.iso_639_1 === 'en'))
+    ?? pick(logos.filter((l) => !l.iso_639_1)) ?? pick(logos)
   const keyArt = best(textless(data.posters))
   const backdrop = best(textless(data.backdrops))
   return {
