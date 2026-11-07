@@ -207,6 +207,29 @@ test('UI: catalogue (hero, rows, cleaned series title)', async () => {
   await page.context().close()
 })
 
+test('UI: a long synopsis is cut, « PLUS » shows it all (iPhone and desktop)', async () => {
+  const id = sql(`SELECT id FROM media_items WHERE type='serie' AND poster_path IS NOT NULL ORDER BY title LIMIT 1`)
+  const before = sql(`SELECT overview FROM media_items WHERE id='${id}'`)
+  sql(`UPDATE media_items SET overview = repeat('Une longue histoire de famille au Texas, entre un jeune couple et leurs parents. ', 8) WHERE id='${id}'`)
+  try {
+    for (const width of [390, 1440]) {
+      const page = await newPage(admin, { width, height: width < 600 ? 844 : 900 })
+      await page.goto(`${B}/media/${id}`, { waitUntil: 'networkidle' })
+      const plus = page.locator('button[aria-label="Afficher tout le synopsis"]')
+      await plus.waitFor({ timeout: 10000 })
+      const p = await plus.locator('xpath=preceding-sibling::p').elementHandle()   // stays once PLUS is gone
+      const cut = await p.evaluate((el) => el.clientHeight)
+      await plus.click()
+      await page.waitForFunction((el) => el.scrollHeight <= el.clientHeight + 1, p)
+      assert(await p.evaluate((el) => el.clientHeight) > cut, `${width} px: the whole synopsis is shown`)
+      eq(await plus.count(), 0, `${width} px: PLUS gone once open`)
+      await page.context().close()
+    }
+  } finally {
+    sql(`UPDATE media_items SET overview = ${before ? `'${before.replace(/'/g, "''")}'` : 'NULL'} WHERE id='${id}'`)
+  }
+})
+
 test('UI: film page → Lecture actually plays the video', async () => {
   const id = sql(`SELECT id FROM media_items WHERE file_path LIKE '%Demo Webm%'`)
   const page = await newPage(admin)

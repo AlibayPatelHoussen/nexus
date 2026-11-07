@@ -4,6 +4,9 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Fixed — « PLUS » on the synopsis on desktop
+- Title pages on a computer: a long synopsis is cut at 5 lines with the « PLUS » capsule (like the Apple TV app and the iPhone), which shows all of it; it used to be cut with no way to read the rest
+
 ### Fixed — a series downloaded twice made two folders
 - Also recognises a torrent's release folder (« Georgie.and.Mandys.First.Marriage.S02.1080p… »): the title is read before the season / quality tags; the folder named after the series is kept
 - Every download of a series (movix, OxTorrent, automatic downloads) goes into the folder already there for it — same TMDB id, or same name once spaces, underscores and punctuation are ignored — instead of starting a second one (« Georgie & Mandy's First Marriage » and « Georgie_&_Mandy's_First_Marriage »). A second folder that already exists is merged into the first when the series is opened in Téléchargements or downloaded again

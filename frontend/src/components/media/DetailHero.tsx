@@ -28,8 +28,10 @@ const SCRIM = [
 ].join(', ')
 const TYPE_LABEL: Record<string, string> = { film: 'Film', serie: 'Série', anime: 'Anime', manga: 'Manga', webtoon: 'Webtoon' }
 
-/** Two lines of synopsis; « PLUS » (a small glass capsule over the faded end of the text) shows the rest. */
-function Synopsis({ text }: { text: string }) {
+/** A few lines of synopsis (2 on iPhone, 5 on desktop); « PLUS » (a small glass capsule over
+ *  the faded end of the text) shows the rest, like the Apple TV app. */
+const CLAMP = { 2: 'line-clamp-2', 5: 'line-clamp-5' } as const
+function Synopsis({ text, lines = 2 }: { text: string; lines?: keyof typeof CLAMP }) {
   const ref = useRef<HTMLParagraphElement>(null)
   const [open, setOpen] = useState(false)
   const [clipped, setClipped] = useState(false)
@@ -47,7 +49,7 @@ function Synopsis({ text }: { text: string }) {
     : undefined
   return (
     <div className="relative">
-      <p ref={ref} className={cn(!open && 'line-clamp-2')} style={fade ? { mask: fade, WebkitMask: fade } : undefined}>{text}</p>
+      <p ref={ref} className={cn(!open && CLAMP[lines])} style={fade ? { mask: fade, WebkitMask: fade } : undefined}>{text}</p>
       {clipped && !open && (
         <button type="button" onClick={() => setOpen(true)}
           className="absolute right-0 bottom-0 h-[22px] px-2.5 rounded-pill glass-clear text-[13px] font-bold tracking-[0.02em] text-white"
@@ -201,7 +203,7 @@ export default function DetailHero({ media, facts, rating, playLabel, canPlay, o
           {!phone && (media.overview || upNext) && (
             <div className="flex-[0_1_420px] min-w-0 pb-1">
               {upNext && <p className="text-[15px] font-semibold text-white/90 mb-1.5">{upNext}</p>}
-              {media.overview && <p className="text-[15px] leading-[21px] text-white/75 line-clamp-5">{media.overview}</p>}
+              {media.overview && <div className="text-[15px] leading-[21px] text-white/75"><Synopsis text={media.overview} lines={5} /></div>}
             </div>
           )}
         </motion.div>
