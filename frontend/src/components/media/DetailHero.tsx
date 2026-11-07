@@ -29,8 +29,9 @@ const SCRIM = [
 const TYPE_LABEL: Record<string, string> = { film: 'Film', serie: 'Série', anime: 'Anime', manga: 'Manga', webtoon: 'Webtoon' }
 
 /** A few lines of synopsis (2 on iPhone, 5 on desktop); « PLUS » (a small glass capsule over
- *  the faded end of the text) shows the rest, like the Apple TV app. */
+ *  the faded end of the text) shows the rest, like the Apple TV app; « MOINS » folds it back. */
 const CLAMP = { 2: 'line-clamp-2', 5: 'line-clamp-5' } as const
+const CAPSULE = 'h-[22px] px-2.5 rounded-pill glass-clear text-[13px] font-bold tracking-[0.02em] text-white'
 function Synopsis({ text, lines = 2 }: { text: string; lines?: keyof typeof CLAMP }) {
   const ref = useRef<HTMLParagraphElement>(null)
   const [open, setOpen] = useState(false)
@@ -51,11 +52,18 @@ function Synopsis({ text, lines = 2 }: { text: string; lines?: keyof typeof CLAM
     <div className="relative">
       <p ref={ref} className={cn(!open && CLAMP[lines])} style={fade ? { mask: fade, WebkitMask: fade } : undefined}>{text}</p>
       {clipped && !open && (
-        <button type="button" onClick={() => setOpen(true)}
-          className="absolute right-0 bottom-0 h-[22px] px-2.5 rounded-pill glass-clear text-[13px] font-bold tracking-[0.02em] text-white"
-          aria-label="Afficher tout le synopsis">
+        <button type="button" onClick={() => setOpen(true)} className={cn('absolute right-0 bottom-0', CAPSULE)}
+          aria-label="Afficher tout le synopsis" aria-expanded={false}>
           PLUS
         </button>
+      )}
+      {open && (
+        <div className="flex justify-end mt-1.5">
+          <button type="button" onClick={() => setOpen(false)} className={CAPSULE}
+            aria-label="Réduire le synopsis" aria-expanded>
+            MOINS
+          </button>
+        </div>
       )}
     </div>
   )

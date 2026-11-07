@@ -228,7 +228,7 @@ test('UI: touch screens feel like an app (no text selection / browser menu on lo
   assert(desk.text !== 'none', `desktop: text selectable (${desk.text})`); eq(desk.menuBlocked, false, 'desktop: right click untouched')
 })
 
-test('UI: a long synopsis is cut, « PLUS » shows it all (iPhone and desktop)', async () => {
+test('UI: a long synopsis is cut, « PLUS » shows it all, « MOINS » folds it (iPhone and desktop)', async () => {
   const id = sql(`SELECT id FROM media_items WHERE type='serie' AND poster_path IS NOT NULL ORDER BY title LIMIT 1`)
   const before = sql(`SELECT overview FROM media_items WHERE id='${id}'`)
   sql(`UPDATE media_items SET overview = repeat('Une longue histoire de famille au Texas, entre un jeune couple et leurs parents. ', 8) WHERE id='${id}'`)
@@ -244,6 +244,11 @@ test('UI: a long synopsis is cut, « PLUS » shows it all (iPhone and desktop)',
       await page.waitForFunction((el) => el.scrollHeight <= el.clientHeight + 1, p)
       assert(await p.evaluate((el) => el.clientHeight) > cut, `${width} px: the whole synopsis is shown`)
       eq(await plus.count(), 0, `${width} px: PLUS gone once open`)
+      if (width === 1440) await page.screenshot({ path: `${SHOTS}/synopsis-open-${width}.png` })
+      const moins = page.locator('button[aria-label="Réduire le synopsis"]')
+      await moins.click()
+      await plus.waitFor({ timeout: 5000 })
+      eq(await p.evaluate((el) => el.clientHeight), cut, `${width} px: MOINS cuts it again`)
       await page.context().close()
     }
   } finally {
