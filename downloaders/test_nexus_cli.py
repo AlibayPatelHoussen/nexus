@@ -144,5 +144,37 @@ class SeriesFolder(unittest.TestCase):
         self.assertEqual(nexus_cli.norm_title("Élite"), nexus_cli.norm_title("elite"))
 
 
+class YtdlpErrors(unittest.TestCase):
+    """The owner sees why a YouTube download failed, not just « impossible »."""
+
+    def test_reasons(self):
+        r = nexus_cli.ytdlp_reason
+        self.assertIn("robot", r("ERROR: [youtube] dQw4w9WgXcQ: Sign in to confirm you’re not a bot. Use --cookies-from-browser"))
+        self.assertIn("robot", r("ERROR: [youtube] dQw4w9WgXcQ: Sign in to confirm you're not a bot"))
+        self.assertEqual(r("ERROR: [youtube] dQw4w9WgXcQ: Private video. Sign in if you've been granted access"), "Vidéo privée")
+        self.assertIn("mettre à jour", r("ERROR: [youtube] abc: nsig extraction failed: Some formats may be missing"))
+        self.assertIn("trop ancien", r("ERROR: [youtube] abc: Requested format is not available"))
+        self.assertEqual(r("ERROR: [youtube] dQw4w9WgXcQ: Something new"), "Something new")
+        self.assertIsNone(r(None))
+
+    def test_last_error_is_kept(self):
+        with tempfile.TemporaryDirectory() as d:
+            fake = Path(d) / "yt-dlp"
+            fake.write_text("#!/bin/sh\necho 'WARNING: x' >&2\necho 'ERROR: [youtube] dQw4w9WgXcQ: Video unavailable' >&2\nexit 1\n")
+            fake.chmod(0o755)
+            old = os.environ["PATH"]
+            os.environ["PATH"] = f"{d}:{old}"
+            err = sys.stderr
+            sys.stderr = io.StringIO()
+            try:
+                code, _ = nexus_cli.ytdlp_run(["https://youtu.be/dQw4w9WgXcQ"], "x")
+            finally:
+                os.environ["PATH"] = old
+                logged, sys.stderr = sys.stderr.getvalue(), err
+        self.assertEqual(code, 1)
+        self.assertEqual(nexus_cli.ytdlp_reason(nexus_cli.last_ytdlp_error), "Vidéo indisponible ou supprimée")
+        self.assertIn("WARNING: x", logged)   # still in the log
+
+
 if __name__ == "__main__":
     unittest.main()

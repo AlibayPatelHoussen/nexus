@@ -268,16 +268,58 @@ YTDLP_PROGRESS = [
 ]
 
 
+# Last « ERROR: … » line of the last yt-dlp run (shown to the owner instead of a bare failure)
+last_ytdlp_error = None
+
+# yt-dlp's usual errors, in plain French
+_YTDLP_ERRORS = [
+    (r"sign in to confirm (you.re not a bot|your age)", "YouTube demande de prouver qu'on n'est pas un robot (le serveur est bloqué par YouTube)"),
+    (r"private video", "Vidéo privée"),
+    (r"video unavailable|this video is not available|has been removed", "Vidéo indisponible ou supprimée"),
+    (r"members.only|join this channel", "Vidéo réservée aux membres de la chaîne"),
+    (r"premieres in|live event will begin|this live event", "La vidéo n'est pas encore sortie (première ou direct à venir)"),
+    (r"requested format is not available|no video formats found", "Aucun format téléchargeable (yt-dlp est sans doute trop ancien)"),
+    (r"http error 403|forbidden", "YouTube refuse le téléchargement (403) — yt-dlp est sans doute trop ancien"),
+    (r"nsig|signature extraction failed|unable to extract|javascript runtime|js runtime", "yt-dlp ne sait plus lire YouTube — il faut le mettre à jour"),
+    (r"ffmpeg|ffprobe", "ffmpeg manque ou a échoué (assemblage de la vidéo)"),
+    (r"no space left", "Plus de place sur le disque"),
+]
+
+
+def ytdlp_reason(line):
+    """« ERROR: [youtube] abc: Sign in to confirm you're not a bot… » → a short French reason."""
+    if not line:
+        return None
+    text = re.sub(r"^ERROR:\s*(\[[^\]]+\]\s*)?([A-Za-z0-9_-]{11}:\s*)?", "", line.strip())
+    for pattern, reason in _YTDLP_ERRORS:
+        if re.search(pattern, text, re.I):
+            return reason
+    return text[:200]
+
+
 def ytdlp_run(args, item, on_line=None):
-    """Runs yt-dlp with progress lines. Returns (returncode, other stdout lines)."""
+    """Runs yt-dlp with progress lines. Returns (returncode, other stdout lines).
+    Its error output still goes to the log; the last ERROR line is kept in last_ytdlp_error."""
+    global last_ytdlp_error
+    last_ytdlp_error = None
     cmd = ["yt-dlp", *YTDLP_PROGRESS, *args]
     throttle = Throttle()
     others = []
     try:
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=sys.stderr, text=True)
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
     except FileNotFoundError:
         emit("error", message="yt-dlp n'est pas installé", item=item, fatal=False)
         return 127, []
+
+    def read_errors():
+        global last_ytdlp_error
+        for err in proc.stderr:
+            sys.stderr.write(err)
+            if err.startswith("ERROR"):
+                last_ytdlp_error = err.strip()
+    import threading
+    reader = threading.Thread(target=read_errors, daemon=True)
+    reader.start()
     num = lambda v: float(v) if v not in (None, "", "NA", "None") else None
     for line in proc.stdout:
         line = line.rstrip("\n")
@@ -292,6 +334,7 @@ def ytdlp_run(args, item, on_line=None):
                 on_line(line)
             print(line)
     proc.wait()
+    reader.join(timeout=5)
     return proc.returncode, others
 
 
