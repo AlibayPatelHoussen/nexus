@@ -635,8 +635,14 @@ def _movie_file(title, year, lang):
     return os.path.join(FILMS_DIR, lang, f"{slugify(title)}_{year or ''}.mp4")
 
 
-def _episode_file(title, lang, season_num, ep):
-    return os.path.join(SERIES_DIR, slugify(title), lang, slugify(f"Saison {season_num}"), f"{slugify(ep['title'])}.mp4")
+def _series_dir(title, tmdb_id):
+    """This series' folder: the one already there if another download made it (OxTorrent,
+    an earlier French title…), so new episodes never start a second copy of the series."""
+    return str(nexus_cli.series_folder(SERIES_DIR, title, slugify(title), tmdb_id))
+
+
+def _episode_file(series_dir, lang, season_num, ep):
+    return os.path.join(series_dir, lang, slugify(f"Saison {season_num}"), f"{slugify(ep['title'])}.mp4")
 
 
 def json_details(id_):
@@ -649,6 +655,7 @@ def json_details(id_):
              "available": langs is None or bool(langs[l])} for l in ("VF", "VOSTFR")])
         return
     seasons = get_seasons(tmdb_id)
+    series_dir = _series_dir(m["title"], tmdb_id)   # also merges a second folder of this series
     from concurrent.futures import ThreadPoolExecutor
     with ThreadPoolExecutor(max_workers=6) as pool:
         eps = list(pool.map(lambda s: get_episodes(tmdb_id, s["num"]), seasons))
@@ -659,7 +666,7 @@ def json_details(id_):
         return {"n": e["num"], "label": e["title"], "air_date": e.get("air_date") or None,
                 # out = links found in some language, else TMDB says it was broadcast
                 "available": bool(langs) or _aired(e), "langs": langs,
-                "downloaded": [l for l in ("VF", "VOSTFR") if os.path.exists(_episode_file(m["title"], l, s["num"], e))]}
+                "downloaded": [l for l in ("VF", "VOSTFR") if os.path.exists(_episode_file(series_dir, l, s["num"], e))]}
 
     out = []
     for s, ep_list, have in zip(seasons, eps, hosted):
@@ -882,12 +889,13 @@ async def json_download(args):
         episodes = get_episodes(tmdb_id, season_num)
         if not episodes:
             nexus_cli.fail("Aucun épisode trouvé pour cette saison")
+        series_dir = _series_dir(m["title"], tmdb_id)
         by_num = {e["num"]: e for e in episodes}
         wanted = nexus_cli.parse_selection(args.episodes, list(by_num))
         for i, n in enumerate(wanted, 1):
             ep = by_num[n]
             item = f"S{season_num:02d}E{n:02d}"
-            final = _episode_file(m["title"], lang, season_num, ep)
+            final = _episode_file(series_dir, lang, season_num, ep)
             if not os.path.exists(final):
                 nexus_cli.emit("item_start", name=item, index=i, total=len(wanted))
                 hosted = _season_langs(tmdb_id, season_num).get(n) or {}

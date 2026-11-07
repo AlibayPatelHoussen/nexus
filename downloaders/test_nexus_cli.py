@@ -67,5 +67,64 @@ class Output(unittest.TestCase):
         self.assertEqual(nexus_cli.human_eta(3700), "1h01")
 
 
+class SeriesFolder(unittest.TestCase):
+    """One folder per series, whatever downloaded it (movix, OxTorrent, automatic downloads)."""
+    OX = "Georgie & Mandy's First Marriage"
+    MOVIX = "Georgie_&_Mandy's_First_Marriage"
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = Path(self.tmp.name)
+
+    def tearDown(self):
+        self.tmp.cleanup()
+
+    def put(self, *parts, hint=None):
+        f = self.root.joinpath(*parts)
+        f.parent.mkdir(parents=True, exist_ok=True)
+        f.write_bytes(b"x")
+        if hint is not None:
+            (self.root / parts[0] / ".nexus.json").write_text(json.dumps({"tmdb_id": hint}))
+        return f
+
+    def folder(self, title=OX, default=MOVIX, tmdb=258854):
+        return nexus_cli.series_folder(self.root, title, default, tmdb)
+
+    def test_new_series(self):
+        self.assertEqual(self.folder(), self.root / self.MOVIX)
+
+    def test_same_name_other_spelling(self):
+        self.put(self.OX, "Season 1", "S01E01.mkv")
+        self.assertEqual(self.folder(), self.root / self.OX)
+
+    def test_second_folder_is_merged(self):
+        self.put(self.OX, "S01", "S01E01.mkv", hint=258854)
+        self.put(self.OX, "S01", "S01E02.mkv")
+        self.put(self.MOVIX, "VF", "Saison_1", "Episode_3.mp4", hint=258854)
+        self.assertEqual(self.folder(), self.root / self.OX)
+        self.assertTrue((self.root / self.OX / "VF" / "Saison_1" / "Episode_3.mp4").exists())
+        self.assertFalse((self.root / self.MOVIX).exists())
+        self.assertEqual(self.folder(), self.root / self.OX)       # nothing left to merge
+
+    def test_french_title_changed(self):
+        self.put("Georgie & Mandy : leur premier mariage", "VF", "Saison_1", "e1.mp4", hint=258854)
+        self.assertEqual(self.folder(), self.root / "Georgie & Mandy : leur premier mariage")
+
+    def test_other_series_with_the_same_name(self):
+        self.put(self.OX, "S01E01.mkv", hint=1)
+        self.assertEqual(self.folder(), self.root / self.MOVIX)
+
+    def test_file_being_written_is_left_alone(self):
+        self.put(self.OX, "S01E01.mkv", hint=258854)
+        self.put(self.OX, "S01E02.mkv")
+        part = self.put(self.MOVIX, "VF", "Saison_1", ".part-e3.mp4")
+        self.assertEqual(self.folder(), self.root / self.OX)
+        self.assertTrue(part.exists())
+
+    def test_norm_title(self):
+        self.assertEqual(nexus_cli.norm_title(self.OX), nexus_cli.norm_title(self.MOVIX))
+        self.assertEqual(nexus_cli.norm_title("Élite"), nexus_cli.norm_title("elite"))
+
+
 if __name__ == "__main__":
     unittest.main()

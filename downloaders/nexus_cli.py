@@ -293,3 +293,81 @@ def ytdlp_run(args, item, on_line=None):
             print(line)
     proc.wait()
     return proc.returncode, others
+
+
+# ── Series folders ────────────────────────────────────────────────────────────
+
+def norm_title(text: str) -> str:
+    """« Georgie_&_Mandy's_First_Marriage » == « Georgie & Mandy's First Marriage »:
+    no accents, case, spaces, underscores or punctuation."""
+    import unicodedata
+    text = unicodedata.normalize("NFKD", text or "")
+    text = "".join(ch for ch in text if not unicodedata.combining(ch)).lower().replace("&", " and ")
+    return re.sub(r"[^a-z0-9]+", "", text)
+
+
+def _hint_tmdb(folder: Path):
+    try:
+        hint = json.loads((folder / ".nexus.json").read_text(encoding="utf-8"))
+        return int(hint["tmdb_id"]) if hint.get("tmdb_id") is not None else None
+    except (OSError, ValueError, KeyError, TypeError):
+        return None
+
+
+def _files(folder: Path):
+    """Files of a series folder that can be moved (not the ones still being written)."""
+    return [p for p in folder.rglob("*") if p.is_file() and p.name != ".nexus.json"
+            and not p.name.startswith(".part-") and not any(s.startswith(".part-") for s in p.relative_to(folder).parts[:-1])]
+
+
+def series_folder(dest, title: str, default_name: str, tmdb_id=None) -> Path:
+    """The folder of this series in `dest`, whatever downloaded it first.
+
+    Each script names folders its own way (movix « Titre_avec_underscores »,
+    OxTorrent « Titre avec espaces »), and TMDB's French title can change between
+    two downloads: an automatic download then made a second folder, so the library
+    showed the series twice. The folder already there for this series — same TMDB
+    id in its .nexus.json, or same name once spaces / punctuation are ignored (and
+    no other TMDB id) — is used; when there are several, the others are merged
+    into the one with the most files."""
+    dest = Path(dest)
+    default = dest / default_name
+    names = {norm_title(title), norm_title(default_name)} - {""}
+    matches = []
+    try:
+        entries = sorted(dest.iterdir())
+    except OSError:
+        entries = []
+    for d in entries:
+        if not d.is_dir() or d.name.startswith("."):
+            continue
+        tid = _hint_tmdb(d)
+        if (tmdb_id and tid == int(tmdb_id)) or (norm_title(d.name) in names and (not tmdb_id or tid in (None, int(tmdb_id)))):
+            matches.append(d)
+    if not matches:
+        return default
+    target = max(matches, key=lambda d: (len(_files(d)), d == default))
+    for other in matches:
+        if other == target:
+            continue
+        for f in _files(other):
+            to = target / f.relative_to(other)
+            if to.exists():
+                continue
+            try:
+                to.parent.mkdir(parents=True, exist_ok=True)
+                f.replace(to)
+            except OSError as e:
+                print(f"series merge: {e}")
+        if not _files(other):
+            (other / ".nexus.json").unlink(missing_ok=True)
+            for sub in sorted((p for p in other.rglob("*") if p.is_dir()), key=lambda p: len(p.parts), reverse=True):
+                try:
+                    sub.rmdir()
+                except OSError:
+                    pass
+            try:
+                other.rmdir()
+            except OSError:
+                pass
+    return target

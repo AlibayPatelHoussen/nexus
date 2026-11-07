@@ -587,7 +587,7 @@ def safe_name(text):
     return re.sub(r"\s+", " ", text)[:150] or "Torrent"
 
 
-def place(work_dir, kind, title, year, dest):
+def place(work_dir, kind, title, year, dest, tmdb_id=None):
     """Moves the finished torrent where the library looks. Returns (folder, video files)."""
     work = Path(work_dir)
     if kind == "film":
@@ -603,7 +603,9 @@ def place(work_dir, kind, title, year, dest):
                 shutil.move(str(f), str(to))
             moved.append(to)
         return target, [p for p in moved if p.suffix.lower() in VIDEO_EXTS]
-    target = Path(dest) / safe_name(title)
+    # A series already downloaded by movix (« Titre_avec_underscores ») or under another
+    # title: same folder, so the library shows it once
+    target = nexus_cli.series_folder(dest, title, safe_name(title), tmdb_id) if kind == "serie" else Path(dest) / safe_name(title)
     target.mkdir(parents=True, exist_ok=True)
     for entry in work.iterdir():
         if entry.name.startswith(".") or entry.suffix == ".aria2":
@@ -743,7 +745,7 @@ def json_download(args):
         return 2
     tmdb = tmdb_match(rel["title"], rel["year"], kind) if kind != "anime" else None
     title = (tmdb or {}).get("title") or rel["title"]
-    folder, paths = place(work, kind, title, rel["year"], dest)
+    folder, paths = place(work, kind, title, rel["year"], dest, (tmdb or {}).get("id"))
     shutil.rmtree(work, ignore_errors=True)
     if not paths:
         nexus_cli.emit("error", message="Aucune vidéo dans ce torrent", item=item, fatal=False)
