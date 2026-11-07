@@ -1,0 +1,38 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash",
+      "Read",
+      "Edit",
+      "Write",
+      "Glob",
+      "Grep",
+      "WebFetch",
+      "WebSearch",
+      "mcp__github",
+      "mcp__claude-code-remote__send_message",
+      "mcp__claude-code-remote__send_later",
+      "mcp__claude-code-remote__list_sessions",
+      "mcp__claude-code-remote__list_events",
+      "mcp__claude-code-remote__get_session",
+      "mcp__claude-code-remote__subscribe_pr_activity",
+      "mcp__claude-code-remote__unsubscribe_pr_activity",
+      "mcp__claude-code-remote__list_triggers",
+      "mcp__claude-code-remote__delete_trigger",
+      "mcp__claude-code-remote__get_environment",
+      "mcp__claude-code-remote__read_documentation"
+    ],
+    "deny": [
+      "Bash(git push --force:*)",
+      "Bash(git push -f:*)",
+      "Bash(git push --force-with-lease:*)",
+      "Bash(rm -rf /:*)",
+      "Read(./.env)",
+      "Read(./**/.env)",
+      "Bash(cat .env:*)",
+      "Bash(cat backend/.env:*)",
+      "Edit(/media/scripts/**)",
+      "Write(/media/scripts/**)"
+    ]
+  }
+}

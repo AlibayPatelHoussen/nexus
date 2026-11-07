@@ -94,7 +94,11 @@ npm workspaces (`frontend`, `backend`); run from the repo root unless noted.
 
 ## Workflow
 
-- Branch `claude/eloquent-darwin-19tvre`; PR to `main`, green CI, squash-merge without asking.
+- Work on the branch the session names (a `claude/…` branch); PR to `main`, green CI, squash-merge without asking.
+  If that branch's PR was already merged, merge `main` into it before the next change (no force-push).
+- `.claude/settings.json` pre-approves the usual tools (shell, GitHub, messages to the owner's other
+  sessions, reminders) so the owner is not asked each time; force-push, reading `.env` and touching
+  `/media/scripts` stay denied.
 - Checks: `python3 -m unittest discover downloaders`, backend `npm test` (see e2e/setup.sh for the
   test database), `npm run e2e`, frontend `npx tsc --noEmit && npx eslint src --quiet && npx vitest run`.
 - Never show secrets (.env). `/media/scripts` holds the owner's original scripts: never modify them.
