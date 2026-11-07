@@ -121,6 +121,24 @@ class SeriesFolder(unittest.TestCase):
         self.assertEqual(self.folder(), self.root / self.OX)
         self.assertTrue(part.exists())
 
+    def test_torrent_release_folder(self):
+        # The owner's server: a torrent folder at the root of /media/series, no .nexus.json
+        rel = "Georgie.and.Mandys.First.Marriage.S02.MULTI.1080p.WEB.x264"
+        for n in (1, 2, 3):
+            self.put(rel, f"Georgie.and.Mandys.First.Marriage.S02E0{n}.mkv")
+        self.put(self.MOVIX, "VF", "Saison_2", "Episode_22.mp4", hint=258854)
+        self.assertEqual(self.folder(), self.root / self.MOVIX)          # named after the series: kept
+        self.assertTrue((self.root / self.MOVIX / "Georgie.and.Mandys.First.Marriage.S02E01.mkv").exists())
+        self.assertFalse((self.root / rel).exists())
+
+    def test_release_title(self):
+        rt = nexus_cli.release_title
+        self.assertEqual(rt("Georgie.and.Mandys.First.Marriage.S02.MULTI.1080p"), "Georgie and Mandys First Marriage")
+        self.assertEqual(rt("The.Office.US.Saison.3.FRENCH"), "The Office US")
+        self.assertEqual(rt("Severance (2022)"), "Severance")
+        self.assertEqual(rt("Georgie_&_Mandy's_First_Marriage"), "Georgie & Mandy's First Marriage")
+        self.assertEqual(rt("1923"), "1923")
+
     def test_norm_title(self):
         self.assertEqual(nexus_cli.norm_title(self.OX), nexus_cli.norm_title(self.MOVIX))
         self.assertEqual(nexus_cli.norm_title("Élite"), nexus_cli.norm_title("elite"))
