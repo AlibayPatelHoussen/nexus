@@ -207,6 +207,19 @@ test('UI: catalogue (hero, rows, cleaned series title)', async () => {
   await page.context().close()
 })
 
+test('an anime scanned before its TMDB series could be found is linked by the background enrichment (no rescan)', async () => {
+  const id = sql(`SELECT id FROM media_items WHERE type='anime' LIMIT 1`)
+  const before = sql(`SELECT tmdb_id || '|' || poster_path || '|' || coalesce(backdrop_path, '') FROM media_items WHERE id='${id}'`).split('|')
+  // As on the owner's server: no TMDB series, the AniList cover, no logo / key art
+  sql(`UPDATE media_items SET tmdb_id = NULL, imdb_id = NULL, poster_path = 'https://s4.anilist.co/file/anilistcdn/media/anime/cover/large/bx16498.jpg',
+       logo_path = NULL, key_art_path = NULL, artwork_checked_at = NULL WHERE id='${id}'`)
+  eq((await api('/api/media/imdb/refresh', { method: 'POST', token: admin.accessToken })).status, 200, 'enrichment')
+  const after = sql(`SELECT coalesce(tmdb_id::text, '-') || '|' || poster_path || '|' || coalesce(logo_path, '-') FROM media_items WHERE id='${id}'`).split('|')
+  eq(after[0], before[0], 'TMDB series found again')
+  eq(after[1], before[1], 'TMDB poster (with the title) instead of the AniList cover')
+  assert(/\/logo_en_\d+\.svg$/.test(after[2]), `title logo in the same run: ${after.join('|')}`)
+})
+
 test('UI: tab bar, the selection pill is already under the chosen tab when the lens lets go', async () => {
   const page = await newPage(admin)
   await page.goto(`${B}/dashboard`, { waitUntil: 'networkidle' })

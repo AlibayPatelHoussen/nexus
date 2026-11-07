@@ -4,6 +4,9 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Fixed — animes scanned before get their TMDB series by themselves
+- The background enrichment (after every update, scan, and once a day) also looks up the TMDB series of animes not linked yet: Attack on Titan, scanned before the better search, gets its poster with the title, its logo and key art without a new library scan
+
 ### Fixed — logos and pictures picked automatically
 - Back to the previous picture rule (the best-rated one): Marty Supreme has its picture back; only a small fan picture (Attack on Titan's blurry chibi) is passed over when a picture at least 1000 px wide exists
 - Title logos as before (the PNG logo, French, then English, then language-free): Dragon Ball Super and Bleach are back to what they were. Only a title with no PNG logo at all (Attack on Titan) takes an SVG one, if it has a transparent background; never another language. Every title is looked up again after the update
