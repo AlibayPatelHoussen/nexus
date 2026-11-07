@@ -17,6 +17,16 @@ function png(w, h, [r, g, b]) {
   const raw = Buffer.concat(Array.from({ length: h }, () => row))
   return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(raw)), chunk('IEND', Buffer.alloc(0))])
 }
+/** A title logo: transparent PNG with a band of colour in the middle */
+function pngLogo(w, h, [r, g, b]) {
+  const ihdr = Buffer.alloc(13); ihdr.writeUInt32BE(w, 0); ihdr.writeUInt32BE(h, 4); ihdr[8] = 8; ihdr[9] = 6
+  const rows = Array.from({ length: h }, (_, y) => {
+    const row = Buffer.alloc(1 + w * 4)
+    if (y > h / 3 && y < (2 * h) / 3) for (let x = Math.floor(w / 5); x < (4 * w) / 5; x++) { row.set([r, g, b, 255], 1 + x * 4) }
+    return row
+  })
+  return Buffer.concat([Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]), chunk('IHDR', ihdr), chunk('IDAT', zlib.deflateSync(Buffer.concat(rows))), chunk('IEND', Buffer.alloc(0))])
+}
 const colour = (s) => { const h = [...s].reduce((a, c) => (a * 31 + c.charCodeAt(0)) >>> 0, 7); return [h & 255, (h >> 8) & 255, (h >> 16) & 255] }
 
 const port = Number(process.env.MOCK_PORT || 4010)
@@ -52,7 +62,12 @@ http.createServer((req, res) => {
       if (/missing/.test(p)) { res.writeHead(404); return res.end() }
       if (p.endsWith('.svg')) {   // TMDB title logos are often SVG (with a script, like a hostile file)
         res.writeHead(200, { 'Content-Type': 'image/svg+xml' })
-        return res.end('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="120"><script>alert(1)</script><rect width="400" height="120" fill="#e33"/></svg>')
+        return res.end('<svg xmlns="http://www.w3.org/2000/svg" width="400" height="120"><script>alert(1)</script><rect x="60" y="30" width="280" height="60" fill="#e33"/></svg>')
+      }
+      // Title logos: transparent, except a « logo » in a plain box (like Bleach's)
+      if (/\/logo_/.test(p) && !/logo_box/.test(p)) {
+        res.writeHead(200, { 'Content-Type': 'image/png' })
+        return res.end(pngLogo(300, 90, colour(p)))
       }
       const wide = /backdrop|still|banner/.test(p)
       res.writeHead(200, { 'Content-Type': 'image/png' })
@@ -91,7 +106,8 @@ http.createServer((req, res) => {
       if (Number(id) === hash('One Piece')) {
         return json(res, {
           posters:   [{ file_path: `/keyart_${id}.jpg`, iso_639_1: null, vote_average: 6, vote_count: 40 }, { file_path: `/chibi_${id}.jpg`, iso_639_1: null, vote_average: 10, vote_count: 1 }],
-          logos:     [{ file_path: `/logo_en_${id}.svg`, iso_639_1: 'en', vote_average: 5 }],
+          logos:     [{ file_path: `/logo_box_fr_${id}.png`, iso_639_1: 'fr', vote_average: 9 }, { file_path: `/logo_ja_${id}.png`, iso_639_1: 'ja', vote_average: 10 },
+            { file_path: `/logo_en_${id}.svg`, iso_639_1: 'en', vote_average: 5 }],
           backdrops: [{ file_path: `/herobackdrop_${id}.jpg`, iso_639_1: null, vote_average: 5 }],
         })
       }

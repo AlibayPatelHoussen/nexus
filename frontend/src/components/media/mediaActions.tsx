@@ -1,6 +1,6 @@
 import { useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { Heart, Info, Play, Trash2 } from 'lucide-react'
+import { Heart, ImageIcon, Info, Play, Trash2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import type { MediaItem } from '@/types'
 import { mediaService } from '@/services/mediaService'
@@ -34,6 +34,8 @@ export function useMediaActions() {
     },
     ...(isAdmin ? [
       { separator: true } as const,
+      ...(item.tmdbId && ['film', 'serie', 'anime'].includes(item.type)
+        ? [{ label: 'Image et logo…', icon: <ImageIcon />, onSelect: () => navigate(`/media/${item.id}?artwork=1`) }] : []),
       {
         label: 'Retirer de la bibliothèque…', icon: <Trash2 />, destructive: true,
         onSelect: async () => {

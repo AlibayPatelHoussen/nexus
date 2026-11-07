@@ -5,7 +5,10 @@ import { syncImdb } from '../services/imdb'
 import { logger } from '../utils/logger'
 import { MediaService } from '../services/media'
 import { MediaScanner, hasTmdbKey } from '../services/scanner'
-import { ConflictError } from '../utils/errors'
+import { ConflictError, NotFoundError, ValidationError } from '../utils/errors'
+import { query } from '../config/database'
+import { artworkOptions, isTmdbOriginal, linkArtwork } from '../services/artwork'
+import { signedImage } from '../services/images'
 
 const router = Router()
 router.use(authenticate)
@@ -117,6 +120,40 @@ router.delete('/:id', requireAdmin, asyncHandler(async (req: Request, res: Respo
   const ok = await MediaService.deleteById(req.params.id)
   if (!ok) { res.status(404).json({ success: false, error: 'Not found' }); return }
   res.json({ success: true })
+}))
+
+// ── « Image et logo… »: the owner picks the billboard key art and title logo ──
+const UUID = /^[0-9a-f-]{36}$/i
+async function tmdbTitle(id: string) {
+  if (!UUID.test(id)) throw new NotFoundError('Title')
+  const { rows } = await query<{ type: string; tmdb_id: number | null; key_art_path: string | null; logo_path: string | null; artwork_locked: boolean }>(
+    'SELECT type, tmdb_id, key_art_path, logo_path, artwork_locked FROM media_items WHERE id = $1', [id])
+  if (!rows[0]) throw new NotFoundError('Title')
+  if (!rows[0].tmdb_id || !['film', 'serie', 'anime'].includes(rows[0].type)) throw new ValidationError('Ce titre n’a pas d’images TMDB')
+  return rows[0]
+}
+
+router.get('/:id/artwork', requireAdmin, asyncHandler(async (req: Request, res: Response) => {
+  const t = await tmdbTitle(req.params.id)
+  const o = await artworkOptions(t.type === 'film' ? 'movie' : 'tv', t.tmdb_id!)
+  // Thumbnails go through the image proxy (signed), never straight to TMDB
+  const sign = (l: { url: string; thumb: string }[]) => l.map((i) => ({ ...i, thumb: signedImage(i.thumb) }))
+  res.json({ success: true, data: { keyArts: sign(o.keyArts), logos: sign(o.logos), keyArt: t.key_art_path, logo: t.logo_path, locked: t.artwork_locked } })
+}))
+
+/** { keyArt, logo } chosen (logo null = the title in text), or { auto: true } to go back to the automatic choice */
+router.put('/:id/artwork', requireAdmin, asyncHandler(async (req: Request, res: Response) => {
+  await tmdbTitle(req.params.id)
+  const { keyArt, logo, auto } = req.body ?? {}
+  if (auto === true) {
+    await query('UPDATE media_items SET artwork_locked = FALSE, artwork_checked_at = NULL WHERE id = $1', [req.params.id])
+    await linkArtwork(1, req.params.id)
+  } else {
+    if (!isTmdbOriginal(keyArt) || (logo !== null && !isTmdbOriginal(logo))) throw new ValidationError('Image invalide')
+    await query('UPDATE media_items SET key_art_path = $2, logo_path = $3, artwork_locked = TRUE, artwork_checked_at = NOW() WHERE id = $1',
+      [req.params.id, keyArt, logo])
+  }
+  res.json({ success: true, data: await MediaService.getById(req.params.id) })
 }))
 
 router.get('/:id', asyncHandler(async (req: Request, res: Response) => {

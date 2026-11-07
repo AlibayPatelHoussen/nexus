@@ -207,6 +207,32 @@ test('UI: catalogue (hero, rows, cleaned series title)', async () => {
   await page.context().close()
 })
 
+test('UI: « Image et logo » (admin) picks the key art and the logo by hand, kept by the automatic look-up', async () => {
+  const id = sql(`SELECT id FROM media_items WHERE type='anime' LIMIT 1`)
+  const opts = (await api(`/api/media/${id}/artwork`, { token: admin.accessToken })).json.data
+  assert(opts.keyArts.length === 2 && opts.logos.length === 2, `choices: ${JSON.stringify(opts)}`)   // no Japanese logo
+  assert(opts.keyArts.every((k) => k.thumb.startsWith('/api/images/remote?')), 'thumbnails go through the proxy')
+  eq((await api(`/api/media/${id}/artwork`, { token: alice.accessToken })).status, 403, 'admin only')
+  eq((await api(`/api/media/${id}/artwork`, { method: 'PUT', token: admin.accessToken, body: { keyArt: 'https://evil.example/x.jpg', logo: null } })).status, 422, 'only TMDB images')
+  const page = await newPage(admin)
+  await page.goto(`${B}/media/${id}?artwork=1`, { waitUntil: 'networkidle' })
+  await page.click('[role="radiogroup"][aria-label="Image"] [role="radio"]:nth-child(2)')
+  await page.click('[role="radio"][aria-label="Titre en texte"]')
+  await page.screenshot({ path: `${SHOTS}/artwork-sheet.png` })
+  await page.click('button:has-text("Enregistrer")')
+  await page.waitForFunction(() => !document.querySelector('[role="dialog"]'))
+  const row = () => sql(`SELECT key_art_path || '|' || coalesce(logo_path, '-') || '|' || artwork_locked FROM media_items WHERE id='${id}'`)
+  eq(row(), `${opts.keyArts[1].url}|-|true`, 'chosen key art, title in text, locked')
+  // The automatic look-up leaves it alone…
+  sql(`UPDATE media_items SET artwork_checked_at = NULL WHERE id='${id}'`)
+  await api('/api/media/imdb/refresh', { method: 'POST', token: admin.accessToken })
+  eq(row(), `${opts.keyArts[1].url}|-|true`, 'kept by the automatic look-up')
+  // …until « Automatique »
+  eq((await api(`/api/media/${id}/artwork`, { method: 'PUT', token: admin.accessToken, body: { auto: true } })).status, 200, 'back to automatic')
+  assert(/\|false$/.test(row()) && /logo_en_\d+\.svg/.test(row()), `automatic again: ${row()}`)
+  await page.context().close()
+})
+
 test('UI: tab bar, the selection pill is already under the chosen tab when the lens lets go', async () => {
   const page = await newPage(admin)
   await page.goto(`${B}/dashboard`, { waitUntil: 'networkidle' })
@@ -488,9 +514,9 @@ test('IMDb: ids from TMDB, ratings from the dataset, Top 10 ranked by IMDb', asy
   // Animes too: their TMDB series gives a poster with the title (not the textless AniList cover) and the logo
   const op = sql(`SELECT tmdb_id || '|' || poster_path || '|' || coalesce(logo_path, '-') || '|' || coalesce(key_art_path, '-') FROM media_items WHERE type='anime' LIMIT 1`).split('|')
   assert(op[0] && /\/poster_\d+\.jpg$/.test(op[1]), `anime poster from TMDB: ${op.join('|')}`)
-  // Its only logo is an SVG (like Attack on Titan): taken, and served as a PNG (never as SVG)
+  // Its French logo sits in a plain box (Bleach) and its other one is Japanese: the English SVG
+  // logo is taken, and served as a PNG (never as SVG)
   assert(/\/logo_en_\d+\.svg$/.test(op[2]), `anime title logo: ${op.join('|')}`)
-  assert(/\/keyart_\d+\.jpg$/.test(op[3]), `official key art, not the fan picture rated by one person: ${op.join('|')}`)
   const anime = (await api('/api/media?type=anime&limit=10', { token: admin.accessToken })).json.data.items[0]
   const svgLogo = await api(anime.logoPath, { raw: true })
   eq(svgLogo.status, 200, 'SVG logo served'); eq(svgLogo.headers.get('content-type'), 'image/png', 'SVG logo turned into a PNG')

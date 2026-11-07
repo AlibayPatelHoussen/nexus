@@ -52,6 +52,7 @@ CREATE TABLE IF NOT EXISTS media_items (
   logo_path       VARCHAR(500),    -- title logo (transparent PNG)
   hero_backdrop_path VARCHAR(500), -- textless backdrop, full resolution
   artwork_checked_at TIMESTAMPTZ,
+  artwork_locked  BOOLEAN NOT NULL DEFAULT FALSE,  -- key art / logo chosen by hand: never replaced
   genres          TEXT[],
   year            INTEGER,
   rating          DECIMAL(3,1),
