@@ -1243,7 +1243,8 @@ def _structure(slug, full_probe=False):
         extra = {f"{base}/{seg}/vf/": seg for seg, langs in seasons.items() if "vf" not in langs}
         for u in _probe(list(extra)):
             seasons[extra[u]].add("vf")
-    info["scan_variants"] = [{"seg": v["seg"], "name": v["name"], "langs": sorted(v["langs"])} for v in variants.values()]
+    info["scan_variants"] = [{"seg": v["seg"], "name": v["name"], "langs": sorted(v["langs"]), "edition": _edition_of(v)}
+                             for v in variants.values()]
     ordered = [{"id": seg, "label": _season_label(seg),
                 "langs": sorted((l.upper() for l in langs), key=lambda l: (l != "VOSTFR", l))}
                for seg, langs in sorted(seasons.items(), key=lambda kv: _season_sort(kv[0]))]
@@ -1400,9 +1401,13 @@ def json_search(query, limit):
         out = []
         if seasons:
             out.append({**base, "id": f"anisama:anime:{slug}", "kind": "anime", "seasons": seasons})
-        if scans:
-            out.append({**base, "id": f"anisama:manga:{slug}", "kind": "manga", "langs": scans})
+        options = _scan_options(scans, info.get("scan_variants", []))
+        if options:
+            # Colour / black & white editions are versions of the same manga, like VF / VOSTFR
+            out.append({**base, "id": f"anisama:manga:{slug}", "kind": "manga", "langs": [o["lang"] for o in options]})
         for v in info.get("scan_variants", []):
+            if v.get("edition"):
+                continue
             out.append({**base, "id": f"anisama:manga:{slug}~{v['seg']}", "kind": "manga", "langs": v["langs"],
                         "title": _variant_title(base["title"], v)})
         return out
@@ -1436,6 +1441,78 @@ def _variant_title(title, v):
     return f"{title} — {name}"
 
 
+EDITIONS = {"NB": "Noir et blanc", "CO": "Couleur"}
+
+
+def _edition_of(v):
+    """NB / CO when these scans are the same work in another edition (black & white, colour), else None."""
+    s = f"{v.get('name') or ''} {v.get('seg') or ''}".lower()
+    if "noir" in s or "blanc" in s or re.search(r"\bn&b\b", s):
+        return "NB"
+    if "couleur" in s or "colori" in s or "color" in s:
+        return "CO"
+    return None
+
+
+def _split_lang(code):
+    """'VFNB' → ('VF', 'NB'): the language and the edition of a scan version ('VF' → ('VF', None))."""
+    m = re.fullmatch(r"([A-Z0-9]{2,6}?)(NB|CO)", code or "")
+    return (m.group(1), m.group(2)) if m else (code, None)
+
+
+def _scan_options(scans, variants, only=None):
+    """Every downloadable scan version of a page: [{lang, seg, folder, label}].
+
+    The main scans keep their language code (VF, VOSTFR) and folder; another edition
+    of the same work (« Scans (noir et blanc) ») gets the code VFNB / VOSTFRCO… and
+    the folder « VF Noir et blanc » inside the SAME manga folder, so the library shows
+    one manga with its versions. `only` = a variant segment (old ids
+    anisama:manga:slug~scan_noir-et-blanc): just its versions, under their plain code."""
+    eds = [v for v in variants if v.get("edition")]
+    opts = []
+    if only:
+        v = next((v for v in eds if v["seg"] == only), None)
+        if v:
+            opts = [{"lang": l, "seg": v["seg"], "folder": f"{l} {EDITIONS[v['edition']]}", "edition": EDITIONS[v["edition"]]}
+                    for l in v["langs"]]
+    else:
+        main = None
+        if eds:
+            main = "Couleur" if any(v["edition"] == "NB" for v in eds) else "Noir et blanc"
+        opts = [{"lang": l, "seg": "scan", "folder": l, "edition": main} for l in scans]
+        for v in eds:
+            opts += [{"lang": l + v["edition"], "seg": v["seg"], "folder": f"{l} {EDITIONS[v['edition']]}",
+                      "edition": EDITIONS[v["edition"]]} for l in v["langs"]]
+    bases = {_split_lang(o["lang"])[0] for o in opts}
+    for o in opts:
+        b = _split_lang(o["lang"])[0]
+        o["label"] = (f"{o['edition']} · {b}" if len(bases) > 1 else o["edition"]) if o["edition"] else b
+    return opts
+
+
+def _move_old_editions(title, variants):
+    """Editions downloaded before they were merged (« One Piece — Scans (noir et blanc)/VF »)
+    move into the manga's own folder (« One Piece/VF Noir et blanc »)."""
+    for v in variants:
+        if not v.get("edition"):
+            continue
+        old_root = DOWNLOAD_DIR / slugify(_variant_title(title, v))
+        if old_root == DOWNLOAD_DIR / slugify(title) or not old_root.is_dir():
+            continue
+        for l in v["langs"]:
+            old, new = old_root / l, DOWNLOAD_DIR / slugify(title) / f"{l} {EDITIONS[v['edition']]}"
+            try:
+                if old.is_dir() and not new.exists():
+                    new.parent.mkdir(parents=True, exist_ok=True)
+                    old.rename(new)
+            except OSError as e:
+                print(f"edition move: {e}")
+        try:
+            old_root.rmdir()          # only when nothing else is left in it
+        except OSError:
+            pass
+
+
 def _title_of(slug):
     entry = _catalogue_entry(slug)
     return (entry or {}).get("title") or slug.replace("-", " ").title()
@@ -1446,20 +1523,44 @@ def _anime_folder(title, seg, lang):
     return ANIME_DL_DIR / slugify(title) / slugify(f"{seg.capitalize()} — {lang.upper()}")
 
 
-def _scan_pdf(title, lang, num):
-    return DOWNLOAD_DIR / slugify(title) / lang / f"{slugify(f'Chapitre {num}')}.pdf"
+def _scan_pdf(title, folder, num):
+    """folder = the version's folder: « VF », « VOSTFR », « VF Noir et blanc »…"""
+    return DOWNLOAD_DIR / slugify(title) / folder / f"{slugify(f'Chapitre {num}')}.pdf"
+
+
+def _manga_target(slug, scan_seg):
+    """(title, scan versions) of a manga id, with the old edition folders moved first."""
+    title = _title_of(slug)
+    _, scans, info = _structure(slug)
+    variants = info.get("scan_variants", [])
+    variant = next((v for v in variants if v["seg"] == scan_seg), None) if scan_seg else None
+    if scan_seg and not variant:
+        nexus_cli.fail("Ces scans n'existent plus sur le site")
+    if variant and not variant.get("edition"):
+        # One-shot, spin-off…: a manga of its own
+        return _variant_title(title, variant), [{"lang": l, "seg": scan_seg, "folder": l, "label": l} for l in variant["langs"]], info
+    _move_old_editions(title, variants)
+    return title, _scan_options(scans, variants, only=scan_seg), info
 
 
 def json_details(id_):
     kind, slug, scan_seg = _parse_id(id_)
-    title = _title_of(slug)
     base = f"https://anime-sama.to/catalogue/{slug}"
+    if kind == "manga":
+        title, options, info = _manga_target(slug, scan_seg)
+
+        def version(o):
+            chs = get_chapters(f"{base}/{o['seg']}/{_split_lang(o['lang'])[0].lower()}/")
+            return {"lang": o["lang"], "label": o["label"], "chapters": [
+                {"n": ch["num"], "pages": ch["nb_pages"], "downloaded": _scan_pdf(title, o["folder"], ch["num"]).exists()}
+                for ch in chs]}
+        with ThreadPoolExecutor(max_workers=4) as pool:
+            langs = list(pool.map(version, options))
+        nexus_cli.emit("details", id=id_, kind="manga", title=title, poster_url=_poster_url({}, info),
+                       description=info.get("description"), langs=[l for l in langs if l["chapters"]])
+        return
+    title = _title_of(slug)
     seasons, scans, info = _structure(slug)
-    if scan_seg:
-        variant = next((v for v in info.get("scan_variants", []) if v["seg"] == scan_seg), None)
-        if not variant:
-            nexus_cli.fail("Ces scans n'existent plus sur le site")
-        title, scans = _variant_title(title, variant), variant["langs"]
     if kind == "anime":
         def season_eps(season, lang):
             eps = get_episodes(f"{base}/{season['id']}/{lang.lower()}/")
@@ -1472,15 +1573,6 @@ def json_details(id_):
             out = list(pool.map(lambda a: season_eps(*a), jobs))
         nexus_cli.emit("details", id=id_, kind="anime", title=title, poster_url=_poster_url({}, info),
                        description=info.get("description"), seasons=[s for s in out if s["episodes"]])
-    else:
-        langs = []
-        for lang in scans:
-            chs = get_chapters(f"{base}/{scan_seg or 'scan'}/{lang.lower()}/")
-            langs.append({"lang": lang, "chapters": [
-                {"n": ch["num"], "pages": ch["nb_pages"], "downloaded": _scan_pdf(title, lang, ch["num"]).exists()}
-                for ch in chs]})
-        nexus_cli.emit("details", id=id_, kind="manga", title=title, poster_url=_poster_url({}, info),
-                       description=info.get("description"), langs=[l for l in langs if l["chapters"]])
 
 
 def _download_episode_json(ep, n, total, title, seg, lang):
@@ -1522,11 +1614,11 @@ def _download_episode_json(ep, n, total, title, seg, lang):
     return "failed"
 
 
-def _download_chapter_json(ch, title, lang, index, total):
+def _download_chapter_json(ch, title, folder, index, total):
     """Like download_chapter(), with progress; the PDF is written under a temporary name."""
     num = ch["num"]
     item = f"Chapitre {num}"
-    pdf = _scan_pdf(title, lang, num)
+    pdf = _scan_pdf(title, folder, num)
     if pdf.exists():
         nexus_cli.emit("item_skipped", name=item, reason="exists", path=str(pdf))
         return "skipped"
@@ -1535,7 +1627,7 @@ def _download_chapter_json(ch, title, lang, index, total):
     if not pages:
         nexus_cli.emit("error", message="Aucune page", item=item, fatal=False)
         return "failed"
-    img_dir = DOWNLOAD_DIR / slugify(title) / lang / slugify(item)
+    img_dir = DOWNLOAD_DIR / slugify(title) / folder / slugify(item)
     img_dir.mkdir(parents=True, exist_ok=True)
     throttle = nexus_cli.Throttle(0.4)
     done_pages = 0
@@ -1589,11 +1681,6 @@ def json_download(args):
     global ANIME_DL_DIR, DOWNLOAD_DIR
     kind, slug, scan_seg = _parse_id(args.download)
     title = _title_of(slug)
-    if scan_seg:
-        variant = next((v for v in _structure(slug)[2].get("scan_variants", []) if v["seg"] == scan_seg), None)
-        if not variant:
-            nexus_cli.fail("Ces scans n'existent plus sur le site")
-        title = _variant_title(title, variant)
     base = f"https://anime-sama.to/catalogue/{slug}"
     lang = (args.lang or ("VOSTFR" if kind == "anime" else "VF")).upper()
     if not re.fullmatch(r"[A-Z0-9]{2,8}", lang):
@@ -1614,13 +1701,19 @@ def json_download(args):
     else:
         if args.dest:
             DOWNLOAD_DIR = Path(args.dest)
-        chapters = get_chapters(f"{base}/{scan_seg or 'scan'}/{lang.lower()}/")
+        title, options, _ = _manga_target(slug, scan_seg)
+        o = next((o for o in options if o["lang"] == lang), None)
+        if not o:
+            if _split_lang(lang)[1] or scan_seg:
+                nexus_cli.fail("Cette version des scans n'existe plus sur le site")
+            o = {"seg": "scan", "folder": lang}          # page unreadable: the usual scans
+        chapters = get_chapters(f"{base}/{o['seg']}/{_split_lang(lang)[0].lower()}/")
         if not chapters:
             nexus_cli.fail("Aucun chapitre trouvé")
         by_num = {ch["num"]: ch for ch in chapters}
         wanted = nexus_cli.parse_selection(args.chapters, list(by_num))
         for i, n in enumerate(wanted, 1):
-            stats[_download_chapter_json(by_num[n], title, lang, i, len(wanted))] += 1
+            stats[_download_chapter_json(by_num[n], title, o["folder"], i, len(wanted))] += 1
     nexus_cli.emit("done", **stats)
     return 0 if stats["failed"] == 0 else 2
 

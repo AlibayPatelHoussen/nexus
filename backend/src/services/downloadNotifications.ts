@@ -3,6 +3,7 @@ import { query } from '../config/database'
 import { logger } from '../utils/logger'
 import { broadcast, onDownloadFinished, type DownloadRow } from './downloads'
 import { sendPush } from './push'
+import { langLabel } from './downloadScripts'
 
 /**
  * End of every download, whatever the script: a push notification to the
@@ -31,7 +32,7 @@ export function versionLabel(row: DownloadRow): string | null {
       : /\b(truefrench|french|vff|vfq|vf2)\b/i.test(name) ? 'VF' : null
     return [res, lang].filter(Boolean).join(' ') || null
   }
-  return row.options.lang ?? null
+  return row.options.lang ? langLabel(row.options.lang) : null
 }
 
 /** « S01E03 », « épisodes 1–4 », « chapitre 12 »… */

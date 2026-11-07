@@ -4,7 +4,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { isAxiosError } from 'axios'
 import { AlertTriangle, Download as DownloadIcon, MoreHorizontal, Pause, Play, RotateCw, Trash2, X } from 'lucide-react'
 import toast from 'react-hot-toast'
-import { SOURCE_INFO, downloadsService, type Download } from '@/services/downloadsService'
+import { SOURCE_INFO, downloadsService, langLabel, type Download } from '@/services/downloadsService'
 import { useShell } from '@/components/shell/shellContext'
 import { Group } from '@/components/ui/GroupedList'
 import Button from '@/components/ui/Button'
@@ -25,7 +25,7 @@ export function describe(d: Download): string {
   if (season) parts.push(/^\d+$/.test(season) ? `Saison ${season}` : season.replace(/^saison(\d+)/, 'Saison $1').replace(/^(\w)/, (c) => c.toUpperCase()))
   if (d.options.part) parts.push(d.options.part)                 // oxtorrent: « S01E03 »
   if (d.options.version?.label) parts.push(d.options.version.label)   // oxtorrent: « 1080p MULTI »
-  if (d.options.lang) parts.push(d.options.lang)
+  if (d.options.lang) parts.push(langLabel(d.options.lang))
   const list = d.selection.episodes ?? d.selection.chapters
   if (list?.length) {
     const noun = d.selection.chapters ? 'chapitre' : 'épisode'

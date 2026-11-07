@@ -109,7 +109,7 @@ CREATE TABLE IF NOT EXISTS chapters (
   title           VARCHAR(500),
   folder_path     VARCHAR(1000) NOT NULL UNIQUE,
   page_count      INTEGER,
-  language        VARCHAR(10),
+  language        VARCHAR(40),  -- version folder: VF, VOSTFR, VF Noir et blanc…
   created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 

@@ -34,6 +34,16 @@ export interface TorrentSeason { number: number; episodes: TorrentEpisode[]; pac
 /** An OxTorrent series card: its « seasons » are torrent seasons */
 export type TorrentGroup = Omit<SearchResult, 'seasons'> & { seasons?: TorrentSeason[] }
 
+/** anime-sama scan editions: « VFNB » = VF, black & white; « VFCO » = VF, colour */
+const EDITIONS: Record<string, string> = { NB: 'Noir et blanc', CO: 'Couleur' }
+
+/** « VFNB » → « VF · Noir et blanc »; other language codes as they are. */
+export function langLabel(code: string | null | undefined): string {
+  if (!code) return ''
+  const m = /^([A-Z0-9]{2,6}?)(NB|CO)$/.exec(code)
+  return m ? `${m[1]} · ${EDITIONS[m[2]]}` : code
+}
+
 export interface DetailEpisode { n: number; label: string; downloaded: boolean | string[]; available?: boolean; air_date?: string | null; langs?: string[] | null }
 export interface DetailChapter { n: number; pages: number; downloaded: boolean }
 
@@ -45,8 +55,8 @@ export interface Details {
   description?: string | null
   /** anime: one entry per season + language; serie: one per season (langs on top) */
   seasons?:     { id: string | number; lang?: string; langs?: string[]; label: string; episodes: DetailEpisode[] }[]
-  /** manga: one entry per language; film: availability per language */
-  langs?:       ({ lang: string; chapters?: DetailChapter[]; downloaded?: boolean; available?: boolean } | string)[]
+  /** manga: one entry per language / edition (label: « Couleur », « Noir et blanc · VF »); film: availability per language */
+  langs?:       ({ lang: string; label?: string; chapters?: DetailChapter[]; downloaded?: boolean; available?: boolean } | string)[]
 }
 
 export interface DownloadProgress {

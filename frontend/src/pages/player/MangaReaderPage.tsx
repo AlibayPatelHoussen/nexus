@@ -17,6 +17,7 @@ import { getStreamToken, withStreamToken } from '@/services/streamToken'
 import type { Chapter } from '@/types'
 import { usePdfDocument } from '@/hooks/usePdfDocument'
 import ReaderPage from '@/components/media/ReaderPage'
+import { chapterVersions, versionName } from '@/components/media/chapterVersions'
 import { loadImagePage, prefetchPages } from '@/services/readerCache'
 
 type ReadMode = 'vertical' | 'page' | 'page-rtl'
@@ -88,8 +89,9 @@ export default function MangaReaderPage() {
   const pages = pdfUrl ? pdfPlaceholders : (chapterData?.pages ?? [])
 
   const chapters: Chapter[] = media?.chapters || []
-  const langs = [...new Set(chapters.map((c) => c.language).filter(Boolean))] as string[]
-  const activeLang = langParam ?? langs[0] ?? null
+  const langs = chapterVersions(chapters)
+  // The version of the chapter being read (« VF », « VF Noir et blanc »), so next / previous stay in it
+  const activeLang = langParam ?? chapters.find((c) => c.id === chapterId)?.language ?? langs[0] ?? null
   const filteredChapters = activeLang
     ? chapters.filter((c) => c.language === activeLang)
     : chapters
@@ -185,8 +187,8 @@ export default function MangaReaderPage() {
         </Group>
       )}
       {langs.length > 1 && (
-        <SegmentedControl full label="Langue" value={activeLang} onChange={changeLang}
-          options={langs.map((l) => ({ value: l, label: l.toUpperCase() }))} className="mb-4" />
+        <SegmentedControl full label="Version" value={activeLang} onChange={changeLang}
+          options={langs.map((l) => ({ value: l, label: versionName(l, langs) }))} className="mb-4" />
       )}
       <Group>
         {filteredChapters.map((chap) => (
@@ -354,7 +356,7 @@ export default function MangaReaderPage() {
             <div className="flex gap-1 px-3 pb-2">
               {langs.map((l) => (
                 <button key={l} type="button" onClick={() => changeLang(l)} aria-pressed={activeLang === l}
-                  className={`px-2 min-h-[24px] rounded-[6px] text-caption font-medium ${activeLang === l ? 'bg-white/25 text-white' : 'text-white/60 hover:bg-white/10'}`}>{l.toUpperCase()}</button>
+                  className={`px-2 min-h-[24px] rounded-[6px] text-caption font-medium ${activeLang === l ? 'bg-white/25 text-white' : 'text-white/60 hover:bg-white/10'}`}>{versionName(l, langs)}</button>
               ))}
             </div>
           )}

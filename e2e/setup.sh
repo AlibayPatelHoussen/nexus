@@ -125,6 +125,12 @@ for vol, chs in (('Volume 1', (1, 2)), ('Volume 2', (3,))):
 # One-shot: images directly in the manga folder
 d = os.path.join(root, 'scans', 'Oneshot Manga'); os.makedirs(d, exist_ok=True)
 for i in range(1, 4): open(os.path.join(d, f'{i:02d}.png'), 'wb').write(page(f'oneshot p{i}', (60, 60, 60)))
+# Two editions of the same manga (anime-sama downloads): colour in « VF », black & white in « VF Noir et blanc »
+for folder, nums, colour in (('VF', (1, 2), (220, 120, 40)), ('VF Noir et blanc', (1,), (128, 128, 128))):
+    d = os.path.join(root, 'scans', 'Edition Manga', folder); os.makedirs(d, exist_ok=True)
+    for n in nums:
+        imgs = [Image.new('RGB', (400, 600), colour) for _ in range(2)]
+        imgs[0].save(os.path.join(d, f'Chapitre {n}.pdf'), save_all=True, append_images=imgs[1:])
 # No chapter at all
 d = os.path.join(root, 'scans', 'Empty Manga'); os.makedirs(d, exist_ok=True)
 open(os.path.join(d, 'readme.txt'), 'w').write('nothing here')

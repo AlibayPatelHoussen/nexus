@@ -17,6 +17,9 @@ describe('download notifications', () => {
       .toEqual({ ok: true, title: 'Épisodes terminés', body: 'One Piece · épisodes 1–3 · VOSTFR' })
     expect(message(row({ kind: 'manga', source_script: 'anisama', title: 'Naruto', options: { lang: 'VF' }, selection: { chapters: [700] } })).body)
       .toBe('Naruto · chapitre 700 · VF')
+    // anime-sama editions: « VFNB » = VF, black & white
+    expect(message(row({ kind: 'manga', source_script: 'anisama', title: 'One Piece', options: { lang: 'VFNB' }, selection: { chapters: [1] } })).body)
+      .toBe('One Piece · chapitre 1 · VF noir et blanc')
     expect(message(row({ kind: 'youtube', source_script: 'youtube', title: 'Vidéo' })).title).toBe('Vidéo terminée')
   })
 
