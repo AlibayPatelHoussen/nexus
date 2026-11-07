@@ -306,6 +306,19 @@ def norm_title(text: str) -> str:
     return re.sub(r"[^a-z0-9]+", "", text)
 
 
+# Where a torrent's name stops being the title: « Georgie.and.Mandys.First.Marriage.S02.1080p… »
+_RELEASE_TAIL = re.compile(
+    r"(?i)(?:^|[\s._\-\[(])(?:s\d{1,2}(?:e\d{1,3})?|saisons?[\s._]*\d+|seasons?[\s._]*\d+|(?:19|20)\d{2}|\d{3,4}p|"
+    r"complete|integrale|intégrale|multi|truefrench|french|vff|vostfr|webrip|web-?dl|bluray|hdtv)(?=$|[\s._\-\])])")
+
+
+def release_title(name: str) -> str:
+    """Title part of a folder name: « Georgie.and.Mandys.First.Marriage.S02.1080p » → « Georgie and Mandys First Marriage »."""
+    m = _RELEASE_TAIL.search(name or "")
+    head = name[:m.start()] if m and m.start() > 0 else (name or "")
+    return re.sub(r"[._]+", " ", head).strip(" -")
+
+
 def _hint_tmdb(folder: Path):
     try:
         hint = json.loads((folder / ".nexus.json").read_text(encoding="utf-8"))
@@ -342,11 +355,13 @@ def series_folder(dest, title: str, default_name: str, tmdb_id=None) -> Path:
         if not d.is_dir() or d.name.startswith("."):
             continue
         tid = _hint_tmdb(d)
-        if (tmdb_id and tid == int(tmdb_id)) or (norm_title(d.name) in names and (not tmdb_id or tid in (None, int(tmdb_id)))):
+        same_name = norm_title(d.name) in names or norm_title(release_title(d.name)) in names
+        if (tmdb_id and tid == int(tmdb_id)) or (same_name and (not tmdb_id or tid in (None, int(tmdb_id)))):
             matches.append(d)
     if not matches:
         return default
-    target = max(matches, key=lambda d: (len(_files(d)), d == default))
+    # Keep a folder named after the series (not a torrent's release name), then the fullest one
+    target = max(matches, key=lambda d: (release_title(d.name) == d.name.replace("_", " ").strip(), len(_files(d)), d == default))
     for other in matches:
         if other == target:
             continue
