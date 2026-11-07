@@ -31,6 +31,7 @@ interface TmdbResult {
   vote_count?: number
   status?: string
   original_language?: string
+  genre_ids?: number[]
 }
 
 interface MangaDexRelationship {
@@ -61,6 +62,7 @@ interface AniListResult {
   averageScore?: number
   status?: string
   startDate?: { year?: number }
+  format?: string
 }
 
 // ─── Parse chapter number from a folder / PDF name ───
@@ -135,6 +137,37 @@ async function searchTMDB(title: string, year?: number, type: 'movie' | 'tv' = '
     logger.warn(`TMDB search failed for "${title}": ${err}`)
     return null
   }
+}
+
+const TMDB_ANIMATION = 16
+
+/** Among TMDB search results: an animated series, the closest to the AniList year. */
+export function pickAnimeResult(results: TmdbResult[], year?: number | null): TmdbResult | null {
+  const animated = results.filter((r) => r.genre_ids?.includes(TMDB_ANIMATION))
+  if (!animated.length) return null
+  const yearOf = (r: TmdbResult) => parseInt((r.first_air_date ?? '').slice(0, 4)) || null
+  const close = year ? animated.find((r) => { const y = yearOf(r); return y != null && Math.abs(y - year) <= 1 }) : null
+  return close ?? animated[0]
+}
+
+/**
+ * The TMDB series of an anime, so it gets the same artwork as films and series
+ * (a poster with its title, the title logo of the « À la une » billboard, key
+ * art): AniList only has textless covers. Only animated series count (One Piece
+ * the anime, never the 2023 live-action series), the closest to the AniList year.
+ */
+export async function findAnimeOnTMDB(names: (string | null | undefined)[], year?: number | null): Promise<TmdbResult | null> {
+  if (!hasTmdbKey()) return null
+  for (const name of [...new Set(names.filter((n): n is string => !!n?.trim()))]) {
+    try {
+      const { data } = await axios.get(`${TMDB_BASE}/search/tv`, { params: { api_key: TMDB_KEY!, query: name, language: 'fr-FR' } })
+      const hit = pickAnimeResult((data.results ?? []) as TmdbResult[], year)
+      if (hit) return hit
+    } catch (err) {
+      logger.warn(`TMDB anime search failed for "${name}": ${err}`)
+    }
+  }
+  return null
 }
 
 async function getTMDBDetails(id: number, type: 'movie' | 'tv'): Promise<TmdbResult | null> {
@@ -695,17 +728,25 @@ export class MediaScanner {
         const { title } = parseFilename(entry.name)
 
         const anilist = await searchAniList(title, 'ANIME')
+        // The TMDB series (poster with the title, logo, key art), looked up once
+        const known = await query<{ tmdb_id: number | null }>('SELECT tmdb_id FROM media_items WHERE file_path = $1', [animePath])
+        const tmdb = known.rows[0]?.tmdb_id || anilist?.format === 'MOVIE' ? null
+          : await findAnimeOnTMDB([anilist?.title?.english, anilist?.title?.romaji, title], anilist?.startDate?.year)
 
         const { rows } = await query(
           `INSERT INTO media_items
            (type, title, original_title, file_path, anilist_id, overview,
-            poster_path, backdrop_path, genres, year, rating, status, last_scanned)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,NOW())
+            poster_path, backdrop_path, genres, year, rating, status, tmdb_id, last_scanned)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW())
            ON CONFLICT (file_path) DO UPDATE SET
              anilist_id    = COALESCE(media_items.anilist_id,    EXCLUDED.anilist_id),
+             tmdb_id       = COALESCE(media_items.tmdb_id,       EXCLUDED.tmdb_id),
              overview      = COALESCE(media_items.overview,      EXCLUDED.overview),
-             poster_path   = COALESCE(media_items.poster_path,   EXCLUDED.poster_path),
-             backdrop_path = COALESCE(media_items.backdrop_path, EXCLUDED.backdrop_path),
+             -- A TMDB poster (with the title) replaces an AniList cover (textless)
+             poster_path   = CASE WHEN EXCLUDED.poster_path LIKE $14 || '%' AND COALESCE(media_items.poster_path, '') NOT LIKE $14 || '%'
+                                  THEN EXCLUDED.poster_path ELSE COALESCE(media_items.poster_path, EXCLUDED.poster_path) END,
+             backdrop_path = CASE WHEN EXCLUDED.backdrop_path LIKE $14 || '%' AND COALESCE(media_items.backdrop_path, '') NOT LIKE $14 || '%'
+                                  THEN EXCLUDED.backdrop_path ELSE COALESCE(media_items.backdrop_path, EXCLUDED.backdrop_path) END,
              genres        = CASE WHEN cardinality(media_items.genres) > 0 THEN media_items.genres ELSE EXCLUDED.genres END,
              year          = COALESCE(media_items.year,   EXCLUDED.year),
              rating        = COALESCE(media_items.rating, EXCLUDED.rating),
@@ -718,13 +759,15 @@ export class MediaScanner {
             anilist?.title?.native || null,
             animePath,
             anilist?.id || null,
-            anilist?.description?.replace(/<[^>]*>/g, '') || null,
-            anilist?.coverImage?.extraLarge || anilist?.coverImage?.large || null,
-            anilist?.bannerImage || null,
+            anilist?.description?.replace(/<[^>]*>/g, '') || tmdb?.overview || null,
+            tmdb?.poster_path ? `${TMDB_IMG}/w500${tmdb.poster_path}` : anilist?.coverImage?.extraLarge || anilist?.coverImage?.large || null,
+            tmdb?.backdrop_path ? `${TMDB_IMG}/w1280${tmdb.backdrop_path}` : anilist?.bannerImage || null,
             anilist?.genres || [],
             anilist?.startDate?.year || null,
             anilist?.averageScore ? anilist.averageScore / 10 : null,
             anilist?.status || null,
+            tmdb?.id || null,
+            TMDB_IMG,
           ],
         )
 
