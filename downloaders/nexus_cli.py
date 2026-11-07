@@ -319,9 +319,9 @@ def ytdlp_reason(line):
 
 
 # A dead connection makes yt-dlp give up (and retry) instead of waiting forever
-YTDLP_NETWORK = ["--socket-timeout", "30", "--retries", "10", "--fragment-retries", "10"]
-STALL_SECONDS = 90     # no data for this long while downloading: yt-dlp is restarted (it resumes)
-STALL_RESTARTS = 3
+YTDLP_NETWORK = ["--socket-timeout", "15", "--retries", "10", "--fragment-retries", "10"]
+STALL_SECONDS = 15     # no data for this long while downloading: yt-dlp is restarted (it resumes)
+STALL_RESTARTS = 10
 
 
 def ytdlp_run(args, item, on_line=None, stall_seconds=None):
