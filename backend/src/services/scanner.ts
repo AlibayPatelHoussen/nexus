@@ -32,6 +32,7 @@ interface TmdbResult {
   status?: string
   original_language?: string
   genre_ids?: number[]
+  popularity?: number
 }
 
 interface MangaDexRelationship {
@@ -141,13 +142,19 @@ async function searchTMDB(title: string, year?: number, type: 'movie' | 'tv' = '
 
 const TMDB_ANIMATION = 16
 
-/** Among TMDB search results: an animated series, the closest to the AniList year. */
+/**
+ * Among TMDB search results: an animated series from the AniList year (± 1), and among
+ * those the best known one (most votes): « Attack on Titan » (2013, thousands of votes),
+ * never its spin-off « Attack on Titan: Chibi Theater » (2013 too, a handful of votes).
+ */
 export function pickAnimeResult(results: TmdbResult[], year?: number | null): TmdbResult | null {
   const animated = results.filter((r) => r.genre_ids?.includes(TMDB_ANIMATION))
   if (!animated.length) return null
   const yearOf = (r: TmdbResult) => parseInt((r.first_air_date ?? '').slice(0, 4)) || null
-  const close = year ? animated.find((r) => { const y = yearOf(r); return y != null && Math.abs(y - year) <= 1 }) : null
-  return close ?? animated[0]
+  const close = year ? animated.filter((r) => { const y = yearOf(r); return y != null && Math.abs(y - year) <= 1 }) : []
+  const pool = close.length ? close : animated
+  const known = (r: TmdbResult) => (r.vote_count ?? 0) * 1000 + (r.popularity ?? 0)
+  return pool.reduce((a, b) => (known(b) > known(a) ? b : a))
 }
 
 /**
@@ -192,8 +199,8 @@ export async function findAnimeOnTMDB(names: (string | null | undefined)[], year
 /**
  * Animes not linked to their TMDB series yet (scanned before the TMDB look-up existed,
  * or when it could not find them): looked up again by the background enrichment, so a
- * better search reaches the library without a new scan. A TMDB poster / backdrop
- * replaces the AniList cover / banner; the artwork step then adds the logo and key art.
+ * better search reaches the library without a new scan. The TMDB poster / backdrop
+ * replace the previous ones; the artwork step then adds the logo and key art.
  */
 export async function linkAnimesToTmdb(limit = 100): Promise<number> {
   if (!hasTmdbKey()) return 0
@@ -206,13 +213,13 @@ export async function linkAnimesToTmdb(limit = 100): Promise<number> {
     if (!tmdb?.id) continue
     await query(
       `UPDATE media_items SET tmdb_id = $2,
-         poster_path   = CASE WHEN $3::text IS NOT NULL AND COALESCE(poster_path, '') NOT LIKE $5 || '%' THEN $3 ELSE poster_path END,
-         backdrop_path = CASE WHEN $4::text IS NOT NULL AND COALESCE(backdrop_path, '') NOT LIKE $5 || '%' THEN $4 ELSE backdrop_path END,
-         overview      = COALESCE(overview, $6),
-         artwork_checked_at = NULL
+         poster_path   = COALESCE($3, poster_path),
+         backdrop_path = COALESCE($4, backdrop_path),
+         overview      = COALESCE(overview, $5),
+         imdb_checked_at = NULL, artwork_checked_at = NULL
        WHERE id = $1 AND tmdb_id IS NULL`,
       [r.id, tmdb.id, tmdb.poster_path ? `${TMDB_IMG}/w500${tmdb.poster_path}` : null,
-        tmdb.backdrop_path ? `${TMDB_IMG}/w1280${tmdb.backdrop_path}` : null, TMDB_IMG, tmdb.overview || null])
+        tmdb.backdrop_path ? `${TMDB_IMG}/w1280${tmdb.backdrop_path}` : null, tmdb.overview || null])
     linked++
     logger.info(`Anime « ${r.title} » linked to TMDB ${tmdb.id}`)
   }

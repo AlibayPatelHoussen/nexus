@@ -4,6 +4,9 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Fixed — Attack on Titan was linked to its chibi spin-off
+- An anime is linked to the best-known animated TMDB series of its year (most votes), not the first one TMDB lists: Attack on Titan had been linked to « Attack on Titan: Chibi Theater » (2013 too), hence the chibi picture and no logo. Every anime is linked again after the update (poster, logo, key art, IMDb rating)
+
 ### Fixed — animes scanned before get their TMDB series by themselves
 - The background enrichment (after every update, scan, and once a day) also looks up the TMDB series of animes not linked yet: Attack on Titan, scanned before the better search, gets its poster with the title, its logo and key art without a new library scan
 

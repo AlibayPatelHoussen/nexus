@@ -9,6 +9,13 @@ describe('anime → TMDB series (posters with the title, logo, key art)', () => 
     expect(pickAnimeResult([live])).toBeNull()
   })
 
+  it('the series itself, not its chibi spin-off from the same year (the owner\'s Attack on Titan)', () => {
+    const chibi = { id: 224499, name: 'Attack on Titan: Chibi Theater', first_air_date: '2013-12-23', genre_ids: [16, 35], vote_count: 9 }
+    const main = { id: 1429, name: 'L’Attaque des Titans', first_air_date: '2013-04-07', genre_ids: [16, 10765, 10759], vote_count: 7200 }
+    expect(pickAnimeResult([chibi, main], 2013)?.id).toBe(1429)
+    expect(pickAnimeResult([chibi, main])?.id).toBe(1429)
+  })
+
   it('prefers the one from the AniList year', () => {
     const dbz = { id: 12971, name: 'Dragon Ball Z', first_air_date: '1989-04-26', genre_ids: [16] }
     const kai = { id: 61709, name: 'Dragon Ball Z Kai', first_air_date: '2009-04-05', genre_ids: [16] }
