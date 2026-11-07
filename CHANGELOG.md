@@ -5,7 +5,7 @@ All notable changes to Nexus will be documented here.
 ## [Unreleased]
 
 ### Changed — One Piece colour and black & white are one manga
-- anime-sama: another edition of the same scans (« Scans (noir et blanc) », colour) is no longer a separate result: it is a version of the manga, chosen like VF / VOSTFR (« Couleur » / « Noir et blanc »). Downloaded into the manga's own folder (« One Piece/VF Noir et blanc »), so the library shows one manga, with its poster; editions downloaded before move there by themselves. One-shots and spin-offs stay separate
+- anime-sama: another edition of the same scans (« Scans (noir et blanc) », colour) is no longer a separate result: it is a version of the manga, chosen like VF / VOSTFR (« Noir et blanc » / « Couleur »). Black & white comes first and is the default: it is the weekly release (One Piece: 1199 chapters, colour 1004). Downloaded into the manga's own folder (« One Piece/VF Noir et blanc »), so the library shows one manga, with its poster; editions downloaded before move there by themselves. One-shots and spin-offs stay separate
 - Library: a manga with several versions (VF / VOSTFR, colour / black & white) shows one at a time with a version choice above its chapters; the reader stays in the version of the chapter opened
 
 ### Security — server journals are admin-only

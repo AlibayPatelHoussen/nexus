@@ -709,10 +709,12 @@ test('manga editions: colour and black & white are ONE manga with a version choi
   await page.goto(`${B}/media/${id}`, { waitUntil: 'networkidle' })
   await page.waitForSelector('[role="radiogroup"][aria-label="Version"]')
   const rows = page.locator('[role="list"] button:has-text("Chapitre")')
+  eq(await rows.count(), 1, 'black & white chapters first (the weekly release)')
+  await page.click('[role="radiogroup"][aria-label="Version"] >> text=Couleur')
+  for (let i = 0; i < 50 && await rows.count() !== 2; i++) await sleep(100)
   eq(await rows.count(), 2, 'colour chapters')
   await page.click('[role="radiogroup"][aria-label="Version"] >> text=Noir et blanc')
   for (let i = 0; i < 50 && await rows.count() !== 1; i++) await sleep(100)
-  eq(await rows.count(), 1, 'black & white chapters')
   await sleep(600)   // the segment's thumb slides
   await page.screenshot({ path: `${SHOTS}/manga-editions.png` })
   await rows.first().click()

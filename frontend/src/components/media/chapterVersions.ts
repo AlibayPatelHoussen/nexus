@@ -6,8 +6,9 @@ import type { Chapter } from '@/types'
  */
 export function chapterVersions(chapters: Pick<Chapter, 'language'>[]): string[] {
   const all = [...new Set(chapters.map((c) => c.language).filter(Boolean))] as string[]
-  // Main version first (« VF » before « VF Noir et blanc »), VF before VOSTFR
-  return all.sort((a, b) => a.split(' ')[0].localeCompare(b.split(' ')[0]) || a.length - b.length)
+  // Black & white first (the weekly release, the default), then VF before VOSTFR
+  const bw = (v: string) => (versionName(v, all).startsWith('Noir et blanc') ? 0 : 1)
+  return all.sort((a, b) => bw(a) - bw(b) || a.split(' ')[0].localeCompare(b.split(' ')[0]) || a.length - b.length)
 }
 
 /**

@@ -4,8 +4,9 @@ import { chapterVersions, versionName } from '@/components/media/chapterVersions
 const ch = (...langs: (string | null)[]) => langs.map((language) => ({ language }))
 
 describe('manga versions in the library', () => {
-  it('lists the version folders, main version first', () => {
-    expect(chapterVersions(ch('VF Noir et blanc', 'VF', 'VF', null))).toEqual(['VF', 'VF Noir et blanc'])
+  it('lists the version folders, black & white first', () => {
+    // Black & white (the weekly release) first: it is the default
+    expect(chapterVersions(ch('VF', 'VF Noir et blanc', 'VF', null))).toEqual(['VF Noir et blanc', 'VF'])
     expect(chapterVersions(ch('VOSTFR', 'VF'))).toEqual(['VF', 'VOSTFR'])
     expect(chapterVersions(ch(null, null))).toEqual([])
   })

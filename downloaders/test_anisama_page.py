@@ -127,15 +127,17 @@ class EditionsTest(unittest.TestCase):
 
     def test_options_one_language(self):
         opts = self.ns["_scan_options"](["VF"], [self.NB, {"seg": "scan_one_shot", "name": "Gaiden", "langs": ["VF"], "edition": None}])
+        # Real One Piece page: « Scans (couleur) » = scan/vf, « Scans (noir et blanc) » = scan_noir-et-blanc/vf;
+        # black & white (the weekly one) comes first, so it is the default
         self.assertEqual([(o["lang"], o["seg"], o["folder"], o["label"]) for o in opts], [
-            ("VF", "scan", "VF", "Couleur"),
             ("VFNB", "scan_noir-et-blanc", "VF Noir et blanc", "Noir et blanc"),
+            ("VF", "scan", "VF", "Couleur"),
         ])
 
     def test_options_two_languages(self):
         nb = {**self.NB, "langs": ["VF", "VOSTFR"]}
         labels = [o["label"] for o in self.ns["_scan_options"](["VF"], [nb])]
-        self.assertEqual(labels, ["Couleur · VF", "Noir et blanc · VF", "Noir et blanc · VOSTFR"])
+        self.assertEqual(labels, ["Noir et blanc · VF", "Noir et blanc · VOSTFR", "Couleur · VF"])
 
     def test_options_without_editions(self):
         opts = self.ns["_scan_options"](["VF", "VOSTFR"], [])

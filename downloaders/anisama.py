@@ -1487,7 +1487,9 @@ def _scan_options(scans, variants, only=None):
     for o in opts:
         b = _split_lang(o["lang"])[0]
         o["label"] = (f"{o['edition']} · {b}" if len(bases) > 1 else o["edition"]) if o["edition"] else b
-    return opts
+    # Black & white first (the default choice): it is the weekly release, colour comes
+    # years later (One Piece: chapters 1–1199 in black & white, 1–1004 in colour)
+    return sorted(opts, key=lambda o: o["edition"] != "Noir et blanc")
 
 
 def _move_old_editions(title, variants):
