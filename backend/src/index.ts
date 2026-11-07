@@ -27,6 +27,7 @@ import { startDownloadWorker } from './services/downloads'
 import { startFollowChecker } from './services/follows'
 import { startCatalogueRefresher } from './services/catalogue'
 import { startImdbSync } from './services/imdb'
+import { startYtDlpUpdater } from './services/ytdlp'
 import terminalRoutes from './routes/terminal'
 import imagesRoutes   from './routes/images'
 import { registerSocketHandlers } from './socket'
@@ -148,6 +149,7 @@ if (require.main === module) {
     startFollowChecker()
     startCatalogueRefresher()
     startImdbSync()
+    startYtDlpUpdater()
   })
 }
 

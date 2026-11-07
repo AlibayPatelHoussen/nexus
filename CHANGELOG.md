@@ -4,6 +4,10 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Fixed — YouTube downloads failed with « HTTP Error 403 »
+- yt-dlp is kept up to date by itself (at every deployment and once a day), with yt-dlp-ejs, and uses Node.js to pass YouTube's checks when deno is not installed: the server's 8-month-old yt-dlp without a JavaScript runtime got « HTTP Error 403: Forbidden »
+- A failed YouTube download says why in French (anti-bot check, private or removed video, yt-dlp too old…) instead of « Téléchargement YouTube impossible »
+
 ### Fixed — Attack on Titan was linked to its chibi spin-off
 - An anime is linked to the best-known animated TMDB series of its year (most votes), not the first one TMDB lists: Attack on Titan had been linked to « Attack on Titan: Chibi Theater » (2013 too), hence the chibi picture and no logo. Every anime is linked again after the update (poster, logo, key art, IMDb rating)
 

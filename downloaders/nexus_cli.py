@@ -268,6 +268,27 @@ YTDLP_PROGRESS = [
 ]
 
 
+_js_args = None
+
+
+def ytdlp_cmd():
+    """yt-dlp with a JavaScript runtime it can use: YouTube's protections need one (else
+    « HTTP Error 403 » / missing formats). deno is yt-dlp's default; when it is not
+    installed, Node.js (usually there) is enabled. Only with a yt-dlp that knows the option."""
+    global _js_args
+    if _js_args is None:
+        _js_args = []
+        import shutil
+        if not shutil.which("deno") and shutil.which("node"):
+            try:
+                help_text = subprocess.run(["yt-dlp", "--help"], capture_output=True, text=True, timeout=30).stdout
+                if "--js-runtimes" in help_text:
+                    _js_args = ["--js-runtimes", "node"]
+            except (OSError, subprocess.SubprocessError):
+                pass
+    return ["yt-dlp", *_js_args]
+
+
 # Last « ERROR: … » line of the last yt-dlp run (shown to the owner instead of a bare failure)
 last_ytdlp_error = None
 
@@ -302,7 +323,7 @@ def ytdlp_run(args, item, on_line=None):
     Its error output still goes to the log; the last ERROR line is kept in last_ytdlp_error."""
     global last_ytdlp_error
     last_ytdlp_error = None
-    cmd = ["yt-dlp", *YTDLP_PROGRESS, *args]
+    cmd = [*ytdlp_cmd(), *YTDLP_PROGRESS, *args]
     throttle = Throttle()
     others = []
     try:

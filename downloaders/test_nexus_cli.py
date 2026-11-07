@@ -176,5 +176,36 @@ class YtdlpErrors(unittest.TestCase):
         self.assertIn("WARNING: x", logged)   # still in the log
 
 
+class YtdlpJsRuntime(unittest.TestCase):
+    """No deno on the owner's server: yt-dlp is told to use Node.js (YouTube needs a JS runtime)."""
+
+    def run_with(self, files, help_text):
+        with tempfile.TemporaryDirectory() as d:
+            for name in files:
+                p = Path(d) / name
+                p.write_text("#!/bin/sh\nexit 0\n")
+                p.chmod(0o755)
+            fake = Path(d) / "yt-dlp"
+            fake.write_text(f"#!/bin/sh\necho '{help_text}'\n")
+            fake.chmod(0o755)
+            old = os.environ["PATH"]
+            os.environ["PATH"] = d
+            nexus_cli._js_args = None
+            try:
+                return nexus_cli.ytdlp_cmd()
+            finally:
+                os.environ["PATH"] = old
+                nexus_cli._js_args = None
+
+    def test_node_when_no_deno(self):
+        self.assertEqual(self.run_with(["node"], "--js-runtimes RUNTIME"), ["yt-dlp", "--js-runtimes", "node"])
+
+    def test_deno_is_the_default(self):
+        self.assertEqual(self.run_with(["node", "deno"], "--js-runtimes RUNTIME"), ["yt-dlp"])
+
+    def test_old_ytdlp_without_the_option(self):
+        self.assertEqual(self.run_with(["node"], "--format FORMAT"), ["yt-dlp"])
+
+
 if __name__ == "__main__":
     unittest.main()
