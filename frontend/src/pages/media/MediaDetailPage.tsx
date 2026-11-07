@@ -1,6 +1,6 @@
 import FollowGroup from '@/components/downloads/FollowGroup'
 import { useState } from 'react'
-import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
+import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, Check, Play, Plus, RotateCw, Star, Tv } from 'lucide-react'
 import MediaRow from '@/components/media/MediaRow'
@@ -8,7 +8,6 @@ import DetailHero from '@/components/media/DetailHero'
 import Artwork from '@/components/media/Artwork'
 import Skeleton from '@/components/ui/Skeleton'
 import ChaptersSection from '@/components/media/ChaptersSection'
-import ArtworkSheet from '@/components/media/ArtworkSheet'
 import { mediaService } from '@/services/mediaService'
 import { formatDuration, formatBytes } from '@/utils'
 import EpisodesSection from '@/components/media/EpisodesSection'
@@ -41,10 +40,6 @@ export default function MediaDetailPage() {
   const { device } = useShell()
   const phone = device === 'phone'
   const isAdmin = useAuthStore((st) => st.user?.role === 'admin')
-  // « Image et logo… » also opens from a title's menu (?artwork=1)
-  const [params, setParams] = useSearchParams()
-  const [artworkOpen, setArtworkOpen] = useState(params.get('artwork') === '1')
-  const closeArtwork = () => { setArtworkOpen(false); if (params.has('artwork')) { params.delete('artwork'); setParams(params, { replace: true }) } }
   const [activeSeason, setActiveSeason] = useState<number | null>(null)
   const [scanning, setScanning] = useState(false)
 
@@ -320,16 +315,6 @@ export default function MediaDetailPage() {
 
       {/* Chapters (manga / webtoon) */}
       {isReading && !isPlaceholderData && <ChaptersSection chapters={chapters} onRead={(chapterId, version) => play(undefined, chapterId, version)} onScan={scan} scanning={scanning} />}
-
-      {/* Billboard key art and title logo chosen by hand (admin; titles with TMDB artwork) */}
-      {isAdmin && media.tmdbId && (media.type === 'film' || media.type === 'serie' || media.type === 'anime') && (
-        <>
-          <Group className="max-w-[640px] mb-10">
-            <ListRow title="Image et logo" subtitle="Choisir l’image « À la une » et le logo du titre" accessory="chevron" onClick={() => setArtworkOpen(true)} />
-          </Group>
-          <ArtworkSheet media={media} open={artworkOpen} onClose={closeArtwork} />
-        </>
-      )}
 
       {/* Automatic downloads of what comes next (off unless switched on) */}
       {isAdmin && (media.type === 'anime' || media.type === 'serie' || media.type === 'manga' || media.type === 'webtoon') && (

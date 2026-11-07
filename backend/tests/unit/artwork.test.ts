@@ -1,6 +1,6 @@
 jest.mock('../../src/config/database', () => ({ query: jest.fn() }))
 import sharp from 'sharp'
-import { isTmdbOriginal, isTransparentLogo, logoCandidates, pickArtwork } from '../../src/services/artwork'
+import { isTransparentLogo, logoCandidates, pickArtwork } from '../../src/services/artwork'
 
 const img = (file_path: string, iso_639_1: string | null, vote_average = 5, width = 1000) => ({ file_path, iso_639_1, vote_average, vote_count: 10, width })
 
@@ -41,12 +41,11 @@ describe('pickArtwork (TMDB /images → Apple TV artwork)', () => {
     expect(await isTransparentLogo(logo)).toBe(true)
   })
 
-  it('only original TMDB images can be chosen by hand', () => {
-    expect(isTmdbOriginal('https://image.tmdb.org/t/p/original/abc_D-1.jpg')).toBe(true)
-    expect(isTmdbOriginal('https://image.tmdb.org/t/p/original/logo.svg')).toBe(true)
-    expect(isTmdbOriginal('https://image.tmdb.org/t/p/w500/abc.jpg')).toBe(false)
-    expect(isTmdbOriginal('https://evil.example/t/p/original/abc.jpg')).toBe(false)
-    expect(isTmdbOriginal('https://image.tmdb.org/t/p/original/../x.jpg')).toBe(false)
+  it('a small fan picture never beats a sharp one (Attack on Titan), the best-rated otherwise', () => {
+    const chibi = { file_path: '/chibi.jpg', iso_639_1: null, vote_average: 10, vote_count: 1, width: 600 }
+    const key = { file_path: '/key.jpg', iso_639_1: null, vote_average: 6, vote_count: 40, width: 2000 }
+    expect(pickArtwork({ posters: [chibi, key] }).keyArt).toMatch(/\/key\.jpg$/)
+    expect(pickArtwork({ posters: [chibi, { ...key, width: 800 }] }).keyArt).toMatch(/\/chibi\.jpg$/)   // no sharp one: as before
   })
 
   it('returns nulls when TMDB has nothing', () => {

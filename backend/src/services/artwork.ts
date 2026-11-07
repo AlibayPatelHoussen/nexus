@@ -6,12 +6,12 @@ import { cachedImage } from './images'
 
 /*
  * Apple TV-style artwork from TMDB's image catalogue (`/movie|tv/{id}/images`):
- *  - key art: the best-voted poster WITHOUT text (iso_639_1 = null), full
+ *  - key art: the best-voted poster WITHOUT text (iso_639_1 = null), at least 1000 px
+ *    wide when TMDB has such pictures, full
  *    resolution, for the billboard and the title page on iPhone;
  *  - logo: the title treatment (PNG), French first, then English, then textless; for
  *    a title with no PNG logo, an SVG one with a transparent background (rasterised
  *    to PNG by the image cache, never served as SVG);
- *  - the owner can choose them by hand (« Image et logo… »): then they are locked;
  *  - hero backdrop: the best-voted textless backdrop, full resolution.
  * Full-resolution files are downscaled once by the image cache (images.ts).
  */
@@ -43,13 +43,20 @@ export function logoCandidates(logos: TmdbImage[] = []): TmdbImage[] {
   return [...byLang(/\.png$/i), ...byLang(/\.svg$/i)]
 }
 
+/** Pictures at least 1000 px wide when there are some: a small fan picture (Attack on
+ *  Titan's blurry chibi poster) never beats a sharp one; nothing changes otherwise. */
+const sharpFirst = (list: TmdbImage[]) => {
+  const big = list.filter((i) => (i.width ?? 0) >= 1000)
+  return big.length ? big : list
+}
+
 const original = (i: TmdbImage | undefined) => (i ? `${TMDB_IMG}/original${i.file_path}` : null)
 
 /** Picks key art, logo and backdrop from a TMDB /images response. */
 export function pickArtwork(data: { posters?: TmdbImage[]; logos?: TmdbImage[]; backdrops?: TmdbImage[] }) {
   const textless = (l?: TmdbImage[]) => (l ?? []).filter((i) => !i.iso_639_1)
   return {
-    keyArt:   original(best(textless(data.posters))),
+    keyArt:   original(best(sharpFirst(textless(data.posters)))),
     logo:     original(logoCandidates(data.logos)[0]),
     backdrop: original(best(textless(data.backdrops))),
   }
@@ -88,32 +95,14 @@ export async function tmdbImages(kind: 'movie' | 'tv', tmdbId: number) {
   return (data ?? {}) as { posters?: TmdbImage[]; logos?: TmdbImage[]; backdrops?: TmdbImage[] }
 }
 
-/** Choices for the owner (« Image et logo… »): textless key art and usable logos, best first. */
-export async function artworkOptions(kind: 'movie' | 'tv', tmdbId: number) {
-  const data = await tmdbImages(kind, tmdbId)
-  const textless = (data.posters ?? []).filter((i) => !i.iso_639_1)
-  return {
-    keyArts: ranked(textless).slice(0, 30).map((i) => ({ url: original(i)!, thumb: `${TMDB_IMG}/w342${i.file_path}` })),
-    logos:   logoCandidates(data.logos).slice(0, 20).map((i) => ({
-      url: original(i)!, thumb: /\.svg$/i.test(i.file_path) ? original(i)! : `${TMDB_IMG}/w300${i.file_path}`, lang: i.iso_639_1 ?? null,
-    })),
-  }
-}
-
-/** A URL the owner may choose: an original TMDB image (never anything else). */
-export const isTmdbOriginal = (url: unknown): url is string =>
-  typeof url === 'string' && url.startsWith(`${TMDB_IMG}/original/`) && /^\/[A-Za-z0-9_-]+\.(jpe?g|png|svg)$/.test(url.slice(`${TMDB_IMG}/original`.length))
-
 /** Fetches the artwork of titles not checked yet (or checked more than 30 days ago). */
-export async function linkArtwork(limit = 300, onlyId?: string): Promise<number> {
+export async function linkArtwork(limit = 300): Promise<number> {
   if (!hasTmdbKey()) return 0
   const { rows } = await query<{ id: string; type: string; tmdb_id: number }>(
     `SELECT id, type, tmdb_id FROM media_items
       WHERE tmdb_id IS NOT NULL AND type IN ('film', 'serie', 'anime')
-        AND NOT artwork_locked
         AND (artwork_checked_at IS NULL OR artwork_checked_at < NOW() - INTERVAL '30 days')
-        AND ($2::uuid IS NULL OR id = $2::uuid)
-      ORDER BY created_at DESC LIMIT $1`, [limit, onlyId ?? null])
+      ORDER BY created_at DESC LIMIT $1`, [limit])
   let found = 0
   for (const r of rows) {
     const kind = r.type === 'film' ? 'movie' : 'tv'
@@ -122,7 +111,7 @@ export async function linkArtwork(limit = 300, onlyId?: string): Promise<number>
       const a = pickArtwork(data)
       const logo = await chooseLogo(logoCandidates(data.logos))
       await query(
-        `UPDATE media_items SET key_art_path = $2, logo_path = $3, hero_backdrop_path = $4, artwork_checked_at = NOW() WHERE id = $1 AND NOT artwork_locked`,
+        `UPDATE media_items SET key_art_path = $2, logo_path = $3, hero_backdrop_path = $4, artwork_checked_at = NOW() WHERE id = $1`,
         [r.id, a.keyArt, logo, a.backdrop])
       if (a.keyArt || logo || a.backdrop) found++
     } catch (err) {

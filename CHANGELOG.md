@@ -4,11 +4,8 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
-### Added — « Image et logo… »: choose the billboard picture and the title logo
-- Title page (admin) or a title's menu: pick the « À la une » picture among TMDB's textless pictures and the title logo (or the title in text); a choice made by hand is never replaced automatically, « Automatique » gives it back to Nexus
-
 ### Fixed — logos and pictures picked automatically
-- Back to the previous picture rule (the best-rated one): Marty Supreme has its picture back
+- Back to the previous picture rule (the best-rated one): Marty Supreme has its picture back; only a small fan picture (Attack on Titan's blurry chibi) is passed over when a picture at least 1000 px wide exists
 - Title logos as before (the PNG logo, French, then English, then language-free): Dragon Ball Super and Bleach are back to what they were. Only a title with no PNG logo at all (Attack on Titan) takes an SVG one, if it has a transparent background; never another language. Every title is looked up again after the update
 
 ### Fixed — title logos in SVG

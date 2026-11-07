@@ -107,7 +107,7 @@ http.createServer((req, res) => {
       // The anime (One Piece): SVG logos only, like many anime on TMDB
       if (Number(id) === hash('One Piece')) {
         return json(res, {
-          posters:   [{ file_path: `/keyart_${id}.jpg`, iso_639_1: null, vote_average: 6, vote_count: 40 }, { file_path: `/chibi_${id}.jpg`, iso_639_1: null, vote_average: 10, vote_count: 1 }],
+          posters:   [{ file_path: `/keyart_${id}.jpg`, iso_639_1: null, vote_average: 6, vote_count: 40, width: 2000 }, { file_path: `/chibi_${id}.jpg`, iso_639_1: null, vote_average: 10, vote_count: 1, width: 600 }],
           logos:     [{ file_path: `/logo_box_fr_${id}.svg`, iso_639_1: 'fr', vote_average: 9 }, { file_path: `/logo_ja_${id}.png`, iso_639_1: 'ja', vote_average: 10 },
             { file_path: `/logo_en_${id}.svg`, iso_639_1: 'en', vote_average: 5 }],
           backdrops: [{ file_path: `/herobackdrop_${id}.jpg`, iso_639_1: null, vote_average: 5 }],
