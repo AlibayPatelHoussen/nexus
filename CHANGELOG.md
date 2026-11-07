@@ -4,9 +4,12 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
-### Fixed — title logos in SVG, better key art
-- Title logos that TMDB only has as SVG (many animes, e.g. Attack on Titan) are now used: the image cache turns them into PNG (an SVG is never served). French, then English, then textless, then any language
-- Key art / backdrops / logos: the vote average is weighted by the number of votes, so a fan picture rated 10 by one person (Attack on Titan's chibi poster) no longer beats the official key art. Every title's artwork is looked up again after the update
+### Fixed — logos and pictures picked automatically
+- Back to the previous picture rule (the best-rated one): Marty Supreme has its picture back; only a small fan picture (Attack on Titan's blurry chibi) is passed over when a picture at least 1000 px wide exists
+- Title logos as before (the PNG logo, French, then English, then language-free): Dragon Ball Super and Bleach are back to what they were. Only a title with no PNG logo at all (Attack on Titan) takes an SVG one, if it has a transparent background; never another language. Every title is looked up again after the update
+
+### Fixed — title logos in SVG
+- Title logos that TMDB only has as SVG (Attack on Titan) can be used: the image cache turns them into PNG (an SVG is never served)
 
 ### Fixed — animes get real posters and the title logo
 - The TMDB search also tries the folder name first and every title without its season / subtitle (AniList has one entry per season or movie, « Shingeki no Kyojin: The Final Season », TMDB one series « L'Attaque des Titans »), and is no longer skipped when AniList matched a movie / OVA
