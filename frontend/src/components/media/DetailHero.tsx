@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { motion } from 'framer-motion'
-import { Check, Play, Plus, Star } from 'lucide-react'
+import { Check, Download, Play, Plus, Star } from 'lucide-react'
 import type { MediaItem } from '@/types'
 import { useShell } from '@/components/shell/shellContext'
 import { spring } from '@/design/motion'
@@ -17,6 +17,9 @@ interface DetailHeroProps {
   isFav:      boolean | null
   onFav:      () => void
   favBusy?:   boolean
+  /** Admin, series / anime: « Télécharger » more episodes (round glass button after « + ») */
+  onDownload?: () => void
+  downloadBusy?: boolean
   /** Line above the synopsis: the episode up next */
   upNext?:    string | null
 }
@@ -82,7 +85,7 @@ const BLUR_MASK = 'linear-gradient(0deg, #000 0%, #000 30%, transparent 52%)'
  * the round glass « + », the synopsis beside them. The artwork keeps the
  * `media-art` view-transition name: the poster that was clicked grows into it.
  */
-export default function DetailHero({ media, facts, rating, playLabel, canPlay, onPlay, isFav, onFav, favBusy, upNext }: DetailHeroProps) {
+export default function DetailHero({ media, facts, rating, playLabel, canPlay, onPlay, isFav, onFav, favBusy, upNext, onDownload, downloadBusy }: DetailHeroProps) {
   const { device } = useShell()
   const phone = device === 'phone'
   const art = useRef<HTMLDivElement>(null)
@@ -108,6 +111,21 @@ export default function DetailHero({ media, facts, rating, playLabel, canPlay, o
       title={isFav ? 'Retirer de ma liste' : 'Ajouter à ma liste'}
     >
       {isFav ? <Check size={phone ? 22 : 19} strokeWidth={2.25} /> : <Plus size={phone ? 24 : 20} strokeWidth={2.25} />}
+    </motion.button>
+  )
+
+  const downloadButton = (size: string) => onDownload && (
+    <motion.button
+      type="button"
+      onClick={onDownload}
+      aria-busy={downloadBusy || undefined}
+      whileTap={{ scale: 0.9 }}
+      transition={spring.press}
+      className={cn(size, 'flex-shrink-0 grid place-items-center rounded-full glass-clear')}
+      aria-label="Télécharger d’autres épisodes"
+      title="Télécharger d’autres épisodes"
+    >
+      <Download size={phone ? 22 : 19} strokeWidth={2.25} className={downloadBusy ? 'animate-pulse' : undefined} />
     </motion.button>
   )
 
@@ -161,6 +179,7 @@ export default function DetailHero({ media, facts, rating, playLabel, canPlay, o
               <span className="truncate">{playLabel}</span>
             </button>
             {favButton('w-[50px] h-[50px]')}
+            {downloadButton('w-[50px] h-[50px]')}
           </div>
           {(upNext || media.overview) && (
             <div className="mt-4 text-[15px] leading-[20px] text-white/80">
@@ -206,6 +225,7 @@ export default function DetailHero({ media, facts, rating, playLabel, canPlay, o
                 {playLabel}
               </button>
               {favButton('w-11 h-11')}
+              {downloadButton('w-11 h-11')}
             </div>
           </div>
           {!phone && (media.overview || upNext) && (

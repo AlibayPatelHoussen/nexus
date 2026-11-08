@@ -1,9 +1,13 @@
 import FollowGroup from '@/components/downloads/FollowGroup'
-import { useState } from 'react'
+import DetailSheet from '@/pages/downloads/DetailSheet'
+import type { SearchResult } from '@/services/downloadsService'
+import { downloadKind, targetResult, useDownloadTarget } from '@/hooks/useDownloadTarget'
+import { isAxiosError } from 'axios'
+import { useEffect, useState } from 'react'
 import { useFavorites } from '@/hooks/useFavorites'
 import { useParams, useNavigate } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, Check, Play, Plus, RotateCw, Star, Tv } from 'lucide-react'
+import { AlertTriangle, Check, Download, Play, Plus, RotateCw, Star, Tv } from 'lucide-react'
 import MediaRow from '@/components/media/MediaRow'
 import DetailHero from '@/components/media/DetailHero'
 import Artwork from '@/components/media/Artwork'
@@ -44,6 +48,9 @@ export default function MediaDetailPage() {
   const isAdmin = useAuthStore((st) => st.user?.role === 'admin')
   const [activeSeason, setActiveSeason] = useState<number | null>(null)
   const [scanning, setScanning] = useState(false)
+  // « Télécharger »: the episodes / chapters of this title on its site, in the download sheet
+  const [dlSheet, setDlSheet] = useState<SearchResult | null>(null)
+  const [dlWanted, setDlWanted] = useState(false)
 
   const { data: media, isLoading, isError, refetch, isPlaceholderData } = useQuery({
     queryKey: ['media', id],
@@ -67,6 +74,24 @@ export default function MediaDetailPage() {
     queryFn:  () => mediaService.getEpisodesProgress(id!),
     enabled:  !!id,
   })
+
+  const dlKind = isAdmin ? downloadKind(media?.type) : null
+  const dlTarget = useDownloadTarget(id, !!dlKind)
+  // Tapped before the title was found on the site: open as soon as it is (or say why not)
+  useEffect(() => {
+    if (!dlWanted || !dlKind) return
+    if (dlTarget.data) { setDlSheet(targetResult(dlTarget.data, dlKind)); setDlWanted(false) }
+    else if (dlTarget.isError) {
+      const e = dlTarget.error
+      toast.error((isAxiosError(e) && e.response?.data?.error) || 'Titre introuvable sur le site de téléchargement')
+      setDlWanted(false)
+    }
+  }, [dlWanted, dlKind, dlTarget.data, dlTarget.isError, dlTarget.error])
+  const openDownload = dlKind ? () => {
+    if (dlTarget.isError) void dlTarget.refetch()
+    setDlWanted(true)
+  } : undefined
+  const dlBusy = dlWanted && !dlTarget.data && !dlTarget.isError
 
   const { data: progress } = useQuery({
     queryKey: ['progress', id],
@@ -222,6 +247,8 @@ export default function MediaDetailPage() {
           isFav={isFav}
           onFav={() => favorites.toggle(media)}
           favBusy={favorites.busy}
+          onDownload={openDownload}
+          downloadBusy={dlBusy}
           upNext={nextEpisode && isShow && episodesProgress.length > 0 ? `S${nextEpisode.season ?? 1}, É${nextEpisode.episodeNumber}${nextEpisode.title ? ` · ${nextEpisode.title}` : ''}` : null}
         />
       )}
@@ -259,6 +286,11 @@ export default function MediaDetailPage() {
               onClick={() => favorites.toggle(media)} disabled={favorites.busy} aria-pressed={isFav === true}>
               Ma liste
             </Button>
+            {openDownload && (
+              <Button size={phone ? 'large' : 'regular'} icon={<Download size={14} strokeWidth={2} />} onClick={openDownload} loading={dlBusy}>
+                Télécharger
+              </Button>
+            )}
           </div>
           {nextEpisode && isShow && (
             <p className="text-subhead text-label mt-4 font-medium">
@@ -323,6 +355,7 @@ export default function MediaDetailPage() {
 
       {/* More like this */}
       {similar.length > 0 && <MediaRow title="Titres similaires" items={similar} />}
+      <DetailSheet result={dlSheet} onClose={() => setDlSheet(null)} />
     </Page>
   )
 }
