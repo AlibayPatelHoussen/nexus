@@ -4,6 +4,9 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Changed — Liquid Glass back button everywhere
+- The back button of every page is the round Liquid Glass button of the Médias pages (iPhone: instead of « ‹ Manga » in blue text; Mac: a glass button in the toolbar)
+
 ### Changed — iOS 26 menus
 - On iPhone, the « … » menus (Terminal, Fichiers) and long-press menus grow out of the button / the pressed item as an iOS 26 Liquid Glass menu with icons, instead of the old iOS action sheet at the bottom
 - In dark mode, the rim of large glass surfaces (menus, sheets, sidebar) is much softer: no more white border
