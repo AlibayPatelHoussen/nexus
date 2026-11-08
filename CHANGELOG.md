@@ -4,6 +4,10 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Added — « Retirer de Reprendre »
+- Films, series and animes can be removed from « Reprendre »: « … » button on the card (always on iPhone, on hover on Mac) or long press / right click → « Retirer de Reprendre ». The progress is kept; watching the title again brings it back (migration 012)
+- iPhone menus widen to fit their labels (no more « Retirer de Reprend… »)
+
 ### Fixed — Terminal keyboard
 - On touch screens, the keys under the terminal (Esc, Tab, Ctrl+C…), Copier / Coller and the connection no longer open the soft keyboard: it opens only when the terminal itself is tapped (if it is already open, it stays open)
 

@@ -189,7 +189,7 @@ export class MediaService {
          FROM watch_history w
          JOIN media_items m ON m.id = w.media_item_id
          LEFT JOIN episodes e ON e.id = w.episode_id
-         WHERE w.user_id = $1 AND w.completed = false AND w.progress > 30
+         WHERE w.user_id = $1 AND w.completed = false AND w.progress > 30 AND NOT w.dismissed
          ORDER BY m.id, w.updated_at DESC
        ) t
        ORDER BY updated_at DESC
@@ -206,6 +206,11 @@ export class MediaService {
       episodeNumber: row['episode_number'],
       episodeTitle:  row['episode_title'],
     }))
+  }
+
+  /** « Retirer de Reprendre »: progress is kept, watching again brings the title back */
+  static async dismissContinue(userId: string, mediaId: string): Promise<void> {
+    await query('UPDATE watch_history SET dismissed = TRUE WHERE user_id = $1 AND media_item_id = $2', [userId, mediaId])
   }
 
   static async getFavorites(userId: string) {
@@ -248,7 +253,7 @@ export class MediaService {
     // FROM matches films, whose episode_id is NULL)
     const params = [userId, mediaId, episodeId || null, progress, duration, completed]
     const updated = await query(
-      `UPDATE watch_history SET progress = $4, duration = $5, completed = $6, updated_at = NOW()
+      `UPDATE watch_history SET progress = $4, duration = $5, completed = $6, dismissed = FALSE, updated_at = NOW()
        WHERE user_id = $1 AND media_item_id = $2 AND episode_id IS NOT DISTINCT FROM $3`,
       params,
     )
@@ -263,7 +268,7 @@ export class MediaService {
       // Concurrent save inserted the row first: update it instead
       if ((err as { code?: string }).code !== '23505') throw err
       await query(
-        `UPDATE watch_history SET progress = $4, duration = $5, completed = $6, updated_at = NOW()
+        `UPDATE watch_history SET progress = $4, duration = $5, completed = $6, dismissed = FALSE, updated_at = NOW()
          WHERE user_id = $1 AND media_item_id = $2 AND episode_id IS NOT DISTINCT FROM $3`,
         params,
       )
