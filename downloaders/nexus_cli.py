@@ -38,10 +38,52 @@ def early_json() -> bool:
     if _OUT is None:
         _OUT = sys.stdout
         sys.stdout = sys.stderr
+        _stop_with_nexus()
     return True
 
 
+import signal
 import threading
+
+# yt-dlp runs in its own process group (so a stall stops it with its ffmpeg): a signal sent
+# to this script's group does not reach it. Keep them to stop them with the script.
+_CHILD_GROUPS = set()
+
+
+def stop_children() -> None:
+    for pgid in list(_CHILD_GROUPS):
+        try:
+            os.killpg(pgid, signal.SIGKILL)
+        except OSError:
+            pass
+        _CHILD_GROUPS.discard(pgid)
+
+
+def _stop_with_nexus() -> None:
+    """--json mode (run by Nexus): a pause / cancel (SIGTERM) or Nexus going away (restart,
+    deployment) stops everything this script started. Before, yt-dlp went on alone and the
+    next try worked on the same files at the same time (« Conversion failed », broken .mp4)."""
+    def on_term(signum, _frame):
+        stop_children()
+        os._exit(128 + signum)
+    for sig in (signal.SIGTERM, signal.SIGHUP):
+        try:
+            signal.signal(sig, on_term)
+        except (ValueError, OSError):      # not the main thread
+            pass
+    parent = os.getppid()
+
+    def watch_parent():
+        while True:
+            time.sleep(2)
+            if os.getppid() != parent:     # Nexus stopped without stopping us: we are orphans
+                stop_children()
+                if os.getpgrp() == os.getpid():    # our own group (Nexus starts us detached): ffmpeg…
+                    os.killpg(os.getpid(), signal.SIGKILL)
+                os._exit(1)
+    threading.Thread(target=watch_parent, daemon=True).start()
+
+
 _EMIT_LOCK = threading.Lock()
 
 
@@ -356,15 +398,23 @@ def _ytdlp_once(args, item, on_line, stall):
     global last_ytdlp_error
     last_ytdlp_error = None
     cmd = [*ytdlp_cmd(), *YTDLP_PROGRESS, *YTDLP_NETWORK, *args]
-    throttle = Throttle()
-    others = []
     try:
         # Own process group: a stalled yt-dlp is stopped with its children (ffmpeg…)
         proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True)
     except FileNotFoundError:
         emit("error", message="yt-dlp n'est pas installé", item=item, fatal=False)
         return 127, [], False
-    import threading
+    _CHILD_GROUPS.add(proc.pid)
+    try:
+        return _ytdlp_follow(proc, item, on_line, stall)
+    finally:
+        _CHILD_GROUPS.discard(proc.pid)
+
+
+def _ytdlp_follow(proc, item, on_line, stall):
+    global last_ytdlp_error
+    throttle = Throttle()
+    others = []
     # Watchdog: only while data is being downloaded (merging / embedding prints nothing for a while)
     state = {"last": time.monotonic(), "downloading": False, "stalled": False, "merging": False}
 

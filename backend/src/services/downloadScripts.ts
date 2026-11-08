@@ -106,6 +106,17 @@ export interface RunHandle {
   kill: () => void
 }
 
+// Scripts run detached (own process group), so they outlive the backend unless stopped:
+// after a restart / deployment the old download went on while the queue started it again,
+// both working on the same files. Stop them when the backend exits (the scripts also stop
+// by themselves when the backend is gone: nexus_cli watches its parent).
+const live = new Set<ChildProcess>()
+process.on('exit', () => {
+  for (const child of live) {
+    try { if (child.pid) process.kill(-child.pid, 'SIGTERM') } catch { /* gone */ }
+  }
+})
+
 /** Starts a script with --json and calls onEvent for each JSON line. */
 export function runScript(source: Source, args: string[], onEvent: (e: ScriptEvent) => void, timeoutMs = 0): RunHandle {
   const file = path.join(scriptsDir(), SCRIPT_FILE[source])
@@ -115,6 +126,7 @@ export function runScript(source: Source, args: string[], onEvent: (e: ScriptEve
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: true,   // own process group: kill() also stops ffmpeg / chromium
   })
+  live.add(child)
   const log: string[] = []
   const keepLog = (line: string) => { log.push(line); if (log.length > 200) log.shift() }
 
@@ -144,10 +156,12 @@ export function runScript(source: Source, args: string[], onEvent: (e: ScriptEve
 
   const done = new Promise<{ code: number | null; signal: NodeJS.Signals | null; log: string[] }>((resolve) => {
     child.on('error', (err) => {
+      live.delete(child)
       keepLog(`spawn error: ${err.message}`)
       logger.error(`Download script ${source} could not start: ${err.message}`)
     })
     child.on('close', (code, signal) => {
+      live.delete(child)
       if (timer) clearTimeout(timer)
       resolve({ code, signal, log })
     })

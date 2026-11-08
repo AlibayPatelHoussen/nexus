@@ -4,6 +4,11 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Fixed — a YouTube download that went on alone, broken videos
+- A pause, a cancel or a restart of Nexus (deployment) now stops yt-dlp too: it ran in its own process group and went on alone while the next try worked on the same files (« Conversion failed », a .mp4 with no track). A script also stops by itself when Nexus is gone
+- A video that cannot be read (no track) no longer counts as « déjà présent »: it is downloaded again
+- A video already merged in the working folder (stopped while its thumbnail was added) is moved to the library instead of being downloaded again
+
 ### Fixed — a deployment ran the previous deploy.sh
 - When an update changes `scripts/deploy.sh`, the deployment now runs the new version right after `git pull` (bash kept reading the old file, so deno was not installed by the deployment that brought it)
 

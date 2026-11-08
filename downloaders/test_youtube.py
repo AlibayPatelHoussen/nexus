@@ -47,7 +47,41 @@ class Leftovers(unittest.TestCase):
         (self.dest / ".part-youtube" / "Mastu" / f"{NAME}.mp4").write_bytes(b"x")
         self.assertIsNone(ns["_existing"](self.dest, VID))
         final = self.touch(f"{NAME}.mp4")
-        self.assertEqual(ns["_existing"](self.dest, VID), final)
+        duration, ns["_duration"] = ns["_duration"], lambda p: 60.0
+        try:
+            self.assertEqual(ns["_existing"](self.dest, VID), final)
+        finally:
+            ns["_duration"] = duration
+
+    @unittest.skipUnless(shutil.which("ffprobe"), "ffprobe missing")
+    def test_a_broken_video_is_downloaded_again(self):
+        # The owner's server: two downloads at once left a 1.9 GB .mp4 with no track
+        broken = self.touch(f"{NAME}.mp4", b"\0" * 4096)
+        self.assertIsNone(ns["_existing"](self.dest, VID))
+        self.assertFalse(broken.exists())
+
+    @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg missing")
+    def test_a_video_merged_in_the_working_folder_is_moved(self):
+        # Stopped after the merge, while the thumbnail / metadata were added
+        work = self.dest / ".part-youtube" / "Mastu"
+        work.mkdir(parents=True)
+        merged = work / f"{NAME}.mp4"
+        subprocess.run(["ffmpeg", "-y", "-v", "error", "-f", "lavfi", "-i", "testsrc=size=64x48:rate=5:duration=3",
+                        "-c:v", "mpeg4", str(merged)], check=True)
+        (work / f"{NAME}.temp.mp4").write_bytes(b"half")
+        (work / f"{NAME}.f251-1.webm").write_bytes(b"audio")
+        (work / f"{NAME}.jpg").write_bytes(b"jpg")
+        info = self.chan / f"{NAME}.info.json"
+        info.write_text(json.dumps({"duration": 3, "requested_formats": []}))
+        final = ns["_finish_leftovers"](self.dest, VID, VID)
+        self.assertEqual(final, self.chan / f"{NAME}.mp4")
+        self.assertTrue((self.chan / f"{NAME}.jpg").exists())
+        self.assertEqual(list(work.iterdir()), [])
+        # Not when it is shorter than YouTube says (an incomplete file)
+        merged.parent.mkdir(parents=True, exist_ok=True)
+        final.replace(merged)
+        info.write_text(json.dumps({"duration": 60, "requested_formats": []}))
+        self.assertIsNone(ns["_finish_leftovers"](self.dest, VID, VID))
 
     @unittest.skipUnless(shutil.which("ffmpeg"), "ffmpeg missing")
     def test_complete_streams_are_merged_without_downloading_again(self):
