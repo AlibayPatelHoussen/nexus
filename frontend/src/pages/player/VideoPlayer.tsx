@@ -40,7 +40,14 @@ export default function VideoPlayer({ filePath, streamToken, onTimeUpdate, onEnd
   const lastPointer  = useRef<string>('mouse')
   const hlsRef       = useRef<Hls | null>(null)
   const sourceRef    = useRef<Source | null>(null)
+  /**
+   * Resume position (local time) not reached yet. The iPhone ignores a position set too
+   * early: it is set again on every media event until the video really is there, and
+   * nothing is saved meanwhile (it would overwrite the resume point with « 0:03 » and
+   * drop the film from « Reprendre »). Given up after 20 s.
+   */
   const pendingSeek  = useRef<number | null>(null)
+  const pendingSince = useRef(0)
   const resumePlay   = useRef(false)
   const scrubTarget  = useRef<number | null>(null)
   // Latest callbacks without re-binding the media listeners on every render
@@ -94,21 +101,26 @@ export default function VideoPlayer({ filePath, streamToken, onTimeUpdate, onEnd
     const v = videoRef.current
     if (!v) return
 
+    const applyResume = () => {
+      const t = pendingSeek.current
+      if (t == null || v.readyState < 1) return
+      if (Math.abs(v.currentTime - t) <= 1.5 || Date.now() - pendingSince.current > 20_000
+        || (isFinite(v.duration) && t >= v.duration)) { pendingSeek.current = null; return }
+      if (!v.seeking) { try { v.currentTime = t } catch { /* not seekable yet */ } }
+    }
     const onLoaded = () => {
       setDuration(total())
-      if (pendingSeek.current != null) {
-        const t = pendingSeek.current
-        pendingSeek.current = null
-        if (t > 0 && t < v.duration) v.currentTime = t
-      }
+      applyResume()
       if (resumePlay.current) { resumePlay.current = false; v.play().catch(() => {}) }
     }
     const onTime = () => {
+      applyResume()
       const t = now()
       setCurrent(scrubTarget.current ?? t)
       setDuration(total())
       if (v.buffered.length > 0) setBuffered(offset() + v.buffered.end(v.buffered.length - 1))
-      onTimeRef.current?.(t, total())
+      // Not saved before the resume position is reached (see pendingSeek)
+      if (pendingSeek.current == null) onTimeRef.current?.(t, total())
     }
     const onPlay    = () => { setPlaying(true);  setError(null); scheduleHide() }
     const onPause   = () => {
@@ -119,7 +131,7 @@ export default function VideoPlayer({ filePath, streamToken, onTimeUpdate, onEnd
     const onEnded_  = () => { setPlaying(false); setShowControls(true); onEndedRef.current?.() }
     const onVol     = () => { setVolume(v.volume); setMuted(v.muted) }
     const onWaiting = () => setLoading(true)
-    const onReady   = () => setLoading(false)
+    const onReady   = () => { setLoading(false); applyResume() }
     const onErr     = () => {
       // hls.js reports its own (recoverable) errors; only native errors land here
       if (hlsRef.current) return
@@ -193,6 +205,9 @@ export default function VideoPlayer({ filePath, streamToken, onTimeUpdate, onEnd
       const { default: HlsJs } = await import('hls.js')
       if (gen !== generation.current) return
       if (HlsJs.isSupported()) {
+        // startPosition, and the resume check too (iPhone: hls.js on ManagedMediaSource)
+        pendingSeek.current = seekLocal > 1 ? seekLocal : null
+        pendingSince.current = Date.now()
         const hls = new HlsJs({ startPosition: seekLocal > 1 ? seekLocal : 0, maxBufferLength: 30 })
         hls.on(HlsJs.Events.ERROR, (_e, data) => {
           if (!data.fatal) return
@@ -205,6 +220,7 @@ export default function VideoPlayer({ filePath, streamToken, onTimeUpdate, onEnd
         hlsRef.current = hls
       } else if (v.canPlayType('application/vnd.apple.mpegurl')) {
         pendingSeek.current = seekLocal > 1 ? seekLocal : null
+        pendingSince.current = Date.now()
         v.src = url            // Safari / iPhone: native HLS
         v.load()
       } else {
@@ -232,6 +248,7 @@ export default function VideoPlayer({ filePath, streamToken, onTimeUpdate, onEnd
         if (!info || info.mode === 'direct') {
           sourceRef.current = { kind: 'direct' }
           pendingSeek.current = initialTime && initialTime > 0 ? initialTime : null
+          pendingSince.current = Date.now()
           v.src = filesService.buildStreamUrl(filePath, streamToken)
           v.load()
         } else {
@@ -261,6 +278,7 @@ export default function VideoPlayer({ filePath, streamToken, onTimeUpdate, onEnd
 
   /** Seek on the virtual timeline (restarts the conversion when needed). */
   function seekAbs(t: number) {
+    pendingSeek.current = null       // the user chose a position: no more resume
     const v = videoRef.current
     const s = sourceRef.current
     if (!v || !s) return
@@ -287,8 +305,10 @@ export default function VideoPlayer({ filePath, streamToken, onTimeUpdate, onEnd
   useEffect(() => {
     const v = videoRef.current
     if (!v || !initialTime || initialTime <= 0 || sourceRef.current?.kind !== 'direct') return
-    if (v.readyState >= 1) { if (v.currentTime < 1 && initialTime < v.duration) v.currentTime = initialTime }
-    else pendingSeek.current = initialTime
+    if (v.currentTime >= 1) return
+    pendingSeek.current = initialTime
+    pendingSince.current = Date.now()
+    if (v.readyState >= 1 && initialTime < v.duration) v.currentTime = initialTime
   }, [initialTime])
 
   // ── Fullscreen ─────────────────────────────────────
