@@ -25,6 +25,10 @@ function describeTokenError(err: unknown): string {
   return 'Le serveur n’a pas autorisé la lecture.'
 }
 
+
+/** The last progress save in flight: the next player waits for it before reading the position. */
+let lastSave: Promise<void> = Promise.resolve()
+
 export default function PlayerPage() {
   const { id }         = useParams<{ id: string }>()
   const [searchParams] = useSearchParams()
@@ -45,17 +49,24 @@ export default function PlayerPage() {
     enabled:  !!id,
   })
 
-  const { data: savedProgress, isFetched: progressFetched, isError: progressError } = useQuery({
+  // Always the position saved last, never a cached one: opening the film again right after
+  // leaving it resumed from the old cached position (or from 0 the first time). The save
+  // made when leaving is waited for first, so its position is the one read.
+  const { data: savedProgress, isFetchedAfterMount: progressFetched, isError: progressError } = useQuery({
     queryKey: ['progress', id, episodeId],
-    queryFn:  () => mediaService.getProgress(id!, episodeId),
+    queryFn:  async () => { await lastSave; return mediaService.getProgress(id!, episodeId) },
     enabled:  !!id,
+    staleTime: 0,
+    refetchOnMount: 'always',
   })
 
   // A series/anime opened without ?ep= : jump to the episode to watch next
   // (never try to stream the show's folder)
   const { data: episodesProgress } = useQuery({
     queryKey: ['episodes-progress', id],
-    queryFn:  () => mediaService.getEpisodesProgress(id!),
+    queryFn:  async () => { await lastSave; return mediaService.getEpisodesProgress(id!) },
+    staleTime: 0,
+    refetchOnMount: 'always',
     enabled:  !!id && !episodeId,
   })
   useEffect(() => {
@@ -101,6 +112,7 @@ export default function PlayerPage() {
     const { t, d } = latestRef.current
     if (!id || !(d > 0) || !(t > 0)) return
     const saved = mediaService.saveProgress(id, Math.floor(completed ? d : t), Math.floor(d), episodeId).catch(() => {})
+    lastSave = saved
     // Leaving the film / an episode ending: « Reprendre », the title page's progress and
     // the next resume position are up to date at once (no library scan needed)
     if (refresh) {

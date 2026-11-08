@@ -245,6 +245,9 @@ export interface TranscodeJob {
   listFile:   string | null
   junk:       number | null
   gen:        number
+  /** Last far jump asked (dragging the timeline asks for many in a row: only the last one starts ffmpeg) */
+  wanted:     number | null
+  wantedAt:   number
   indexing:   Promise<void> | null
   /** First segment of the running ffmpeg (vod) */
   segStart:   number
@@ -299,7 +302,7 @@ export async function startJob(
   const vod = known && (mode === 'transcode' || mode === 'remux')
   const job: TranscodeJob = {
     id, userId, filePath, mode, start: vod || mode === 'remux' ? 0 : start, vod, total, audioCopy,
-    cuts: null, complete: new Map(), runDir: null, listFile: null, junk: null, gen: 0, indexing: null, segStart: 0, restartedAt: 0, dir,
+    cuts: null, complete: new Map(), runDir: null, listFile: null, junk: null, gen: 0, wanted: null, wantedAt: 0, indexing: null, segStart: 0, restartedAt: 0, dir,
     proc: null, done: false, failed: null, lastAccess: Date.now(), createdAt: Date.now(),
   }
   jobs.set(id, job)
@@ -450,6 +453,7 @@ export async function segmentFile(job: TranscodeJob, index: number, timeoutMs = 
     const coming = index >= job.segStart && index <= next + remuxJumpAhead() && (!job.done || index < next)
     const justRestarted = Date.now() - job.restartedAt < 3000 && index >= job.segStart && index <= job.segStart + 4
     if (!coming && !justRestarted) {
+      if (!(await settleJump(job, index))) return null
       logger.info(`Transcode ${job.id}: jump to segment ${index} (was copying ${job.segStart}…${next})`)
       launch(job, index)
     }
@@ -459,16 +463,34 @@ export async function segmentFile(job: TranscodeJob, index: number, timeoutMs = 
   // Several requests right after a restart: wait for that ffmpeg rather than restarting again
   const justRestarted = Date.now() - job.restartedAt < 3000 && index >= job.segStart && index <= job.segStart + 4
   if (!coming && !justRestarted) {
+    if (!(await settleJump(job, index))) return null
     logger.info(`Transcode ${job.id}: seek to segment ${index} (was converting ${job.segStart}…${next})`)
     launch(job, index)
   }
   return waitSegment(job, index, file, timeoutMs)
 }
 
+/**
+ * A far jump starts ffmpeg there only if no other far jump follows within 300 ms: dragging
+ * the iPhone timeline asked for 22 positions in one second, each restarting the conversion.
+ * False: a later jump replaced this one (the player no longer wants this segment).
+ */
+async function settleJump(job: TranscodeJob, index: number): Promise<boolean> {
+  const at = Date.now() + Math.random()
+  job.wanted = index
+  job.wantedAt = at
+  await new Promise((r) => setTimeout(r, JUMP_SETTLE_MS()))
+  return job.wantedAt === at && jobs.has(job.id)
+}
+const JUMP_SETTLE_MS = () => Number(process.env.TRANSCODE_JUMP_SETTLE_MS ?? 300)
+
 async function waitSegment(job: TranscodeJob, index: number, file: string, timeoutMs: number): Promise<string | null> {
-  const until = Date.now() + timeoutMs
+  const started = Date.now()
+  const until = started + timeoutMs
   while (Date.now() < until) {
     if (!jobs.has(job.id)) return null
+    // The player jumped elsewhere since: stop holding this request for a part not being made
+    if (job.wantedAt > started && job.wanted !== index && (index < job.segStart || index > nextSegment(job) + 4)) return null
     job.lastAccess = Date.now()
     if (segmentReady(job, index)) return job.complete.get(index) ?? file
     if (job.done && !segmentReady(job, index)) {
