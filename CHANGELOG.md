@@ -4,6 +4,9 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Fixed — Terminal keyboard
+- On touch screens, the keys under the terminal (Esc, Tab, Ctrl+C…), Copier / Coller and the connection no longer open the soft keyboard: it opens only when the terminal itself is tapped (if it is already open, it stays open)
+
 ### Changed — Liquid Glass back button everywhere
 - The back button of every page is a Liquid Glass capsule with the parent's name (« ‹ Manga »), like the player's « Retour » (iPhone: instead of blue text; over the billboard too; Mac: a glass button in the toolbar)
 
