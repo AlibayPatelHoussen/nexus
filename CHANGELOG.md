@@ -4,6 +4,9 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Fixed — a deployment ran the previous deploy.sh
+- When an update changes `scripts/deploy.sh`, the deployment now runs the new version right after `git pull` (bash kept reading the old file, so deno was not installed by the deployment that brought it)
+
 ### Fixed — the merge of big YouTube videos was still stopped
 - The merge stays protected even when its start is read before the last progress line (two outputs read at once): this race made the CI fail and could stop a merge on the server too
 - yt-dlp reports the merge on its error output, which Nexus did not read for that: the merge of a big video was still stopped every 15 s. Checked on the server; the merge now always goes to the end
