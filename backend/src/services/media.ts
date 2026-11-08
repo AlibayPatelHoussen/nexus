@@ -215,7 +215,7 @@ export class MediaService {
 
   static async getFavorites(userId: string) {
     const result = await query(
-      `SELECT m.id, m.type, m.title, m.poster_path, m.year, m.rating
+      `SELECT m.*
        FROM favorites f
        JOIN media_items m ON m.id = f.media_item_id
        WHERE f.user_id = $1

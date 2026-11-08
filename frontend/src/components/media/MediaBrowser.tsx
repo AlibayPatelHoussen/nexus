@@ -24,6 +24,7 @@ import MediaList from './MediaList'
 import { MEDIA_GRID } from './layout'
 import { VIDEO_SECTIONS, SectionMenu, SearchButton, SearchBarOpen } from './PhoneLibraryBar'
 import { useContextMenu } from '@/components/ui/useContextMenu'
+import { useFavorites } from '@/hooks/useFavorites'
 
 export interface BrowserTab {
   key:       string
@@ -80,6 +81,7 @@ export function VideoSectionSwitch({ value, full }: { value: string; full?: bool
 /** Library like the TV app: featured title, shelves; poster grid or detailed list. */
 export default function MediaBrowser({ title, tabs, yearFilter, emptyIcon, videoSwitch, books }: Props) {
   const qc = useQueryClient()
+  const navigate = useNavigate()
   const { device } = useShell()
   const phone = device === 'phone'
   const isAdmin = useAuthStore((s) => s.user?.role === 'admin')
@@ -126,6 +128,8 @@ export default function MediaBrowser({ title, tabs, yearFilter, emptyIcon, video
   })
 
   const items = useMemo(() => catalog?.items ?? [], [catalog])
+  const favorites = useFavorites()
+  const myList = useMemo(() => favorites.items.filter((m) => m.type === type || (books && m.type === 'webtoon')), [favorites.items, type, books])
   const featured = useMemo(() => pickFeatured(items), [items])
   const continueRow: RowItem[] = useMemo(() => (continueW ?? [])
     .filter((w) => w.type === type)
@@ -310,6 +314,7 @@ export default function MediaBrowser({ title, tabs, yearFilter, emptyIcon, video
     content = (
       <>
         {continueRow.length > 0 && <MediaRow title="Reprendre" items={continueRow} kind="wide" />}
+        {myList.length > 0 && <MediaRow title="Ma liste" items={myList} onSeeAll={() => navigate('/ma-liste')} kind={shelf} />}
         <MediaRow title={books ? 'Nouveautés' : 'Ajouts récents'} items={items.slice(0, 24)} isLoading={isLoading} kind={shelf} />
         {topRated.length >= 3 && <MediaRow title={books ? 'Les mieux notés' : 'Top 10'} items={topRated} kind={books ? 'book' : 'top10'} />}
         {genreRows.map((r) => <MediaRow key={r.genre} title={r.genre} items={r.items} onSeeAll={() => showGenre(r.genre)} kind={shelf} />)}

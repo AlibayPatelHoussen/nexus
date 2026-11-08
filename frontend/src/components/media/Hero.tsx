@@ -1,11 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { AnimatePresence, motion } from 'framer-motion'
-import { useQueryClient } from '@tanstack/react-query'
 import { Check, Info, Play, Plus } from 'lucide-react'
-import toast from 'react-hot-toast'
 import type { MediaItem } from '@/types'
-import { mediaService } from '@/services/mediaService'
+import { useFavorites } from '@/hooks/useFavorites'
 import { useShell } from '@/components/shell/shellContext'
 import { spring } from '@/design/motion'
 import { cn } from '@/utils'
@@ -33,12 +31,11 @@ const SCRIM = [
 
 export default function Hero({ items }: { items: MediaItem[] }) {
   const navigate = useNavigate()
-  const qc = useQueryClient()
   const { device } = useShell()
   const phone = device === 'phone'
   const [index, setIndex] = useState(0)
   const [paused, setPaused] = useState(false)
-  const [favs, setFavs] = useState<Record<string, boolean>>({})
+  const favorites = useFavorites()
   const [dir, setDir] = useState(1)
   const dragged = useRef(false)
   const art = useRef<HTMLDivElement>(null)
@@ -69,21 +66,12 @@ export default function Hero({ items }: { items: MediaItem[] }) {
     return () => { target.removeEventListener('scroll', onScroll); cancelAnimationFrame(raf) }
   }, [phone])
 
-  const toggleFav = useCallback(async (it: MediaItem) => {
-    try {
-      const on = await mediaService.toggleFavorite(it.id)
-      setFavs((f) => ({ ...f, [it.id]: on }))
-      toast.success(on ? 'Ajouté aux favoris' : 'Retiré des favoris')
-      void qc.invalidateQueries({ queryKey: ['media'] })
-    } catch { toast.error('Impossible de modifier les favoris.') }
-  }, [qc])
-
   if (!item) return null
   const reading = isReading(item.type)
   // Apple TV: textless key art on iPhone, the full-resolution backdrop on larger screens
   const image = phone ? (item.keyArtPath || item.posterPath || item.backdropPath) : (item.heroBackdropPath || item.backdropPath || item.posterPath)
   const facts = [TYPE_LABEL[item.type] ?? item.type, item.year, ...(item.genres?.slice(0, 2) ?? [])].filter(Boolean).join(' · ')
-  const fav = favs[item.id] ?? !!(item as MediaItem & { isFavorite?: boolean }).isFavorite
+  const fav = favorites.isFav(item.id)
 
   return (
     <section
@@ -159,10 +147,11 @@ export default function Hero({ items }: { items: MediaItem[] }) {
             </button>
             <button
               type="button"
-              onClick={() => void toggleFav(item)}
+              onClick={() => favorites.toggle(item)}
               className="w-10 h-10 grid place-items-center rounded-full glass-clear"
-              aria-label={fav ? 'Retirer des favoris' : 'Ajouter aux favoris'}
-              title={fav ? 'Retirer des favoris' : 'Ajouter aux favoris'}
+              aria-pressed={fav}
+              aria-label={fav ? 'Retirer de ma liste' : 'Ajouter à ma liste'}
+              title={fav ? 'Retirer de ma liste' : 'Ajouter à ma liste'}
             >
               {fav ? <Check size={18} strokeWidth={2.25} /> : <Plus size={19} strokeWidth={2.25} />}
             </button>

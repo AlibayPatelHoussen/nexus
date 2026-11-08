@@ -1,7 +1,8 @@
 import FollowGroup from '@/components/downloads/FollowGroup'
 import { useState } from 'react'
+import { useFavorites } from '@/hooks/useFavorites'
 import { useParams, useNavigate } from 'react-router-dom'
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, Check, Play, Plus, RotateCw, Star, Tv } from 'lucide-react'
 import MediaRow from '@/components/media/MediaRow'
 import DetailHero from '@/components/media/DetailHero'
@@ -36,7 +37,8 @@ export default function MediaDetailPage() {
   const { id }     = useParams<{ id: string }>()
   const navigate   = useNavigate()
   const qc         = useQueryClient()
-  const [isFav, setIsFav] = useState<boolean | null>(null)
+  const favorites = useFavorites()
+  const isFav = id ? favorites.isFav(id) : null
   const { device } = useShell()
   const phone = device === 'phone'
   const isAdmin = useAuthStore((st) => st.user?.role === 'admin')
@@ -72,17 +74,6 @@ export default function MediaDetailPage() {
     enabled:  !!id,
   })
 
-  useQuery({
-    queryKey: ['favorite', id],
-    queryFn:  async () => {
-      const favs = await mediaService.getFavorites()
-      const fav = favs.some((f: { id: string }) => f.id === id)
-      setIsFav(fav)
-      return fav
-    },
-    enabled: !!id,
-  })
-
   // "More like this": same type, sharing the main genre
   const { data: similarData } = useQuery({
     queryKey: ['media', 'similar', id, media?.type, media?.genres?.[0]],
@@ -91,14 +82,6 @@ export default function MediaDetailPage() {
   })
   const similar = (similarData?.items ?? []).filter((m) => m.id !== id).slice(0, 20)
 
-  const favMut = useMutation({
-    mutationFn: () => mediaService.toggleFavorite(id!),
-    onSuccess:  (result) => {
-      setIsFav(result)
-      toast.success(result ? 'Ajouté à ma liste' : 'Retiré de ma liste')
-      qc.invalidateQueries({ queryKey: ['media', 'favorites'] })
-    },
-  })
 
   async function scan() {
     setScanning(true)
@@ -237,8 +220,8 @@ export default function MediaDetailPage() {
           canPlay={canPlay}
           onPlay={() => play()}
           isFav={isFav}
-          onFav={() => favMut.mutate()}
-          favBusy={favMut.isPending}
+          onFav={() => favorites.toggle(media)}
+          favBusy={favorites.busy}
           upNext={nextEpisode && isShow && episodesProgress.length > 0 ? `S${nextEpisode.season ?? 1}, É${nextEpisode.episodeNumber}${nextEpisode.title ? ` · ${nextEpisode.title}` : ''}` : null}
         />
       )}
@@ -273,7 +256,7 @@ export default function MediaDetailPage() {
               {playLabel}
             </Button>
             <Button size={phone ? 'large' : 'regular'} icon={isFav ? <Check size={14} strokeWidth={2} /> : <Plus size={14} strokeWidth={2} />}
-              onClick={() => favMut.mutate()} disabled={favMut.isPending} aria-pressed={isFav === true}>
+              onClick={() => favorites.toggle(media)} disabled={favorites.busy} aria-pressed={isFav === true}>
               Ma liste
             </Button>
           </div>

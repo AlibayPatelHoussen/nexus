@@ -1,5 +1,5 @@
 import {
-  Activity, BookOpen, Download, Film, Folder, Gauge, Settings, SquareTerminal, Tv, Wifi, Youtube,
+  Activity, BookOpen, Download, Film, Folder, Gauge, ListPlus, Settings, SquareTerminal, Tv, Wifi, Youtube,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -20,6 +20,7 @@ export const NAV: NavItem[] = [
   { to: '/terminal',  label: 'Terminal',       icon: SquareTerminal, section: 'server', adminOnly: true, keywords: 'shell console bash ssh' },
   { to: '/services',  label: 'Services',       icon: Activity,       section: 'server', keywords: 'systemd démarrer arrêter' },
   { to: '/network',   label: 'Réseau',         icon: Wifi,           section: 'server', keywords: 'ip interface' },
+  { to: '/ma-liste',  label: 'Ma liste',       icon: ListPlus,       section: 'media',  keywords: 'favoris à voir plus tard' },
   { to: '/cinema',    label: 'Films et séries', icon: Film,          section: 'media',  keywords: 'cinéma vidéo' },
   { to: '/animes',    label: 'Animes',         icon: Tv,             section: 'media' },
   { to: '/youtube',   label: 'YouTube',        icon: Youtube,        section: 'media',  keywords: 'vidéos chaînes' },
@@ -45,7 +46,7 @@ export interface Tab {
 /** Tab Bar (phone). Files, services and network open from "Aperçu"; downloads from "Médias". */
 export const TABS: Tab[] = [
   { to: '/dashboard', label: 'Aperçu',   icon: Gauge,          match: ['/dashboard', '/files', '/services', '/network'] },
-  { to: '/cinema',    label: 'Médias',   icon: Film,           match: ['/cinema', '/animes', '/youtube', '/downloads'] },
+  { to: '/cinema',    label: 'Médias',   icon: Film,           match: ['/cinema', '/animes', '/youtube', '/downloads', '/ma-liste'] },
   { to: '/manga',     label: 'Manga',    icon: BookOpen,       match: ['/manga'] },
   { to: '/terminal',  label: 'Terminal', icon: SquareTerminal, match: ['/terminal'], adminOnly: true },
   { to: '/settings',  label: 'Réglages', icon: Settings,       match: ['/settings'] },
@@ -57,6 +58,7 @@ export const PHONE_PARENT: Record<string, { to: string; label: string }> = {
   '/services': { to: '/dashboard', label: 'Aperçu' },
   '/network':  { to: '/dashboard', label: 'Aperçu' },
   '/downloads': { to: '/cinema', label: 'Médias' },
+  '/ma-liste':  { to: '/cinema', label: 'Médias' },
 }
 
 export function tabFor(pathname: string): Tab | undefined {
