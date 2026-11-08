@@ -95,6 +95,8 @@ npm workspaces (`frontend`, `backend`); run from the repo root unless noted.
 ## Workflow
 
 - Work on the branch the session names (a `claude/…` branch); PR to `main`, green CI, squash-merge without asking.
+  **Never ask the owner** whether to commit, push, open the PR or merge: after every change, do the whole
+  chain yourself (checks → commit → push → PR → watch CI → fix if red → squash-merge), then tell the owner.
   If that branch's PR was already merged, merge `main` into it before the next change (no force-push).
 - `.claude/settings.json` pre-approves the usual tools (shell, GitHub, messages to the owner's other
   sessions, reminders) so the owner is not asked each time; force-push, reading `.env` and touching
