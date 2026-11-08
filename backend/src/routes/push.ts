@@ -21,7 +21,7 @@ router.post('/unsubscribe', asyncHandler(async (req: Request, res: Response) => 
 }))
 
 router.post('/test', asyncHandler(async (req: Request, res: Response) => {
-  const result = await sendPushDetailed([req.user!.userId], { title: 'Nexus', body: 'Les notifications fonctionnent sur cet appareil.', url: '/settings', tag: 'test' })
+  const result = await sendPushDetailed([req.user!.userId], { title: 'Notifications activées', body: 'Les notifications fonctionnent sur cet appareil.', url: '/settings', tag: 'test' })
   res.json({ success: true, data: result })
 }))
 
