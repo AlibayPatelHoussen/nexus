@@ -56,3 +56,20 @@ d('MKV → MP4 (read directly, like the MP4 films)', () => {
     expect(fs.existsSync(fresh)).toBe(true)
   }, 60_000)
 })
+
+describe('shouldConvert', () => {
+  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  const { shouldConvert } = require('../../src/services/mp4Convert') as typeof import('../../src/services/mp4Convert')
+  const p = (subs: string[]) => ({
+    format: { format_name: 'matroska,webm', duration: '100' },
+    streams: [{ index: 0, codec_type: 'video', codec_name: 'h264', pix_fmt: 'yuv420p' }, { index: 1, codec_type: 'audio', codec_name: 'aac' },
+      ...subs.map((c, i) => ({ index: 2 + i, codec_type: 'subtitle', codec_name: c }))],
+  })
+  it('converts with text subtitles (SRT, ASS), never with subtitles drawn as pictures (PGS, DVD)', () => {
+    expect(shouldConvert('/m/a.mkv', p([]))).toBe(true)
+    expect(shouldConvert('/m/a.mkv', p(['subrip', 'ass']))).toBe(true)
+    expect(shouldConvert('/m/a.mkv', p(['subrip', 'hdmv_pgs_subtitle']))).toBe(false)
+    expect(shouldConvert('/m/a.mkv', p(['dvd_subtitle']))).toBe(false)
+    expect(shouldConvert('/m/a.mp4', p([]))).toBe(false)
+  })
+})

@@ -30,13 +30,16 @@ const TEXT_SUBS = ['subrip', 'srt', 'ass', 'ssa', 'webvtt', 'mov_text', 'text']
 export function shouldConvert(file: string, p: ProbeResult): boolean {
   if (!CONVERTIBLE_EXT.includes(path.extname(file).toLowerCase())) return false
   const v = p.streams.find((s) => s.codec_type === 'video')
-  return !!v && v.codec_name === 'h264' && (!v.pix_fmt || ['yuv420p', 'yuvj420p'].includes(v.pix_fmt))
+  // Subtitles drawn as pictures (PGS / DVD, Blu-ray rips) cannot go into an MP4: such a file
+  // is never converted, nothing is ever lost (it keeps its keyframe index instead)
+  const pictureSubs = p.streams.some((s) => s.codec_type === 'subtitle' && !TEXT_SUBS.includes(s.codec_name ?? ''))
+  return !!v && v.codec_name === 'h264' && (!v.pix_fmt || ['yuv420p', 'yuvj420p'].includes(v.pix_fmt)) && !pictureSubs
 }
 
 /** ffmpeg arguments: picture copied, audio kept when an MP4 can hold it, text subtitles kept. */
 export function mp4Args(input: string, output: string, p: ProbeResult): string[] {
   const audio = p.streams.filter((s) => s.codec_type === 'audio')
-  const subs = p.streams.filter((s) => s.codec_type === 'subtitle' && TEXT_SUBS.includes(s.codec_name ?? ''))
+  const subs = p.streams.filter((s) => s.codec_type === 'subtitle')
   const args = ['-hide_banner', '-loglevel', 'error', '-nostdin', '-y', '-i', input, '-map', '0:v:0']
   audio.forEach((a) => args.push('-map', `0:${a.index}`))
   subs.forEach((s) => args.push('-map', `0:${s.index}`))
