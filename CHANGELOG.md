@@ -4,6 +4,10 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Changed — iOS 26 menus
+- On iPhone, the « … » menus (Terminal, Fichiers) and long-press menus grow out of the button / the pressed item as an iOS 26 Liquid Glass menu with icons, instead of the old iOS action sheet at the bottom
+- In dark mode, the rim of large glass surfaces (menus, sheets, sidebar) is much softer: no more white border
+
 ### Fixed — « Taille : 0 o », English statuses
 - A detail page no longer shows « Taille : 0 o »: an unknown size hides the row; a series' / anime's size is that of its episodes
 - The status is in French (« ongoing », « RELEASING », « Returning Series » → « En cours »…)

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom'
 import {
   ChevronRight, ChevronUp, Download, Ellipsis, Eye, FileArchive, FileCode2, FileImage, FilePlus,
-  FileText, FileVideo, Folder, FolderPlus, LayoutGrid, List, Pencil, Trash2, Upload,
+  CircleCheck, FileText, FileVideo, Folder, FolderPlus, LayoutGrid, List, Pencil, Trash2, Upload,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { useConfirm } from '@/components/ui/useConfirm'
@@ -18,7 +18,6 @@ import { useShell } from '@/components/shell/shellContext'
 import SegmentedControl from '@/components/ui/SegmentedControl'
 import Button from '@/components/ui/Button'
 import Sheet from '@/components/ui/Sheet'
-import ActionSheet from '@/components/ui/ActionSheet'
 import TextField from '@/components/ui/TextField'
 import SearchField from '@/components/ui/SearchField'
 import EmptyState from '@/components/ui/EmptyState'
@@ -91,7 +90,6 @@ export default function FilesPage() {
   const [creating, setCreating] = useState<'file' | 'dir' | null>(null)
   const [editing, setEditing] = useState<FileEntry | null>(null)
   const [selecting, setSelecting] = useState(false)   // phone selection mode
-  const [phoneMenu, setPhoneMenu] = useState(false)
   const [uploading, setUploading] = useState(false)
   const uploadRef = useRef<HTMLInputElement>(null)
 
@@ -201,7 +199,14 @@ export default function FilesPage() {
   const phoneActions = selecting ? (
     <Button variant="plain" className="font-semibold text-[17px] min-h-[44px]" onClick={() => { setSelecting(false); clearSelect() }}>OK</Button>
   ) : (
-    <button type="button" className="w-11 h-11 grid place-items-center text-accent-text active:opacity-50" onClick={() => setPhoneMenu(true)} aria-label="Options du dossier">
+    <button type="button" className="w-11 h-11 grid place-items-center text-accent-text active:opacity-50" aria-haspopup="menu" aria-label="Options du dossier"
+      onClick={(e) => menu.openFrom(e.currentTarget, [
+        { label: 'Nouveau dossier', icon: <FolderPlus />, onSelect: () => setCreating('dir') },
+        { label: 'Nouveau fichier', icon: <FilePlus />, onSelect: () => setCreating('file') },
+        { label: 'Envoyer des fichiers', icon: <Upload />, onSelect: () => uploadRef.current?.click() },
+        { separator: true },
+        { label: 'Sélectionner', icon: <CircleCheck />, onSelect: () => setSelecting(true) },
+      ], nameOf(currentPath))}>
       <Ellipsis size={24} strokeWidth={1.75} />
     </button>
   )
@@ -366,18 +371,6 @@ export default function FilesPage() {
         </div>
       )}
 
-      {/* Phone: folder actions */}
-      <ActionSheet
-        open={phoneMenu}
-        onClose={() => setPhoneMenu(false)}
-        title={nameOf(currentPath)}
-        actions={[
-          { label: 'Nouveau dossier', onSelect: () => setCreating('dir') },
-          { label: 'Nouveau fichier', onSelect: () => setCreating('file') },
-          { label: 'Envoyer des fichiers', onSelect: () => uploadRef.current?.click() },
-          { label: 'Sélectionner', onSelect: () => setSelecting(true) },
-        ]}
-      />
 
       {menu.element}
 
