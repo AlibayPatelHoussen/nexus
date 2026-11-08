@@ -154,7 +154,7 @@ router.post('/transcode', authenticateStream, asyncHandler(async (req: Request, 
   let start = Math.max(0, Number(req.query.start) || 0)
   if (decision.duration) start = Math.min(start, Math.max(0, decision.duration - 1))
 
-  const job = await startJob(req.user!.userId, filePath, mode, start, decision.duration)
+  const job = await startJob(req.user!.userId, filePath, mode, start, decision.duration, !!decision.audioCopy)
   res.status(201).json({
     success: true,
     data: {

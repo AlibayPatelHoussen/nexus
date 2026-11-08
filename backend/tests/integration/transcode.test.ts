@@ -16,6 +16,7 @@ const DIR = path.join(process.env.MEDIA_ROOT!, 'transcode')
 const files = {
   direct:    path.join(DIR, 'direct.mp4'),     // h264 + aac in mp4
   remux:     path.join(DIR, 'remux.mkv'),      // h264 + ac3 in mkv
+  remuxAac:  path.join(DIR, 'remux-aac.mkv'),  // h264 + aac stereo in mkv (audio copied)
   transcode: path.join(DIR, 'hevc.mkv'),       // hevc + aac
   long:      path.join(DIR, 'long.avi'),       // mpeg4 + mp3, 10 min (conversion keeps running)
 }
@@ -30,6 +31,7 @@ beforeAll(() => {
   const src = ['-f', 'lavfi', '-i', 'testsrc=size=320x180:rate=24', '-f', 'lavfi', '-i', 'sine=frequency=440', '-t', '20']
   if (!fs.existsSync(files.direct))    ffmpeg([...src, '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '48', '-c:a', 'aac', files.direct])
   if (!fs.existsSync(files.remux))     ffmpeg([...src, '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '48', '-c:a', 'ac3', files.remux])
+  if (!fs.existsSync(files.remuxAac))  ffmpeg([...src, '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '48', '-c:a', 'aac', '-ac', '2', files.remuxAac])
   if (!fs.existsSync(files.transcode)) ffmpeg([...src, '-c:v', 'libx265', '-x265-params', 'log-level=error', '-c:a', 'aac', files.transcode])
   if (!fs.existsSync(files.long)) {
     ffmpeg(['-f', 'lavfi', '-i', 'testsrc=size=640x360:rate=24', '-f', 'lavfi', '-i', 'sine=frequency=440', '-t', '600', '-c:v', 'mpeg4', '-q:v', '10', '-c:a', 'libmp3lame', files.long])
@@ -82,6 +84,13 @@ d('HLS conversion', () => {
   it('remux: copies h264 and converts AC3 audio to AAC', async () => {
     const { job, segment } = await startAndFetch(files.remux)
     expect(job.mode).toBe('remux')
+    expect(probeSegment(segment)).toEqual({ video: 'h264', audio: 'aac' })
+  }, 60_000)
+
+  it('remux: AAC stereo audio is copied, not re-encoded (what made films slow to prepare)', async () => {
+    const { job, segment } = await startAndFetch(files.remuxAac)
+    expect(job.mode).toBe('remux')
+    expect(listJobs().find((j) => j.id === job.id)?.audioCopy).toBe(true)
     expect(probeSegment(segment)).toEqual({ video: 'h264', audio: 'aac' })
   }, 60_000)
 
