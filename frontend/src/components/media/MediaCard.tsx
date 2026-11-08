@@ -2,7 +2,10 @@ import { useRef } from 'react'
 import { flushSync } from 'react-dom'
 import { useNavigate } from 'react-router-dom'
 import { motion } from 'framer-motion'
-import { Play } from 'lucide-react'
+import { CircleMinus, Ellipsis, Play } from 'lucide-react'
+import { useQueryClient } from '@tanstack/react-query'
+import toast from 'react-hot-toast'
+import { mediaService, type WatchHistoryItem } from '@/services/mediaService'
 import type { MediaItem } from '@/types'
 import { useContextMenu } from '@/components/ui/useContextMenu'
 import { spring } from '@/design/motion'
@@ -43,6 +46,23 @@ export default function MediaCard({ item, progress, duration, subtitle, shape = 
   const book = shape === 'book'
   const grid = showTitle ?? (variant === 'grid' || book)
   const remaining = duration && progress ? Math.max(0, Math.round((duration - progress) / 60)) : null
+  const qc = useQueryClient()
+
+  // « Reprendre » cards: « Retirer de Reprendre » (the progress is kept; watching again brings it back)
+  const removeFromContinue = async () => {
+    const key = ['media', 'continue']
+    const before = qc.getQueryData<WatchHistoryItem[]>(key)
+    qc.setQueryData<WatchHistoryItem[]>(key, (list) => list?.filter((w) => w.id !== item.id))
+    try {
+      await mediaService.removeFromContinue(item.id)
+    } catch {
+      qc.setQueryData(key, before)
+      toast.error('Impossible de retirer ce titre de « Reprendre »')
+    }
+  }
+  const menuItems = () => wide
+    ? [{ label: 'Retirer de Reprendre', icon: <CircleMinus />, onSelect: () => { void removeFromContinue() } }, { separator: true } as const, ...actions(item)]
+    : actions(item)
 
   // Poster → title page: the artwork grows into the page header (View Transitions API,
   // a plain navigation where the browser has none or reduced motion is on)
@@ -68,7 +88,7 @@ export default function MediaCard({ item, progress, duration, subtitle, shape = 
   }
 
   return (
-    <div className="min-w-0 snap-start">
+    <div className="relative min-w-0 snap-start group/card">
       <motion.button
         ref={ref}
         type="button"
@@ -80,7 +100,7 @@ export default function MediaCard({ item, progress, duration, subtitle, shape = 
         whileTap={{ scale: 0.97 }}
         transition={spring.lift}
         aria-label={[item.title, subtitle].filter(Boolean).join(', ')}
-        {...menu.bind(actions(item), item.title)}
+        {...menu.bind(menuItems(), item.title)}
       >
         <Artwork
           data-art
@@ -137,6 +157,21 @@ export default function MediaCard({ item, progress, duration, subtitle, shape = 
           </span>
         )}
       </motion.button>
+      {wide && (
+        // Apple TV « … » on an Up Next card: always there on touch, on hover / focus with a mouse
+        <button
+          type="button"
+          aria-haspopup="menu"
+          aria-label={`Options de « ${item.title} »`}
+          className="absolute top-0 right-0 w-11 h-11 grid place-items-center outline-none
+            [@media(hover:hover)]:opacity-0 [@media(hover:hover)]:group-hover/card:opacity-100 focus-visible:opacity-100 transition-opacity duration-fast"
+          onClick={(e) => menu.openFrom(e.currentTarget, menuItems(), item.title)}
+        >
+          <span className="w-7 h-7 grid place-items-center rounded-full glass-clear text-white" aria-hidden="true">
+            <Ellipsis size={16} strokeWidth={2.25} />
+          </span>
+        </button>
+      )}
       {menu.element}
     </div>
   )

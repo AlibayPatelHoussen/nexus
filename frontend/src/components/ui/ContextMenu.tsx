@@ -97,7 +97,7 @@ function Popover({ x, y, items, title, above, alignEnd, onClose }: Omit<ContextM
       onContextMenu={(e) => e.preventDefault()}
       className={cn(
         'fixed z-[120] glass-strong outline-none overflow-y-auto overscroll-contain max-h-[70vh]',
-        phone ? 'w-[250px] p-2 rounded-[26px] text-[17px]' : 'min-w-[200px] max-w-[300px] p-[6px] rounded-[16px] text-body',
+        phone ? 'w-max min-w-[250px] max-w-[calc(100vw-24px)] p-2 rounded-[26px] text-[17px]' : 'min-w-[200px] max-w-[300px] p-[6px] rounded-[16px] text-body',
       )}
       style={{ ...pos, animation: 'nx-menu-in 260ms var(--ease-spring) both', transformOrigin: origin }}
     >

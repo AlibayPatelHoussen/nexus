@@ -124,6 +124,7 @@ CREATE TABLE IF NOT EXISTS watch_history (
   progress        INTEGER NOT NULL DEFAULT 0, -- seconds watched
   duration        INTEGER, -- total duration
   completed       BOOLEAN NOT NULL DEFAULT FALSE,
+  dismissed       BOOLEAN NOT NULL DEFAULT FALSE, -- removed from « Reprendre » (until watched again)
   watched_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

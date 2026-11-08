@@ -61,6 +61,11 @@ export const mediaService = {
     return data.data
   },
 
+  /** « Retirer de Reprendre »: the progress is kept, watching again brings the title back */
+  async removeFromContinue(id: string): Promise<void> {
+    await api.delete(`/media/${id}/continue`)
+  },
+
   async getFavorites(): Promise<MediaItem[]> {
     const { data } = await api.get<{ success: boolean; data: MediaItem[] }>('/media/favorites')
     return data.data

@@ -38,6 +38,11 @@ router.get('/continue', asyncHandler(async (req: Request, res: Response) => {
   res.json({ success: true, data: items })
 }))
 
+router.delete('/:id/continue', asyncHandler(async (req: Request, res: Response) => {
+  await MediaService.dismissContinue(req.user!.userId, req.params.id)
+  res.json({ success: true })
+}))
+
 router.get('/favorites', asyncHandler(async (req: Request, res: Response) => {
   const items = await MediaService.getFavorites(req.user!.userId)
   res.json({ success: true, data: items })
