@@ -5,6 +5,7 @@ import fs from 'fs'
 import os from 'os'
 import path from 'path'
 import { logger } from '../utils/logger'
+import { buildIndex, indexProgress, readIndex, segmentCuts } from './keyframes'
 
 const execFileAsync = promisify(execFile)
 
@@ -164,6 +165,30 @@ export function ffmpegArgs(
   ]
 }
 
+/**
+ * ffmpeg arguments copying the whole film in one run, cut exactly at the keyframes of the
+ * index (`cuts`): the segments match the whole-film playlist the player already has.
+ * One run from the start (no seeking: in a copied MKV a seek lands on an earlier keyframe
+ * and timestamps would not line up); copying is ~190x real time on the owner's server, so
+ * a jump far ahead only waits a few seconds, and the whole film is ready in about 30 s.
+ */
+export function remuxSegmentArgs(input: string, cuts: number[], outDir: string, listFile: string, audioCopy = false): string[] {
+  const inner = cuts.slice(1, -1)
+  return [
+    '-hide_banner', '-loglevel', 'error', '-nostdin',
+    '-i', input,
+    '-map', '0:v:0', '-map', '0:a:0?',
+    '-c:v', 'copy',
+    ...(audioCopy ? ['-c:a', 'copy'] : ['-c:a', 'aac', '-b:a', '192k', '-ac', '2']),
+    '-f', 'segment', '-segment_format', 'mpegts',
+    // A cut at the first keyframe at or after each time, a little before it so rounding
+    // (or audio starting a few ms before the picture) never pushes it to the next keyframe
+    ...(inner.length ? ['-segment_times', inner.map((t) => Math.max(0.001, t - 0.05).toFixed(4)).join(',')] : []),
+    '-segment_list', listFile, '-segment_list_type', 'csv',
+    path.join(outDir, 'seg%05d.ts'),
+  ]
+}
+
 // ─── Jobs ─────────────────────────────────────────────
 export interface TranscodeJob {
   id:         string
@@ -181,6 +206,15 @@ export interface TranscodeJob {
   total:      number | null
   /** The audio is copied as it is (AAC / MP3 stereo) */
   audioCopy:  boolean
+  /**
+   * Remux on demand: segment boundaries from the file's keyframe index (null while the
+   * index is being built). Segments are copied when asked, like the re-encode on demand.
+   */
+  cuts:       number[] | null
+  /** Segments fully written (remux on demand: the segment muxer writes in place) */
+  complete:   Set<number>
+  listFile:   string | null
+  indexing:   Promise<void> | null
   /** First segment of the running ffmpeg (vod) */
   segStart:   number
   restartedAt: number
@@ -227,16 +261,36 @@ export async function startJob(
   const dir = path.join(ROOT, id)
   await fs.promises.mkdir(dir, { recursive: true })
 
-  // Re-encoding: whole-film playlist, converted on demand. Remux (copy, fast): the whole
-  // file is converted before playback starts (its segments follow the source keyframes,
-  // so a full playlist cannot be written in advance).
-  const vod = mode === 'transcode' && !!total && total > 0
+  // Whole-film playlist given at once, each segment converted when the player asks:
+  // re-encoding (segments of exactly 6 s) and remux (cut at the keyframes of the file's
+  // index; while the index is built the player waits, with progress)
+  const known = !!total && total > 0
+  const vod = known && (mode === 'transcode' || mode === 'remux')
   const job: TranscodeJob = {
-    id, userId, filePath, mode, start: vod || mode === 'remux' ? 0 : start, vod, total, audioCopy, segStart: 0, restartedAt: 0, dir,
+    id, userId, filePath, mode, start: vod || mode === 'remux' ? 0 : start, vod, total, audioCopy,
+    cuts: null, complete: new Set(), listFile: null, indexing: null, segStart: 0, restartedAt: 0, dir,
     proc: null, done: false, failed: null, lastAccess: Date.now(), createdAt: Date.now(),
   }
   jobs.set(id, job)
-  launch(job, vod ? Math.floor(start / SEGMENT_SECONDS) : 0)
+  if (vod && mode === 'remux') {
+    const known = await readIndex(filePath)
+    if (known) {
+      job.cuts = segmentCuts(known, total!, SEGMENT_SECONDS)
+      launch(job, 0)
+    } else {
+      job.indexing = buildIndex(filePath, total).then((keyframes) => {
+        job.cuts = segmentCuts(keyframes, total!, SEGMENT_SECONDS)
+        if (jobs.has(job.id)) launch(job, 0)
+      }, (err: Error) => {
+        // No index (odd file): convert the whole file first, as before
+        logger.warn(`Keyframe index failed for ${filePath}: ${err.message}`)
+        job.vod = false
+        if (jobs.has(job.id)) launch(job, 0)
+      }).finally(() => { job.indexing = null })
+    }
+  } else {
+    launch(job, vod ? Math.floor(start / SEGMENT_SECONDS) : 0)
+  }
   logger.info(`Transcode ${id}: ${mode}${vod ? ' (on demand)' : ''}${audioCopy ? ', audio copied' : ''} from ${start}s — ${filePath}`)
   return job
 }
@@ -248,8 +302,15 @@ function launch(job: TranscodeJob, segment: number) {
   job.restartedAt = Date.now()
   job.done = false
   job.failed = null
-  const from = job.vod ? segment * SEGMENT_SECONDS : job.start
-  const proc = spawn(FFMPEG, ffmpegArgs(job.filePath, job.mode, from, job.dir, job.vod ? segment : undefined, job.audioCopy), { stdio: ['ignore', 'ignore', 'pipe'] })
+  let args: string[]
+  if (job.vod && job.cuts) {
+    job.listFile = path.join(job.dir, 'segments.csv')
+    args = remuxSegmentArgs(job.filePath, job.cuts, job.dir, job.listFile, job.audioCopy)
+  } else {
+    const from = job.vod ? segment * SEGMENT_SECONDS : job.start
+    args = ffmpegArgs(job.filePath, job.mode, from, job.dir, job.vod ? segment : undefined, job.audioCopy)
+  }
+  const proc = spawn(FFMPEG, args, { stdio: ['ignore', 'ignore', 'pipe'] })
   job.proc = proc
   let stderr = ''
   proc.stderr?.on('data', (d) => { stderr = (stderr + d.toString()).slice(-2000) })
@@ -266,16 +327,37 @@ function launch(job: TranscodeJob, segment: number) {
 }
 
 const segName = (n: number) => `seg${String(n).padStart(5, '0')}.ts`
-const segmentCount = (job: TranscodeJob) => Math.max(1, Math.ceil((job.total ?? 0) / SEGMENT_SECONDS))
+const segmentCount = (job: TranscodeJob) => job.cuts ? job.cuts.length - 1 : Math.max(1, Math.ceil((job.total ?? 0) / SEGMENT_SECONDS))
+
+/** Remux on demand: the segment muxer lists each segment once it is finished. */
+function refreshComplete(job: TranscodeJob) {
+  if (!job.listFile) return
+  let text = ''
+  try { text = fs.readFileSync(job.listFile, 'utf8') } catch { return }
+  for (const line of text.split('\n')) {
+    const m = /^seg(\d{5})\.ts,/.exec(line)
+    if (m) job.complete.add(Number(m[1]))
+  }
+}
+
+/** The segment can be sent: finished (remux on demand) / renamed into place (HLS muxer). */
+function segmentReady(job: TranscodeJob, index: number): boolean {
+  if (job.cuts) {
+    if (!job.complete.has(index)) refreshComplete(job)
+    return job.complete.has(index)
+  }
+  return fs.existsSync(path.join(job.dir, segName(index)))
+}
 
 /** Playlist of the whole film (on-demand conversion), segments carry the stream token. */
 export function vodPlaylist(job: TranscodeJob, token: string): string {
   const q = `?token=${encodeURIComponent(token)}`
   const n = segmentCount(job)
-  const lines = ['#EXTM3U', '#EXT-X-VERSION:3', `#EXT-X-TARGETDURATION:${SEGMENT_SECONDS + 1}`, '#EXT-X-MEDIA-SEQUENCE:0',
+  const longest = job.cuts ? Math.max(...job.cuts.slice(1).map((c, i) => c - job.cuts![i])) : SEGMENT_SECONDS
+  const lines = ['#EXTM3U', '#EXT-X-VERSION:3', `#EXT-X-TARGETDURATION:${Math.ceil(longest) + 1}`, '#EXT-X-MEDIA-SEQUENCE:0',
     '#EXT-X-PLAYLIST-TYPE:VOD', '#EXT-X-INDEPENDENT-SEGMENTS']
   for (let i = 0; i < n; i++) {
-    const d = Math.min(SEGMENT_SECONDS, (job.total ?? 0) - i * SEGMENT_SECONDS)
+    const d = job.cuts ? job.cuts[i + 1] - job.cuts[i] : Math.min(SEGMENT_SECONDS, (job.total ?? 0) - i * SEGMENT_SECONDS)
     lines.push(`#EXTINF:${Math.max(0.1, d).toFixed(3)},`, segName(i) + q)
   }
   lines.push('#EXT-X-ENDLIST', '')
@@ -285,7 +367,7 @@ export function vodPlaylist(job: TranscodeJob, token: string): string {
 /** Segments ffmpeg already wrote from its current start (contiguous). */
 function nextSegment(job: TranscodeJob): number {
   let n = job.segStart
-  while (fs.existsSync(path.join(job.dir, segName(n)))) n++
+  while (segmentReady(job, n)) n++
   return n
 }
 
@@ -295,9 +377,13 @@ function nextSegment(job: TranscodeJob): number {
  */
 export async function segmentFile(job: TranscodeJob, index: number, timeoutMs = 90_000): Promise<string | null> {
   const file = path.join(job.dir, segName(index))
-  if (fs.existsSync(file)) return file
-  if (!job.vod) return null
+  if (segmentReady(job, index)) return file
+  if (!job.vod) return fs.existsSync(file) ? file : null
+  if (job.indexing) await job.indexing
+  if (!job.vod) return fs.existsSync(file) ? file : null
   if (index < 0 || index >= segmentCount(job)) return null
+  // Remux on demand: the single copy run reaches every segment quickly, never restarted
+  if (job.cuts) return waitSegment(job, index, file, timeoutMs)
   const next = nextSegment(job)
   const coming = !job.done && index >= job.segStart && index <= next + 4
   // Several requests right after a restart: wait for that ffmpeg rather than restarting again
@@ -306,12 +392,16 @@ export async function segmentFile(job: TranscodeJob, index: number, timeoutMs = 
     logger.info(`Transcode ${job.id}: seek to segment ${index} (was converting ${job.segStart}…${next})`)
     launch(job, index)
   }
+  return waitSegment(job, index, file, timeoutMs)
+}
+
+async function waitSegment(job: TranscodeJob, index: number, file: string, timeoutMs: number): Promise<string | null> {
   const until = Date.now() + timeoutMs
   while (Date.now() < until) {
     if (!jobs.has(job.id)) return null
     job.lastAccess = Date.now()
-    if (fs.existsSync(file)) return file
-    if (job.done && !fs.existsSync(file)) {
+    if (segmentReady(job, index)) return file
+    if (job.done && !segmentReady(job, index)) {
       // ffmpeg finished or failed without this segment (a restart elsewhere does not end up here)
       if (job.failed) return null
       if (index < job.segStart || index >= nextSegment(job)) return null
@@ -323,7 +413,11 @@ export async function segmentFile(job: TranscodeJob, index: number, timeoutMs = 
 
 /** Conversion state for the player: a remux is played once it is complete. */
 export async function jobStatus(job: TranscodeJob): Promise<{ ready: boolean; done: boolean; failed: string | null; percent: number | null }> {
-  if (job.vod) return { ready: true, done: job.done, failed: job.failed, percent: null }
+  if (job.vod) {
+    // Remux on demand: ready once the keyframe index is known (built once per file)
+    const ready = job.mode === 'transcode' || !!job.cuts
+    return { ready, done: job.done, failed: job.failed, percent: ready ? null : indexProgress(job.filePath) }
+  }
   let percent: number | null = null
   if (job.total) {
     const text = await fs.promises.readFile(path.join(job.dir, 'index.m3u8'), 'utf8').catch(() => '')
@@ -373,6 +467,8 @@ function reap() {
     // Finished: keep segments a little while for seeking back, then clean up
     const ttl = job.done ? IDLE_MS * 10 : IDLE_MS
     if (now - job.lastAccess <= ttl) continue
+    // Remux on demand: the copy finishes by itself in about a minute, keep it for a pause
+    if (job.cuts && (!job.done || now - job.lastAccess < IDLE_MS * 60)) continue
     // On demand (paused film): stop ffmpeg but keep the job a while, it restarts where asked
     if (job.vod && !job.done && now - job.lastAccess < IDLE_MS * 60) {
       job.proc?.kill('SIGKILL')

@@ -183,6 +183,8 @@ router.get('/transcode/:id/status', authenticateStream, asyncHandler(async (req:
 
 router.get('/transcode/:id/index.m3u8', authenticateStream, asyncHandler(async (req: Request, res: Response) => {
   const job = ownJob(req)
+  // Remux on demand: the playlist needs the file's keyframe index (the player waits for it)
+  if (job.indexing) await job.indexing
   if (job.vod) {
     res.setHeader('Content-Type', 'application/vnd.apple.mpegurl')
     res.setHeader('Cache-Control', 'no-cache')

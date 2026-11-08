@@ -2,6 +2,7 @@ import { Router, Request, Response } from 'express'
 import asyncHandler from 'express-async-handler'
 import { authenticate, requireAdmin } from '../middleware/auth'
 import { syncImdb } from '../services/imdb'
+import { indexLibrarySoon } from '../services/keyframeIndexer'
 import { logger } from '../utils/logger'
 import { MediaService } from '../services/media'
 import { MediaScanner, hasTmdbKey } from '../services/scanner'
@@ -115,6 +116,8 @@ router.post('/scan/:type', asyncHandler(async (req: Request, res: Response) => {
   if (['films', 'series', 'animes'].includes(req.params.type) && process.env.IMDB_SYNC !== 'off') {
     void syncImdb().catch((err) => logger.warn(`Enrichment after scan failed: ${err}`))
   }
+  // MKV films / episodes get their keyframe index (start at once, whole film) in the background
+  if (['films', 'series', 'animes'].includes(req.params.type)) indexLibrarySoon()
   res.json({ success: true, data: { scanned: count } })
 }))
 
