@@ -7,6 +7,7 @@ import os from 'os'
 import { owner, sudoRun, withSudo } from '../utils/sudo'
 
 import { authenticate, authenticateStream, requireAdmin } from '../middleware/auth'
+import { forgetPaths } from '../services/libraryDelete'
 import { sudoLimiter } from '../middleware/rateLimit'
 import { elevatedDelete } from '../services/elevatedDelete'
 import { FilesService, isInsideDir, sanitizePath } from '../services/files'
@@ -347,6 +348,7 @@ router.delete('/', asyncHandler(async (req: Request, res: Response) => {
   const filePath = req.query.path as string
   if (!filePath) throw new ValidationError('path is required')
   await FilesService.delete(filePath)
+  await forgetPaths([filePath])        // the library forgets what was in it at once (no rescan needed)
   res.json({ success: true })
 }))
 
@@ -358,6 +360,7 @@ router.post('/delete', asyncHandler(async (req: Request, res: Response) => {
   }
   if (paths.length > 1000) throw new ValidationError('Too many paths at once (max 1000)')
   const result = await FilesService.deleteMany([...new Set(paths as string[])])
+  await forgetPaths(result.deleted)
   res.status(result.failed.length && !result.deleted.length ? 422 : 200).json({ success: result.failed.length === 0, data: result })
 }))
 
@@ -371,6 +374,7 @@ router.post('/delete-elevated', sudoLimiter, asyncHandler(async (req: Request, r
   if (paths.length > 1000) throw new ValidationError('Too many paths at once (max 1000)')
   if (typeof password !== 'string' || !password) throw new ValidationError('password is required')
   const result = await elevatedDelete([...new Set(paths as string[])], password)
+  await forgetPaths(result.deleted)
   res.status(result.failed.length && !result.deleted.length ? 422 : 200).json({ success: result.failed.length === 0, data: result })
 }))
 

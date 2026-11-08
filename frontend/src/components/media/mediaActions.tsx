@@ -7,6 +7,8 @@ import { mediaService } from '@/services/mediaService'
 import { useAuthStore } from '@/stores/authStore'
 import { api } from '@/services/api'
 import { useConfirm } from '@/components/ui/useConfirm'
+import { filesService } from '@/services/filesService'
+import { serverError, showError } from '@/utils/errorToast'
 import type { MenuItem } from '@/components/ui/ContextMenu'
 
 export const isReading = (t: string) => t === 'manga' || t === 'webtoon'
@@ -35,20 +37,51 @@ export function useMediaActions() {
     ...(isAdmin ? [
       { separator: true } as const,
       {
-        label: 'Retirer de la bibliothèque…', icon: <Trash2 />, destructive: true,
+        label: 'Supprimer de la bibliothèque…', icon: <Trash2 />, destructive: true,
         onSelect: async () => {
           const ok = await confirm({
-            title: `Retirer « ${item.title} » de la bibliothèque ?`,
-            message: 'Le titre disparaît de Nexus. Les fichiers sur le disque ne sont pas supprimés (une nouvelle analyse le fera réapparaître).',
-            confirmLabel: 'Retirer',
+            title: `Supprimer « ${item.title} » ?`,
+            message: 'Le titre est supprimé partout : ses fichiers sur le disque, la bibliothèque (progression, Reprendre, ma liste), ' +
+                     'ses téléchargements et son suivi des nouveaux épisodes. C’est définitif.',
+            confirmLabel: 'Supprimer',
             danger: true,
           })
           if (!ok) return
+          const done = () => {
+            toast.success(`« ${item.title} » supprimé`)
+            for (const key of ['media', 'downloads', 'follows']) void qc.invalidateQueries({ queryKey: [key] })
+          }
           try {
             await api.delete(`/media/${item.id}`)
-            toast.success(`« ${item.title} » retiré`)
-            qc.invalidateQueries({ queryKey: ['media'] })
-          } catch { toast.error('Le titre n’a pas pu être retiré') }
+            done()
+          } catch (err) {
+            const data = (err as { response?: { data?: { code?: string; details?: { paths?: string[] } } } })?.response?.data
+            const paths = data?.details?.paths ?? []
+            if (data?.code !== 'NEEDS_PASSWORD' || !paths.length) { showError('Suppression impossible', serverError(err)); return }
+            // Files owned by root…: forced with the server's sudo password, then deleted everywhere
+            const forced = await confirm({
+              title: `Forcer la suppression de « ${item.title} » ?`,
+              message: 'Nexus n’a pas les droits pour supprimer ces fichiers (ils appartiennent à un autre utilisateur, souvent root). ' +
+                       'Entre le mot de passe du serveur (celui que tu utilises pour sudo) pour les supprimer quand même. Il n’est pas enregistré.',
+              details: paths,
+              confirmLabel: 'Supprimer',
+              danger: true,
+              password: {
+                label: 'Mot de passe du serveur (sudo)',
+                submit: async (password) => {
+                  try {
+                    const { failed } = await filesService.deleteElevated(paths, password)
+                    if (failed.length) return failed[0].error
+                    // 404: removing the files already removed the title (and its downloads, follow)
+                    await api.delete(`/media/${item.id}`, { validateStatus: (s) => s === 200 || s === 404 })
+                    return null
+                  } catch (e) { return serverError(e) }
+                },
+              },
+            })
+            if (forced) done()
+            else showError('Suppression impossible', serverError(err))
+          }
         },
       },
     ] : []),
