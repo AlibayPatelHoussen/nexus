@@ -33,7 +33,16 @@ if ! getent hosts github.com >/dev/null 2>&1; then
   echo "   Its state / last repairs:                          sudo bash scripts/wifi-watchdog.sh status"
   exit 1
 fi
+before=$(git rev-parse HEAD)
 git pull --ff-only origin main
+# git replaces deploy.sh by a new file: bash would go on reading the OLD one, so the new
+# steps of this very update (e.g. installing deno) would only run at the next deploy.
+# If the script changed, run the new one (once: the pull is then a no-op).
+if [ -z "${NEXUS_DEPLOY_REEXEC:-}" ] && ! git diff --quiet "$before" HEAD -- scripts/deploy.sh; then
+  echo "🔁 deploy.sh was updated: running the new version"
+  export NEXUS_DEPLOY_REEXEC=1
+  exec bash "$NEXUS_DIR/scripts/deploy.sh" "$@"
+fi
 
 # ── ffmpeg is needed to convert videos the browser cannot read ──
 if ! command -v ffmpeg &> /dev/null || ! command -v ffprobe &> /dev/null; then
