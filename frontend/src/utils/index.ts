@@ -29,6 +29,19 @@ export function formatBytes(bytes: number, decimals = 1): string {
   return `${fmt.format(i === 0 ? Math.round(v) : v)}\u00a0${sizes[i]}`
 }
 
+// Status as TMDB, AniList and MangaDex give it, in French
+const STATUS: Record<string, string> = {
+  ongoing: 'En cours', releasing: 'En cours', 'returning series': 'En cours', 'in production': 'En production',
+  completed: 'Terminé', finished: 'Terminé', ended: 'Terminé', released: 'Sorti',
+  hiatus: 'En pause', cancelled: 'Annulé', canceled: 'Annulé',
+  not_yet_released: 'À venir', planned: 'Prévu', 'post production': 'Post-production', rumored: 'Annoncé',
+}
+
+/** « ongoing » / « RELEASING » / « Returning Series » → « En cours »; unknown values unchanged */
+export function statusLabel(status: string): string {
+  return STATUS[status.trim().toLowerCase()] ?? status
+}
+
 /** Transfer rate: 2,4 Mo/s */
 export function formatRate(bytesPerSecond: number): string {
   return `${formatBytes(bytesPerSecond)}/s`
