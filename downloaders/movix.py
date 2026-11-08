@@ -322,24 +322,35 @@ async def download_from_embed(embed_url, output_file):
 
         context.on("page", on_new_page)
 
-        step(f"Ouverture embed : {embed_url[:80]}")
-        await page.goto(embed_url, wait_until="domcontentloaded", timeout=30000)
-        await page.wait_for_timeout(3000)
+        # Nexus copy: every wait ends as soon as the stream is seen (before: 5 s lost on
+        # every player, even when the stream came at once); a player that needs a click
+        # is clicked again now and then
+        async def wait_stream(ms):
+            for _ in range(max(1, ms // 250)):
+                if m3u8_url:
+                    return
+                await page.wait_for_timeout(250)
 
+        async def click_center():
+            try:
+                dims = await page.evaluate("() => ({ w: window.innerWidth, h: window.innerHeight })")
+                await page.mouse.click(dims["w"] // 2, dims["h"] // 2)
+            except Exception:
+                pass
+
+        step(f"Ouverture embed : {embed_url[:80]}")
         try:
-            dims = await page.evaluate("() => ({ w: window.innerWidth, h: window.innerHeight })")
-            cx = dims["w"] // 2
-            cy = dims["h"] // 2
-            await page.mouse.click(cx, cy)
-            await page.wait_for_timeout(2000)
-        except Exception:
-            pass
+            await page.goto(embed_url, wait_until="domcontentloaded", timeout=30000)
+        except Exception as e:
+            warn(f"Embed injoignable : {e}")
+        await wait_stream(3000)
 
         step("Attente du flux video (max 60s)...")
-        for _ in range(60):
+        for _ in range(6):
             if m3u8_url:
                 break
-            await page.wait_for_timeout(1000)
+            await click_center()
+            await wait_stream(10000)
 
         if not m3u8_url:
             found = await page.evaluate("""() => {
@@ -822,11 +833,21 @@ _CURRENT_ITEM = {"name": ""}
 
 
 def _ffmpeg_json(m3u8_url, headers, output_file):
-    """Replaces run_ffmpeg() in --json mode: same command, with progress."""
+    """Replaces run_ffmpeg() in --json mode: the HLS segments are fetched several at a
+    time (ffmpeg alone reads them one by one: films took hours); plain ffmpeg for
+    what that cannot take (direct MP4, live…) or when it fails."""
     ua = headers.get("user-agent", UA)
     ref = headers.get("referer", "")
-    hdr = f"User-Agent: {ua}\r\n" + (f"Referer: {ref}\r\n" if ref else "")
-    if not nexus_cli.ffmpeg_download(m3u8_url, output_file, _CURRENT_ITEM["name"], hdr):
+    origin = headers.get("origin", "")
+    item = _CURRENT_ITEM["name"]
+    http_headers = {"User-Agent": ua, **({"Referer": ref} if ref else {}), **({"Origin": origin} if origin else {})}
+    fast = nexus_cli.hls_download(m3u8_url, output_file, item, http_headers)
+    if fast:
+        return
+    if fast is False:
+        print("hls: parallel download failed, plain ffmpeg")
+    hdr = f"User-Agent: {ua}\r\n" + (f"Referer: {ref}\r\n" if ref else "") + (f"Origin: {origin}\r\n" if origin else "")
+    if not nexus_cli.ffmpeg_download(m3u8_url, output_file, item, hdr):
         # A failed source must not leave a half file that would look finished
         try:
             os.remove(output_file)

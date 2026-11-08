@@ -284,6 +284,260 @@ def ffmpeg_download(input_url, output, item, headers_arg=None, extra_before_inpu
     return proc.returncode == 0 and Path(output).exists() and Path(output).stat().st_size > 0
 
 
+# ── Parallel HLS download ─────────────────────────────────────────────────────
+# ffmpeg reads an HLS stream one segment after the other: with streaming hosts that
+# answer each request slowly (or cap the speed per connection), a 2 h film takes far
+# longer than its size needs. Here the segments are fetched several at a time, then
+# ffmpeg only assembles the local copy (-c copy, a few seconds). AES-128 keys and
+# init segments are fetched too, ffmpeg decrypts locally.
+
+HLS_WORKERS = 8
+HLS_RETRIES = 4
+
+
+def _hls_attrs(line):
+    """'#EXT-X-KEY:METHOD=AES-128,URI="k",IV=0x1' → {'METHOD': 'AES-128', 'URI': 'k', 'IV': '0x1'}"""
+    return {k.upper(): v.strip('"') for k, v in re.findall(r'([A-Za-z0-9-]+)=("[^"]*"|[^,]*)', line.partition(":")[2])}
+
+
+def hls_parse_master(text, base):
+    """Best variant (highest bandwidth) of a master playlist: (url, audio group) or None."""
+    from urllib.parse import urljoin
+    lines = [l.strip() for l in text.splitlines()]
+    best, audio_uris = None, {}
+    for i, line in enumerate(lines):
+        if line.startswith("#EXT-X-MEDIA:"):
+            a = _hls_attrs(line)
+            if a.get("TYPE") == "AUDIO" and a.get("URI"):
+                audio_uris[a.get("GROUP-ID")] = True
+        elif line.startswith("#EXT-X-STREAM-INF:"):
+            a = _hls_attrs(line)
+            uri = next((l for l in lines[i + 1:] if l and not l.startswith("#")), None)
+            if not uri:
+                continue
+            try:
+                bw = int(a.get("BANDWIDTH") or a.get("AVERAGE-BANDWIDTH") or 0)
+            except ValueError:
+                bw = 0
+            if best is None or bw > best[0]:
+                best = (bw, urljoin(base, uri), a.get("AUDIO"))
+    if not best:
+        return None
+    _, url, group = best
+    return url, (group if group in audio_uris else None)
+
+
+def hls_parse_media(text, base):
+    """Media playlist → (entries, None) or (None, reason it must be left to ffmpeg).
+    entries: ('seg', url) / ('key', attrs, url or None) / ('map', url) / ('line', text)."""
+    from urllib.parse import urljoin
+    if "#EXT-X-ENDLIST" not in text:
+        return None, "live"
+    entries = []
+    for line in (l.strip() for l in text.splitlines()):
+        if not line:
+            continue
+        if line.startswith("#EXT-X-BYTERANGE") or line.startswith("#EXT-X-PART"):
+            return None, "byterange"
+        if line.startswith("#EXT-X-KEY:"):
+            a = _hls_attrs(line)
+            method = (a.get("METHOD") or "NONE").upper()
+            if method not in ("NONE", "AES-128"):
+                return None, f"chiffrement {method}"
+            entries.append(("key", a, urljoin(base, a["URI"]) if a.get("URI") and method != "NONE" else None))
+        elif line.startswith("#EXT-X-MAP:"):
+            a = _hls_attrs(line)
+            if a.get("BYTERANGE") or not a.get("URI"):
+                return None, "map"
+            entries.append(("map", urljoin(base, a["URI"])))
+        elif line.startswith("#"):
+            entries.append(("line", line))
+        else:
+            entries.append(("seg", urljoin(base, line)))
+    if not any(e[0] == "seg" for e in entries):
+        return None, "vide"
+    return entries, None
+
+
+def hls_local_playlist(entries):
+    """The playlist ffmpeg reads: every URI points to the local copies (seg00001.ts, key1.bin…)."""
+    out, n_seg, n_key, n_map = [], 0, 0, 0
+    for e in entries:
+        if e[0] == "seg":
+            n_seg += 1
+            out.append(f"seg{n_seg:05d}.ts")
+        elif e[0] == "key":
+            a = e[1]
+            if e[2] is None:
+                out.append("#EXT-X-KEY:METHOD=NONE")
+                continue
+            n_key += 1
+            line = f'#EXT-X-KEY:METHOD=AES-128,URI="key{n_key}.bin"'
+            if a.get("IV"):
+                line += f",IV={a['IV']}"
+            out.append(line)
+        elif e[0] == "map":
+            n_map += 1
+            out.append(f'#EXT-X-MAP:URI="init{n_map}.mp4"')
+        else:
+            out.append(e[1])
+    return "\n".join(out) + "\n"
+
+
+def _hls_files(entries):
+    """[(local name, url)] to fetch, in playlist order."""
+    files, n_seg, n_key, n_map = [], 0, 0, 0
+    for e in entries:
+        if e[0] == "seg":
+            n_seg += 1
+            files.append((f"seg{n_seg:05d}.ts", e[1]))
+        elif e[0] == "key" and e[2]:
+            n_key += 1
+            files.append((f"key{n_key}.bin", e[2]))
+        elif e[0] == "map":
+            n_map += 1
+            files.append((f"init{n_map}.mp4", e[1]))
+    return files
+
+
+_HLS_LOCAL = threading.local()
+
+
+def _hls_get(url, headers, timeout=(10, 30)):
+    """GET with one HTTP session per thread (connections kept open between segments)."""
+    import requests
+    session = getattr(_HLS_LOCAL, "session", None)
+    if session is None:
+        session = _HLS_LOCAL.session = requests.Session()
+    r = session.get(url, headers=headers, timeout=timeout)
+    r.raise_for_status()
+    return r
+
+
+def hls_download(url, output, item, headers=None, workers=HLS_WORKERS):
+    """Downloads an HLS stream several segments at a time, then assembles it into `output` (MP4).
+    True: written. False: failed (the caller may try plain ffmpeg). None: not a stream this
+    can take (direct MP4, live, separate audio…): use ffmpeg."""
+    import shutil
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+    headers = dict(headers or {})
+    import requests
+    try:
+        # stream=True: a direct MP4 is only peeked at, never fetched whole here
+        with requests.get(url, headers=headers, timeout=(10, 30), stream=True) as r:
+            r.raise_for_status()
+            head = r.raw.read(64, decode_content=True) or b""
+            if not head.lstrip(b"\xef\xbb\xbf \r\n\t").startswith(b"#EXTM3U"):
+                return None
+            body = head + r.raw.read(decode_content=True)
+            text, base = body.decode(r.encoding or "utf-8", "replace").lstrip("\ufeff"), r.url
+    except Exception as e:
+        print(f"hls: playlist {url[:80]}: {e}")
+        return None
+    for _ in range(3):
+        if "#EXT-X-STREAM-INF" not in text:
+            break
+        best = hls_parse_master(text, base)
+        if not best:
+            return None
+        variant, audio_group = best
+        if audio_group:
+            print("hls: separate audio track, left to ffmpeg")
+            return None
+        try:
+            r = _hls_get(variant, headers)
+        except Exception as e:
+            print(f"hls: variant {variant[:80]}: {e}")
+            return None
+        text, base = r.text, r.url
+    entries, reason = hls_parse_media(text, base)
+    if entries is None:
+        print(f"hls: {reason}, left to ffmpeg")
+        return None
+
+    output = Path(output)
+    # Hidden folder next to the file (same disk, skipped by the library scan). Kept after a
+    # pause / stop: the next try only fetches the segments still missing.
+    work = output.with_name(".hls-" + output.name.lstrip("."))
+    work.mkdir(parents=True, exist_ok=True)
+    files = _hls_files(entries)
+    segs = sum(1 for name, _ in files if name.startswith("seg"))
+    state = {"done": 0, "bytes": 0, "new": 0}
+    lock = threading.Lock()
+    stop = threading.Event()
+    throttle = Throttle()
+    t0 = time.monotonic()
+
+    for name, _ in files:
+        p = work / name
+        if name.startswith("seg") and p.exists() and p.stat().st_size > 0:
+            state["done"] += 1
+            state["bytes"] += p.stat().st_size
+
+    def report(force=False):
+        done = state["done"]
+        speed = state["new"] / max(time.monotonic() - t0, 0.001)
+        total = state["bytes"] * segs / done if done else None
+        eta = (total - state["bytes"]) / speed if total and speed > 0 else None
+        video_progress(item, state["bytes"], total, speed, percent=done * 100 / segs, eta=eta,
+                       throttle=throttle, force=force)
+
+    def fetch(name, src):
+        target = work / name
+        if target.exists() and target.stat().st_size > 0:
+            return
+        tmp = work / (name + ".tmp")
+        for attempt in range(HLS_RETRIES):
+            if stop.is_set():
+                return
+            try:
+                data = _hls_get(src, headers).content
+                if not data:
+                    raise ValueError("réponse vide")
+                tmp.write_bytes(data)
+                os.replace(tmp, target)
+                if name.startswith("seg"):
+                    with lock:
+                        state["done"] += 1
+                        state["bytes"] += len(data)
+                        state["new"] += len(data)
+                        report()
+                return
+            except Exception as e:
+                if attempt == HLS_RETRIES - 1:
+                    raise RuntimeError(f"{name}: {e}") from e
+                time.sleep(2 ** attempt)
+
+    ok_ = True
+    with ThreadPoolExecutor(max_workers=max(1, workers)) as pool:
+        futures = [pool.submit(fetch, name, src) for name, src in files]
+        for f in as_completed(futures):
+            try:
+                f.result()
+            except Exception as e:
+                print(f"hls: {e}")
+                ok_ = False
+                stop.set()
+    if not ok_:
+        return False
+    report(force=True)
+
+    playlist = work / "local.m3u8"
+    playlist.write_text(hls_local_playlist(entries), encoding="utf-8")
+    emit("progress", item="Assemblage de la vidéo…", percent=100)
+    cmd = ["ffmpeg", "-hide_banner", "-nostats", "-loglevel", "error", "-y",
+           "-allowed_extensions", "ALL", "-protocol_whitelist", "file,crypto,data",
+           "-i", str(playlist), "-c", "copy", "-f", "mp4", str(output)]
+    try:
+        done = subprocess.run(cmd, stdout=subprocess.DEVNULL, stderr=sys.stderr).returncode == 0
+    except FileNotFoundError:
+        emit("error", message="ffmpeg n'est pas installé", item=item, fatal=False)
+        return False
+    done = done and output.exists() and output.stat().st_size > 0
+    shutil.rmtree(work, ignore_errors=True)
+    return done
+
+
 def http_download(session, url, output, item, headers=None, timeout=30):
     """Plain HTTP download with progress. True when complete."""
     throttle = Throttle()
