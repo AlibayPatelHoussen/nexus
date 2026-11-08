@@ -1,14 +1,14 @@
-import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { useQueryClient } from '@tanstack/react-query'
 import { isAxiosError } from 'axios'
 import toast from 'react-hot-toast'
 import { useState } from 'react'
-import { api } from '@/services/api'
-import { downloadsService, langLabel, type Follow } from '@/services/downloadsService'
+import { useDownloadTarget, type DownloadTarget } from '@/hooks/useDownloadTarget'
+import { downloadsService, langLabel } from '@/services/downloadsService'
 import { Group, ListRow } from '@/components/ui/GroupedList'
 import Toggle from '@/components/ui/Toggle'
 import Spinner from '@/components/ui/Spinner'
 
-interface Target { sourceId: string; title: string; poster_url: string | null; lang: string; season?: string; follow: Follow | null }
+type Target = DownloadTarget
 
 const seasonLabel = (s?: string) => !s ? '' : /^\d+$/.test(s) ? `Saison ${s}` : s.replace(/^saison(\d+)/, 'Saison $1').replace(/^(kai|film|oav)(\d+)$/, '$1 $2').replace(/^\w/, (c) => c.toUpperCase())
 
@@ -16,11 +16,7 @@ const seasonLabel = (s?: string) => !s ? '' : /^\d+$/.test(s) ? `Saison ${s}` : 
 export default function FollowGroup({ mediaId, kind }: { mediaId: string; kind: 'anime' | 'serie' | 'manga' }) {
   const qc = useQueryClient()
   const [busy, setBusy] = useState(false)
-  const { data: target, isLoading, error } = useQuery({
-    queryKey: ['follow-target', mediaId],
-    queryFn: async () => (await api.get<{ data: Target }>(`/downloads/follows/media/${mediaId}`)).data.data,
-    retry: false, staleTime: 5 * 60_000,
-  })
+  const { data: target, isLoading, error } = useDownloadTarget(mediaId, true)
   const on = !!target?.follow?.enabled
   const noun = kind === 'manga' ? 'nouveaux chapitres' : 'nouveaux épisodes'
 

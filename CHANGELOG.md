@@ -4,6 +4,10 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Added — « Télécharger » on the page of a series, an anime or a manga
+- Admin: a round download button next to « + » (series, animes) or a « Télécharger » button (mangas) opens the download sheet of that title on its site (movix for series, anime-sama for animes and mangas): seasons, languages, the episodes / chapters already downloaded marked, pick more and download them, without searching for the title again
+- The title is found like the automatic downloads: from the downloads that made its files, else by its name on the site (a few seconds; the button waits, then opens). Not found: a message says so
+
 ### Fixed — « Ma liste » (the + buttons) did not work, and there was nowhere to see it
 - Every « Ajouter à ma liste » button now shares one state: the billboard's « + » showed « + » even for a title already in the list (a tap then removed it), and the menu always said « Ajouter à ma liste » (removing a title already in it). They now show ✓ / « Retirer de ma liste » when the title is in the list, at once (no wait for the server)
 - New « Ma liste » page (sidebar › Médias on desktop; « Films ⌄ » menu and the « Ma liste › » shelf on iPhone): the titles added, newest first, filtered by kind (Films, Séries, Animes, Manga, YouTube: only those present)
