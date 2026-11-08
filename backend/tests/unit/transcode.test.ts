@@ -50,6 +50,12 @@ describe('ffmpegArgs', () => {
     expect(a).toContain('-ss 42.500 -i /in.mkv')
     expect(a).toContain('-c:v libx264 -preset veryfast')
     expect(a).toContain('-f hls')
+    expect(a).not.toContain('-start_number')
+  })
+  it('on demand: segments numbered from the first one, timestamps from the start', () => {
+    const a = ffmpegArgs('/in.mkv', 'transcode', 360, '/tmp/x', 60).join(' ')
+    expect(a).toContain('-ss 360.000 -i /in.mkv')
+    expect(a).toContain('-output_ts_offset 360.000 -start_number 60')
   })
 })
 

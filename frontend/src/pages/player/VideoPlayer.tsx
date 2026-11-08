@@ -6,7 +6,7 @@ import {
 import Spinner from '@/components/ui/Spinner'
 import type Hls from 'hls.js'
 import { filesService } from '@/services/filesService'
-import { getPlayInfo, startTranscode, stopTranscode } from '@/services/playbackService'
+import { getPlayInfo, getTranscodeStatus, startTranscode, stopTranscode } from '@/services/playbackService'
 
 interface Props {
   /** Video file on the server */
@@ -62,6 +62,9 @@ export default function VideoPlayer({ filePath, streamToken, onTimeUpdate, onEnd
   const [error,        setError]        = useState<string | null>(null)
   const [loading,      setLoading]      = useState(true)
   const [converting,   setConverting]   = useState(false)
+  /** Remux being prepared before playback: percent done */
+  const [prepared,     setPrepared]     = useState<number | null>(null)
+  const generation   = useRef(0)
 
   // ── Virtual timeline (identity for direct playback) ─
   const offset = () => (sourceRef.current?.kind === 'hls' ? sourceRef.current.offset : 0)
@@ -151,6 +154,7 @@ export default function VideoPlayer({ filePath, streamToken, onTimeUpdate, onEnd
 
   // ── Sources ────────────────────────────────────────
   function detach() {
+    generation.current++
     hlsRef.current?.destroy()
     hlsRef.current = null
     const s = sourceRef.current
@@ -162,19 +166,34 @@ export default function VideoPlayer({ filePath, streamToken, onTimeUpdate, onEnd
   async function playConverted(at: number, autoplay: boolean) {
     const v = videoRef.current
     if (!v) return
-    setLoading(true); setConverting(true); setError(null)
     detach()
+    const gen = ++generation.current
+    setLoading(true); setConverting(true); setError(null); setPrepared(null)
     try {
       const session = await startTranscode(filePath, at)
       sourceRef.current = { kind: 'hls', jobId: session.id, offset: session.start, total: session.duration ?? 0 }
-      setCurrent(session.start)
+      setCurrent(at)
       setDuration(session.duration ?? 0)
+      // A remux (fast copy) is prepared completely first: the whole film is then in the
+      // player, also in the iPhone full-screen player (not just the part converted so far)
+      for (;;) {
+        const st = await getTranscodeStatus(session.id)
+        if (gen !== generation.current) return
+        if (st.failed) throw new Error(st.failed)
+        if (st.ready) break
+        setPrepared(st.percent)
+        await new Promise((r) => setTimeout(r, 700))
+        if (gen !== generation.current) return
+      }
+      setPrepared(null)
       resumePlay.current = autoplay
+      const seekLocal = Math.max(0, at - session.start)
       const url = `${session.playlist}?token=${encodeURIComponent(streamToken)}`
 
       const { default: HlsJs } = await import('hls.js')
+      if (gen !== generation.current) return
       if (HlsJs.isSupported()) {
-        const hls = new HlsJs({ startPosition: 0, maxBufferLength: 30 })
+        const hls = new HlsJs({ startPosition: seekLocal > 1 ? seekLocal : 0, maxBufferLength: 30 })
         hls.on(HlsJs.Events.ERROR, (_e, data) => {
           if (!data.fatal) return
           if (data.type === HlsJs.ErrorTypes.MEDIA_ERROR) { hls.recoverMediaError(); return }
@@ -185,6 +204,7 @@ export default function VideoPlayer({ filePath, streamToken, onTimeUpdate, onEnd
         hls.attachMedia(v)
         hlsRef.current = hls
       } else if (v.canPlayType('application/vnd.apple.mpegurl')) {
+        pendingSeek.current = seekLocal > 1 ? seekLocal : null
         v.src = url            // Safari / iPhone: native HLS
         v.load()
       } else {
@@ -192,9 +212,10 @@ export default function VideoPlayer({ filePath, streamToken, onTimeUpdate, onEnd
         setLoading(false)
       }
     } catch (err) {
+      if (gen !== generation.current) return
       const msg = (err as { response?: { data?: { error?: string } } })?.response?.data?.error
       setError(msg ? `Conversion impossible : ${msg}` : 'Impossible de préparer la vidéo.')
-      setLoading(false)
+      setLoading(false); setPrepared(null)
     }
   }
 
@@ -437,8 +458,8 @@ export default function VideoPlayer({ filePath, streamToken, onTimeUpdate, onEnd
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 pointer-events-none" style={{ bottom: 96 }} role="status" aria-live="polite">
           <span className="text-white"><Spinner size={36} label="Chargement de la vidéo" color="rgba(255,255,255,.9)" /></span>
           {converting && (
-            <span className="text-[13px] font-medium px-3.5 py-1.5 rounded-pill glass-media">
-              Préparation de la vidéo…
+            <span className="text-[13px] font-medium px-3.5 py-1.5 rounded-pill glass-media tabular">
+              Préparation de la vidéo…{prepared != null ? ` ${prepared} %` : ''}
             </span>
           )}
         </div>
