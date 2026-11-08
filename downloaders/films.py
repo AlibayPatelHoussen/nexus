@@ -640,7 +640,13 @@ def _ffmpeg_json(m3u8_url, m3u8_headers, cookies, referer, output_file):
     ref = m3u8_headers.get("referer", referer)
     hdr = f"User-Agent: {ua}\r\nReferer: {ref}\r\n" + (f"Cookie: {cookies}\r\n" if cookies else "")
     part = nexus_cli.part_path(output_file)
-    if nexus_cli.ffmpeg_download(m3u8_url, part, item, hdr) and nexus_cli.finish(part, output_file):
+    # HLS segments several at a time (ffmpeg alone reads them one by one); plain ffmpeg
+    # for what that cannot take or when it fails
+    http_headers = {"User-Agent": ua, "Referer": ref, **({"Cookie": cookies} if cookies else {})}
+    fast = nexus_cli.hls_download(m3u8_url, part, item, http_headers)
+    if fast is False:
+        print("hls: parallel download failed, plain ffmpeg")
+    if (fast or nexus_cli.ffmpeg_download(m3u8_url, part, item, hdr)) and nexus_cli.finish(part, output_file):
         nexus_cli.emit("item_done", name=item, path=output_file)
         _RESULT["status"] = "ok"
     else:
