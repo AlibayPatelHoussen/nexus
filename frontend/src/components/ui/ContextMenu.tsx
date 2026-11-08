@@ -58,20 +58,38 @@ function Popover({ x, y, items, title, above, alignEnd, onClose }: Omit<ContextM
     const top = up ? Math.max(margin, (above ?? y) - r.height - (above != null ? 8 : 0)) : y
     setPos({ left: Math.max(margin, Math.min(start, window.innerWidth - r.width - margin)), top })
     setOrigin(`${up ? 'bottom' : 'top'} ${alignEnd ? 'right' : 'left'}`)
-    el.focus()
+    // preventScroll: on iPhone, focusing scrolled the page a little, and that scroll closed the menu
+    el.focus({ preventScroll: true })
   }, [x, y, above, alignEnd, phone])
 
   useEffect(() => {
     const close = () => onClose()
     const onDown = (e: PointerEvent) => { if (!ref.current?.contains(e.target as Node)) onClose() }
+    // A real scroll closes the menu, not the small moves a tap causes on iPhone (a shelf
+    // snapping back into place, the page settling): the menu vanished right after opening
+    const openedAt = performance.now()
+    const start = new Map<EventTarget, [number, number]>()
+    const page = document.scrollingElement ?? document.documentElement
+    start.set(page, [page.scrollLeft, page.scrollTop])
+    const onScroll = (e: Event) => {
+      const t = e.target === document ? document.scrollingElement ?? document.documentElement : e.target as Element
+      if (!t || !('scrollTop' in t)) return
+      const now: [number, number] = [t.scrollLeft, t.scrollTop]
+      const from = start.get(t)
+      if (!from) { start.set(t, now); return }
+      if (performance.now() - openedAt > 400 && Math.hypot(now[0] - from[0], now[1] - from[1]) > 16) onClose()
+    }
+    // iOS resizes the viewport when its bars move: only a width change (rotation) closes it
+    const width = window.innerWidth
+    const onResize = () => { if (window.innerWidth !== width) onClose() }
     window.addEventListener('blur', close)
-    window.addEventListener('resize', close)
-    window.addEventListener('scroll', close, true)
+    window.addEventListener('resize', onResize)
+    window.addEventListener('scroll', onScroll, true)
     document.addEventListener('pointerdown', onDown, true)
     return () => {
       window.removeEventListener('blur', close)
-      window.removeEventListener('resize', close)
-      window.removeEventListener('scroll', close, true)
+      window.removeEventListener('resize', onResize)
+      window.removeEventListener('scroll', onScroll, true)
       document.removeEventListener('pointerdown', onDown, true)
     }
   }, [onClose])

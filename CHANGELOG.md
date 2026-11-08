@@ -4,6 +4,9 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Fixed — menus closing right after opening on iPhone
+- A « … » menu (Reprendre cards…) closed by itself most of the time: the small scroll a tap causes (a shelf snapping back, the page settling, focusing the menu) or the viewport resizing when iOS moves its bars counted as « the user scrolled ». Only a real scroll (over 16 px) or a width change closes it now
+
 ### Added — « Retirer de Reprendre »
 - Films, series and animes can be removed from « Reprendre »: « … » button on the card (always on iPhone, on hover on Mac) or long press / right click → « Retirer de Reprendre ». The progress is kept; watching the title again brings it back (migration 012)
 - iPhone menus widen to fit their labels (no more « Retirer de Reprend… »)
