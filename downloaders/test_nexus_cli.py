@@ -2,13 +2,16 @@
 import io
 import json
 import os
+import signal
+import subprocess
 import sys
 import tempfile
 import time
 import unittest
 from pathlib import Path
 
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+HERE = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, HERE)
 import nexus_cli  # noqa: E402
 
 
@@ -314,6 +317,79 @@ class YtdlpStall(unittest.TestCase):
             nexus_cli.STALL_RESTARTS = old
         self.assertEqual(runs, 2)
         self.assertIn("n'envoie plus rien", nexus_cli.ytdlp_reason(nexus_cli.last_ytdlp_error))
+
+
+def _alive(pid):
+    try:
+        with open(f"/proc/{pid}/stat") as f:
+            return f.read().rsplit(")", 1)[1].split()[0] != "Z"
+    except OSError:
+        return False
+
+
+@unittest.skipUnless(os.path.isdir("/proc"), "Linux only")
+class StopWithNexus(unittest.TestCase):
+    """The owner's server: after a deployment, the old download went on (yt-dlp in its own
+    process group) while the queue started it again: two ffmpeg on the same file."""
+
+    def start(self, d, via_parent=False):
+        pidfile = Path(d) / "ytdlp.pid"
+        fake = Path(d) / "yt-dlp"
+        fake.write_text("#!/bin/sh\ncase \"$*\" in *--help*) exit 0;; esac\n"
+                        f"echo $$ > {pidfile}\nexec sleep 60\n")
+        fake.chmod(0o755)
+        runner = Path(d) / "runner.py"
+        runner.write_text(f"import sys\nsys.path.insert(0, {HERE!r})\nimport nexus_cli\nnexus_cli.early_json()\n"
+                          "nexus_cli.ytdlp_run(['x'], 'x')\n")
+        env = {**os.environ, "PATH": f"{d}:/usr/bin:/bin"}
+        if via_parent:
+            # A stand-in for Nexus that dies without stopping anything (SIGKILL, crash)
+            parent = Path(d) / "parent.py"
+            parent.write_text("import subprocess, sys, time\n"
+                              f"p = subprocess.Popen([sys.executable, {str(runner)!r}, '--json'], start_new_session=True, "
+                              "stdout=subprocess.DEVNULL)\nprint(p.pid, flush=True)\ntime.sleep(60)\n")
+            proc = subprocess.Popen([sys.executable, str(parent)], env=env, stdout=subprocess.PIPE, text=True)
+        else:
+            proc = subprocess.Popen([sys.executable, str(runner), "--json"], env=env, start_new_session=True,
+                                    stdout=subprocess.DEVNULL)
+        for _ in range(100):
+            if pidfile.exists() and pidfile.read_text().strip():
+                break
+            time.sleep(0.1)
+        return proc, int(pidfile.read_text())
+
+    def gone(self, pid, seconds):
+        end = time.monotonic() + seconds
+        while time.monotonic() < end:
+            if not _alive(pid):
+                return True
+            time.sleep(0.2)
+        return False
+
+    def test_pause_stops_yt_dlp_too(self):
+        with tempfile.TemporaryDirectory() as d:
+            proc, ytdlp = self.start(d)
+            try:
+                os.killpg(proc.pid, signal.SIGTERM)       # what Nexus does for a pause / cancel
+                proc.wait(timeout=10)
+                self.assertTrue(self.gone(ytdlp, 5))
+            finally:
+                if _alive(ytdlp):
+                    os.kill(ytdlp, signal.SIGKILL)
+
+    def test_stops_when_nexus_is_gone(self):
+        with tempfile.TemporaryDirectory() as d:
+            parent, ytdlp = self.start(d, via_parent=True)
+            script = int(parent.stdout.readline())
+            try:
+                parent.kill()
+                parent.wait()
+                self.assertTrue(self.gone(ytdlp, 10))
+                self.assertTrue(self.gone(script, 5))
+            finally:
+                for pid in (ytdlp, script):
+                    if _alive(pid):
+                        os.kill(pid, signal.SIGKILL)
 
 
 if __name__ == "__main__":

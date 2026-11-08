@@ -160,10 +160,28 @@ def _files_of(dest, vid, working=False):
             yield p
 
 
+def _duration(path):
+    """Seconds of media in the file: 0 when unreadable (no track), None when ffprobe cannot tell."""
+    try:
+        r = subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(path)],
+                           capture_output=True, text=True, timeout=120)
+    except (OSError, subprocess.SubprocessError):
+        return None
+    try:
+        return float(r.stdout.strip().splitlines()[0])
+    except (ValueError, IndexError):
+        return 0.0
+
+
 def _existing(dest, vid):
-    """The finished video (a stream or a half-merged file left by a stopped download does not count)."""
+    """The finished video (a stream or a half-merged file left by a stopped download does not count,
+    nor a broken one: two downloads of the same video at once once left a .mp4 with no track)."""
     for p in _files_of(dest, vid):
         if p.suffix.lower() in (".mp4", ".mkv", ".webm") and not PARTIAL.search(p.name):
+            if _duration(p) == 0:
+                print(f"youtube: {p.name} is unreadable, downloading it again")
+                p.unlink(missing_ok=True)
+                continue
             return p
     return None
 
@@ -176,13 +194,28 @@ def _finish_leftovers(dest, vid, item):
     """A download stopped while merging (pause, restart…) leaves the complete video and audio
     streams: merge them instead of downloading gigabytes again. Only when both streams have
     the exact sizes YouTube announced (.info.json); returns the final path or None."""
-    left = [p for p in _leftovers(dest, vid) if re.search(r"\.f\d+(-[a-z0-9]+)?\.[a-z0-9]+$", p.name, re.I)]
-    if len(left) < 2:
-        return None
     info_file = next((p for p in _files_of(dest, vid) if p.name.endswith(".info.json")), None)
     try:
         info = json.loads(info_file.read_text(encoding="utf-8")) if info_file else {}
     except (OSError, ValueError):
+        return None
+    if not info_file:
+        return None
+    final = info_file.with_name(info_file.name[:-len(".info.json")] + ".mp4")
+    # Already merged in the working folder (stopped while adding the thumbnail / metadata):
+    # the video is complete when it lasts as long as YouTube says
+    want = info.get("duration")
+    for p in _files_of(dest, vid, working=True):
+        if TEMP_DIR in p.relative_to(dest).parts and p.suffix.lower() == ".mp4" and not PARTIAL.search(p.name) and want:
+            got = _duration(p)
+            if got and abs(got - want) <= max(2.0, want * 0.01):
+                final.parent.mkdir(parents=True, exist_ok=True)
+                p.replace(final)
+                _settle(dest, vid, final)
+                print(f"youtube: {vid} was already merged")
+                return final
+    left = [p for p in _leftovers(dest, vid) if re.search(r"\.f\d+(-[a-z0-9]+)?\.[a-z0-9]+$", p.name, re.I)]
+    if len(left) < 2:
         return None
     sizes = {str(f.get("format_id")): f.get("filesize") for f in info.get("requested_formats") or []}
     streams = []
@@ -193,7 +226,6 @@ def _finish_leftovers(dest, vid, item):
         streams.append(part)
     if len(streams) < 2:
         return None
-    final = info_file.with_name(info_file.name[:-len(".info.json")] + ".mp4")
     nexus_cli.emit("progress", item="Assemblage de l'image et du son…", percent=100)
     tmp = final.with_name(".part-" + final.name)
     cmd = ["ffmpeg", "-y", "-v", "error"]
@@ -205,17 +237,21 @@ def _finish_leftovers(dest, vid, item):
         tmp.unlink(missing_ok=True)
         return None
     tmp.replace(final)
+    _settle(dest, vid, final)
+    print(f"youtube: {vid} merged from the streams already downloaded")
+    return final
+
+
+def _settle(dest, vid, final):
+    """Removes the pieces of the stopped download; its thumbnail goes next to the video."""
     for p in _leftovers(dest, vid):
         p.unlink(missing_ok=True)
-    # The thumbnail yt-dlp had left in its working folder goes next to the video
     for thumb in (p for p in _files_of(dest, vid, working=True) if p.suffix.lower() == ".jpg" and TEMP_DIR in p.parts):
         target = final.with_suffix(".jpg")
         if not target.exists():
             thumb.replace(target)
         else:
             thumb.unlink(missing_ok=True)
-    print(f"youtube: {vid} merged from the streams already downloaded")
-    return final
 
 
 def json_download(args):
