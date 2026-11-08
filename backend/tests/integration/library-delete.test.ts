@@ -19,13 +19,6 @@ async function media(type: string, filePath: string, title = 'Titre test'): Prom
   return rows[0].id
 }
 
-async function download(sourceId: string, files: string[], status = 'done'): Promise<string> {
-  const { rows } = await query<{ id: string }>(
-    `INSERT INTO downloads (kind, source_script, source_id, title, status, progress)
-     VALUES ('serie', 'movix', $1, 'Titre test', $2, $3) RETURNING id`, [sourceId, status, JSON.stringify({ files })])
-  return rows[0].id
-}
-
 const exists = async (table: string, id: string) =>
   (await query(`SELECT 1 FROM ${table} WHERE id = $1`, [id])).rows.length > 0
 
@@ -33,32 +26,25 @@ beforeEach(() => { fs.rmSync(ROOT, { recursive: true, force: true }) })
 afterAll(async () => {
   fs.rmSync(ROOT, { recursive: true, force: true })
   await query(`DELETE FROM media_items WHERE file_path LIKE $1 || '%'`, [ROOT])
-  await query(`DELETE FROM downloads WHERE source_id LIKE 'movix:tv:9900%'`)
-  await query(`DELETE FROM follows WHERE source_id LIKE 'movix:tv:9900%'`)
 })
 
 describe('DELETE /api/media/:id — deleted everywhere', () => {
-  it('a series: its folder, its row, episodes, downloads and follow', async () => {
+  // (its downloads and follow: tests in downloads.test.ts, which owns the downloads table)
+  it('a series: its folder, its row and episodes', async () => {
     const dir = path.join(ROOT, 'series', 'Ma Série')
     const ep = path.join(dir, 'VF', 'Saison_1', 'E01.mp4')
     write(ep)
     const id = await media('serie', dir)
     const epRow = await query<{ id: string }>(
       `INSERT INTO episodes (media_item_id, season, episode_number, file_path) VALUES ($1, 1, 1, $2) RETURNING id`, [id, ep])
-    const dl = await download('movix:tv:990001', [ep])
-    const other = await download('movix:tv:990002', [path.join(ROOT, 'series', 'Autre', 'E01.mp4')])
-    await query(`INSERT INTO follows (source_id, source_script, kind, title) VALUES ('movix:tv:990001', 'movix', 'serie', 'Ma Série')`)
 
     const res = await request(app).delete(`/api/media/${id}`).set(admin)
     expect(res.status).toBe(200)
-    expect(res.body.data).toMatchObject({ files: [dir], downloads: 1, follows: 1 })
+    expect(res.body.data).toMatchObject({ files: [dir] })
     expect(fs.existsSync(dir)).toBe(false)
     expect(fs.existsSync(path.join(ROOT, 'series'))).toBe(true)
     expect(await exists('media_items', id)).toBe(false)
     expect(await exists('episodes', epRow.rows[0].id)).toBe(false)
-    expect(await exists('downloads', dl)).toBe(false)
-    expect(await exists('downloads', other)).toBe(true)          // another title's download stays
-    expect((await query(`SELECT 1 FROM follows WHERE source_id = 'movix:tv:990001'`)).rows).toHaveLength(0)
   })
 
   it('a film alone in its folder: the whole folder', async () => {
@@ -129,10 +115,8 @@ describe('File manager deletion', () => {
     const dir = path.join(ROOT, 'animes', 'Mon Anime')
     write(path.join(dir, 'ep01.mp4'))
     const id = await media('anime', dir)
-    const dl = await download('movix:tv:990003', [path.join(dir, 'ep01.mp4')])
     const res = await request(app).post('/api/files/delete').set(admin).send({ paths: [dir] })
     expect(res.status).toBe(200)
     expect(await exists('media_items', id)).toBe(false)
-    expect(await exists('downloads', dl)).toBe(false)
   })
 })
