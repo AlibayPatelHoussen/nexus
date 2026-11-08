@@ -104,7 +104,9 @@ export default function VideoPlayer({ filePath, streamToken, onTimeUpdate, onEnd
     const applyResume = () => {
       const t = pendingSeek.current
       if (t == null || v.readyState < 1) return
-      if (Math.abs(v.currentTime - t) <= 1.5 || Date.now() - pendingSince.current > 20_000
+      // Given up 20 s after playback really started (the iPhone loads nothing before ▶ is
+      // tapped: counting from the opening gave up while the user had not pressed play yet)
+      if (Math.abs(v.currentTime - t) <= 1.5 || (pendingSince.current > 0 && Date.now() - pendingSince.current > 20_000)
         || (isFinite(v.duration) && t >= v.duration)) { pendingSeek.current = null; return }
       if (!v.seeking) { try { v.currentTime = t } catch { /* not seekable yet */ } }
     }
@@ -132,6 +134,10 @@ export default function VideoPlayer({ filePath, streamToken, onTimeUpdate, onEnd
     const onVol     = () => { setVolume(v.volume); setMuted(v.muted) }
     const onWaiting = () => setLoading(true)
     const onReady   = () => { setLoading(false); applyResume() }
+    const onPlaying = () => {
+      if (pendingSeek.current != null && pendingSince.current === 0) pendingSince.current = Date.now()
+      onReady()
+    }
     const onErr     = () => {
       // hls.js reports its own (recoverable) errors; only native errors land here
       if (hlsRef.current) return
@@ -146,7 +152,7 @@ export default function VideoPlayer({ filePath, streamToken, onTimeUpdate, onEnd
     v.addEventListener('ended',          onEnded_)
     v.addEventListener('volumechange',   onVol)
     v.addEventListener('waiting',        onWaiting)
-    v.addEventListener('playing',        onReady)
+    v.addEventListener('playing',        onPlaying)
     v.addEventListener('canplay',        onReady)
     v.addEventListener('error',          onErr)
     return () => {
@@ -157,7 +163,7 @@ export default function VideoPlayer({ filePath, streamToken, onTimeUpdate, onEnd
       v.removeEventListener('ended',          onEnded_)
       v.removeEventListener('volumechange',   onVol)
       v.removeEventListener('waiting',        onWaiting)
-      v.removeEventListener('playing',        onReady)
+      v.removeEventListener('playing',        onPlaying)
       v.removeEventListener('canplay',        onReady)
       v.removeEventListener('error',          onErr)
     }
@@ -207,7 +213,7 @@ export default function VideoPlayer({ filePath, streamToken, onTimeUpdate, onEnd
       if (HlsJs.isSupported()) {
         // startPosition, and the resume check too (iPhone: hls.js on ManagedMediaSource)
         pendingSeek.current = seekLocal > 1 ? seekLocal : null
-        pendingSince.current = Date.now()
+        pendingSince.current = 0
         const hls = new HlsJs({ startPosition: seekLocal > 1 ? seekLocal : 0, maxBufferLength: 30 })
         hls.on(HlsJs.Events.ERROR, (_e, data) => {
           if (!data.fatal) return
@@ -220,7 +226,7 @@ export default function VideoPlayer({ filePath, streamToken, onTimeUpdate, onEnd
         hlsRef.current = hls
       } else if (v.canPlayType('application/vnd.apple.mpegurl')) {
         pendingSeek.current = seekLocal > 1 ? seekLocal : null
-        pendingSince.current = Date.now()
+        pendingSince.current = 0
         v.src = url            // Safari / iPhone: native HLS
         v.load()
       } else {
@@ -248,7 +254,7 @@ export default function VideoPlayer({ filePath, streamToken, onTimeUpdate, onEnd
         if (!info || info.mode === 'direct') {
           sourceRef.current = { kind: 'direct' }
           pendingSeek.current = initialTime && initialTime > 0 ? initialTime : null
-          pendingSince.current = Date.now()
+          pendingSince.current = 0
           v.src = filesService.buildStreamUrl(filePath, streamToken)
           v.load()
         } else {
@@ -307,7 +313,7 @@ export default function VideoPlayer({ filePath, streamToken, onTimeUpdate, onEnd
     if (!v || !initialTime || initialTime <= 0 || sourceRef.current?.kind !== 'direct') return
     if (v.currentTime >= 1) return
     pendingSeek.current = initialTime
-    pendingSince.current = Date.now()
+    pendingSince.current = 0
     if (v.readyState >= 1 && initialTime < v.duration) v.currentTime = initialTime
   }, [initialTime])
 
