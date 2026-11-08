@@ -144,8 +144,9 @@ function PhonePage({ title, actions, accessory, back, bleed, largeTitle = true, 
             <div className="justify-self-start min-w-0">
               {parent ? (
                 <Link to={parent.to} aria-label={`Retour : ${parent.label}`}
-                  className={cn('flex items-center justify-center w-11 h-11 ml-1 rounded-full text-label active:opacity-60', barSolid ? 'glass-bar' : 'glass-over-art')}>
-                  <ChevronLeft size={26} strokeWidth={2.25} className="-ml-0.5" aria-hidden="true" />
+                  className={cn('flex items-center h-11 ml-1 pl-1.5 pr-4 max-w-[40vw] rounded-pill text-label text-[17px]', barSolid ? 'glass-bar' : 'glass-over-art')}>
+                  <ChevronLeft size={26} strokeWidth={2.25} className="flex-shrink-0" aria-hidden="true" />
+                  <span className="truncate">{parent.label}</span>
                 </Link>
               ) : leading && <div className={cn('ml-1 rounded-pill', barSolid ? 'glass-bar' : 'glass-over-art')}>{leading}</div>}
             </div>
@@ -182,10 +183,11 @@ function PhonePage({ title, actions, accessory, back, bleed, largeTitle = true, 
         <div className="grid grid-cols-[1fr_auto_1fr] items-center h-[var(--navbar-h)] safe-x" style={{ ['--gutter' as string]: '8px' }}>
           <div className="justify-self-start min-w-0">
             {parent ? (
-              // iOS 26: the back button is a round Liquid Glass button (same as over the billboard)
-              <Link to={parent.to} aria-label={`Retour : ${parent.label}`} title={parent.label}
-                className="flex items-center justify-center w-11 h-11 ml-1 rounded-full text-label glass-bar">
-                <ChevronLeft size={26} strokeWidth={2.25} className="-ml-0.5" aria-hidden="true" />
+              // iOS 26: the back button is a Liquid Glass capsule with the parent's name (like the player's « Retour »)
+              <Link to={parent.to} aria-label={`Retour : ${parent.label}`}
+                className="flex items-center h-11 ml-1 pl-1.5 pr-4 max-w-[40vw] rounded-pill text-label text-[17px] glass-bar">
+                <ChevronLeft size={26} strokeWidth={2.25} className="flex-shrink-0" aria-hidden="true" />
+                <span className="truncate">{parent.label}</span>
               </Link>
             ) : leading && <div className="ml-1 rounded-pill glass-bar">{leading}</div>}
           </div>
