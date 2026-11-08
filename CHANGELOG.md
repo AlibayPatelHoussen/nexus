@@ -4,6 +4,9 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Changed — test notification
+- The test notification says what it is (« Notifications activées ») instead of repeating « Nexus », like download notifications (« Échec du téléchargement »…); iOS already shows the app's name
+
 ### Fixed — a YouTube download that went on alone, broken videos
 - A pause, a cancel or a restart of Nexus (deployment) now stops yt-dlp too: it ran in its own process group and went on alone while the next try worked on the same files (« Conversion failed », a .mp4 with no track). A script also stops by itself when Nexus is gone
 - A video that cannot be read (no track) no longer counts as « déjà présent »: it is downloaded again
