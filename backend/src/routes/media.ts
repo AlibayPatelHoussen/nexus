@@ -5,6 +5,7 @@ import { syncImdb } from '../services/imdb'
 import { indexLibrarySoon } from '../services/keyframeIndexer'
 import { logger } from '../utils/logger'
 import { MediaService } from '../services/media'
+import { deleteMediaEverywhere } from '../services/libraryDelete'
 import { MediaScanner, hasTmdbKey } from '../services/scanner'
 import { ConflictError } from '../utils/errors'
 
@@ -121,10 +122,9 @@ router.post('/scan/:type', asyncHandler(async (req: Request, res: Response) => {
   res.json({ success: true, data: { scanned: count } })
 }))
 
+// Deletes the title everywhere: files on the disk, library, downloads, follow (services/libraryDelete.ts)
 router.delete('/:id', requireAdmin, asyncHandler(async (req: Request, res: Response) => {
-  const ok = await MediaService.deleteById(req.params.id)
-  if (!ok) { res.status(404).json({ success: false, error: 'Not found' }); return }
-  res.json({ success: true })
+  res.json({ success: true, data: await deleteMediaEverywhere(req.params.id) })
 }))
 
 router.get('/:id', asyncHandler(async (req: Request, res: Response) => {

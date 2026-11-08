@@ -4,6 +4,11 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Changed — « Supprimer de la bibliothèque » deletes the title everywhere
+- The menu of a title (admin) deletes it everywhere: its files on the disk (a series / anime / manga: its folder; a film alone in its folder: the folder; a film next to others: its file and what goes with it — subtitles, `.nexus.json`), its row (episodes, chapters, progress, « Reprendre », lists and ratings), the downloads that made it (stopped if running), its follow (new episodes are no longer downloaded), the conversions being played and the keyframe indexes. Before, only the row was removed and the next scan brought the title back
+- Never outside the library nor a library folder itself; a collection folder holding other films is never deleted whole. Files owned by root: the server's sudo password is asked, as in the file manager
+- Deleting library files in the file manager also removes their titles, episodes, chapters, downloads and follows at once (no rescan needed)
+
 ### Fixed — movix films and episodes took very long to download
 - ffmpeg fetched the HLS stream one segment after the other: the segments are now fetched 8 at a time (one kept-open connection per thread, 4 tries each), then ffmpeg only assembles the local copy (`-c copy`, a few seconds). About 5× faster with a host that is slow to answer (24 segments at 300 ms: 7.6 s → 1.4 s). Encrypted streams (AES-128) and master playlists (best quality) work; a direct MP4, a live stream, a separate audio track or another cipher are left to plain ffmpeg, as before, and so is a stream whose parallel download fails
 - A paused or stopped download keeps its segments (hidden `.hls-…` folder next to the file, skipped by the library scan): the next try only fetches the missing ones

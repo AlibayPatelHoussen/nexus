@@ -22,6 +22,11 @@ async function cacheFile(file: string): Promise<string> {
   return path.join(CACHE_DIR, key.slice(0, 2), `${key}.json`)
 }
 
+/** Removes the index of a file about to be deleted (its name depends on the file's size and date). */
+export async function forgetIndex(file: string): Promise<void> {
+  try { await fs.promises.unlink(await cacheFile(file)) } catch { /* not indexed / already gone */ }
+}
+
 /** Keyframe times already known for this file (null: not indexed yet / file changed). */
 export async function readIndex(file: string): Promise<number[] | null> {
   try {
