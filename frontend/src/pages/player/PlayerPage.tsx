@@ -1,6 +1,6 @@
 import { useRef, useState, useEffect } from 'react'
 import { useParams, useNavigate, useSearchParams } from 'react-router-dom'
-import { useQuery } from '@tanstack/react-query'
+import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronLeft } from 'lucide-react'
 import { mediaService } from '@/services/mediaService'
 import { getStreamToken } from '@/services/streamToken'
@@ -29,6 +29,7 @@ export default function PlayerPage() {
   const { id }         = useParams<{ id: string }>()
   const [searchParams] = useSearchParams()
   const navigate       = useNavigate()
+  const qc = useQueryClient()
   const episodeId      = searchParams.get('ep') || undefined
 
   const progressRef = useRef<ReturnType<typeof setInterval> | null>(null)
@@ -96,10 +97,19 @@ export default function PlayerPage() {
     }
   }, [savedProgress])
 
-  function saveNow(completed = false) {
+  function saveNow(completed = false, refresh = false) {
     const { t, d } = latestRef.current
     if (!id || !(d > 0) || !(t > 0)) return
-    mediaService.saveProgress(id, Math.floor(completed ? d : t), Math.floor(d), episodeId).catch(() => {})
+    const saved = mediaService.saveProgress(id, Math.floor(completed ? d : t), Math.floor(d), episodeId).catch(() => {})
+    // Leaving the film / an episode ending: « Reprendre », the title page's progress and
+    // the next resume position are up to date at once (no library scan needed)
+    if (refresh) {
+      void saved.then(() => {
+        void qc.invalidateQueries({ queryKey: ['media', 'continue'] })
+        void qc.invalidateQueries({ queryKey: ['progress', id] })
+        void qc.invalidateQueries({ queryKey: ['episodes-progress', id] })
+      })
+    }
   }
 
   function handleTimeUpdate(current: number, duration: number) {
@@ -112,14 +122,14 @@ export default function PlayerPage() {
     latestRef.current = { t: 0, d: 0 }
     return () => {
       if (progressRef.current) { clearInterval(progressRef.current); progressRef.current = null }
-      saveNow()
+      saveNow(false, true)
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [id, episodeId])
 
   function handleEnded() {
     if (progressRef.current) { clearInterval(progressRef.current); progressRef.current = null }
-    saveNow(true)
+    saveNow(true, true)
     if (media?.episodes && episodeId) {
       const idx  = media.episodes.findIndex((e: Episode) => e.id === episodeId)
       const next = media.episodes[idx + 1]

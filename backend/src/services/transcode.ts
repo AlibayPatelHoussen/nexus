@@ -165,28 +165,55 @@ export function ffmpegArgs(
   ]
 }
 
+/** Fixed shift of every remux output: timestamps never go negative, so every run (from the
+ *  start or from a seek) puts the same frame at the same time and the segments fit together. */
+const TS_OFFSET = '10'
+
 /**
- * ffmpeg arguments copying the whole film in one run, cut exactly at the keyframes of the
+ * ffmpeg arguments copying the film from segment `k`, cut exactly at the keyframes of the
  * index (`cuts`): the segments match the whole-film playlist the player already has.
- * One run from the start (no seeking: in a copied MKV a seek lands on an earlier keyframe
- * and timestamps would not line up); copying is ~190x real time on the owner's server, so
- * a jump far ahead only waits a few seconds, and the whole film is ready in about 30 s.
+ * In a copied MKV, a seek lands on a keyframe at or before the one asked (`landing`): the
+ * piece between it and cut `k` is written as an extra first segment (`junk`), not served.
+ * Timestamps are the source's (-copyts) shifted by TS_OFFSET, the same in every run.
  */
-export function remuxSegmentArgs(input: string, cuts: number[], outDir: string, listFile: string, audioCopy = false): string[] {
-  const inner = cuts.slice(1, -1)
-  return [
-    '-hide_banner', '-loglevel', 'error', '-nostdin',
-    '-i', input,
-    '-map', '0:v:0', '-map', '0:a:0?',
-    '-c:v', 'copy',
-    ...(audioCopy ? ['-c:a', 'copy'] : ['-c:a', 'aac', '-b:a', '192k', '-ac', '2']),
-    '-f', 'segment', '-segment_format', 'mpegts',
-    // A cut at the first keyframe at or after each time, a little before it so rounding
-    // (or audio starting a few ms before the picture) never pushes it to the next keyframe
-    ...(inner.length ? ['-segment_times', inner.map((t) => Math.max(0.001, t - 0.05).toFixed(4)).join(',')] : []),
-    '-segment_list', listFile, '-segment_list_type', 'csv',
-    path.join(outDir, 'seg%05d.ts'),
-  ]
+export function remuxSegmentArgs(
+  input: string, cuts: number[], k: number, landing: number, outDir: string, listFile: string, audioCopy = false,
+): { args: string[]; junk: number | null } {
+  const hasJunk = k > 0 && landing < cuts[k] - 0.05
+  const times = [...(hasJunk ? [cuts[k]] : []), ...cuts.slice(k + 1, -1)]
+  return {
+    junk: hasJunk ? k - 1 : null,
+    args: [
+      '-hide_banner', '-loglevel', 'error', '-nostdin',
+      // Just after the keyframe: the seek goes back to the keyframe at or before it
+      ...(k > 0 ? ['-ss', (cuts[k] + 0.001).toFixed(4)] : []),
+      '-copyts', '-i', input,
+      '-map', '0:v:0', '-map', '0:a:0?',
+      '-c:v', 'copy',
+      ...(audioCopy ? ['-c:a', 'copy'] : ['-c:a', 'aac', '-b:a', '192k', '-ac', '2']),
+      '-output_ts_offset', TS_OFFSET,
+      '-f', 'segment', '-segment_format', 'mpegts',
+      // Times counted from where this run starts; a little before each keyframe so rounding
+      // (or audio starting a few ms before the picture) never pushes a cut to the next one
+      ...(times.length ? ['-segment_times', times.map((t) => Math.max(0.001, t - landing - 0.05).toFixed(4)).join(',')] : []),
+      '-segment_start_number', String(hasJunk ? k - 1 : k),
+      '-segment_list', listFile, '-segment_list_type', 'csv',
+      path.join(outDir, 'seg%05d.ts'),
+    ],
+  }
+}
+
+/** Where ffmpeg really starts when asked to seek to `t` (first video packet), in seconds. */
+async function landingTime(input: string, t: number): Promise<number | null> {
+  try {
+    const { stdout } = await execFileAsync(FFMPEG, ['-hide_banner', '-loglevel', 'error', '-nostdin', '-ss', t.toFixed(4), '-copyts',
+      '-i', input, '-map', '0:v:0', '-c', 'copy', '-frames:v', '1', '-f', 'framecrc', '-'], { timeout: 15_000 })
+    const tb = /#tb 0: (\d+)\/(\d+)/.exec(stdout)
+    const line = stdout.split('\n').find((l) => /^0,/.test(l))
+    if (!tb || !line) return null
+    const pts = Number(line.split(',')[2])
+    return Number.isFinite(pts) ? pts * Number(tb[1]) / Number(tb[2]) : null
+  } catch { return null }
 }
 
 // ─── Jobs ─────────────────────────────────────────────
@@ -211,9 +238,13 @@ export interface TranscodeJob {
    * index is being built). Segments are copied when asked, like the re-encode on demand.
    */
   cuts:       number[] | null
-  /** Segments fully written (remux on demand: the segment muxer writes in place) */
-  complete:   Set<number>
+  /** Finished segments (remux on demand: the segment muxer writes in place) → their file */
+  complete:   Map<number, string>
+  /** Current copy run: its folder, its list of finished segments, its extra first piece */
+  runDir:     string | null
   listFile:   string | null
+  junk:       number | null
+  gen:        number
   indexing:   Promise<void> | null
   /** First segment of the running ffmpeg (vod) */
   segStart:   number
@@ -268,7 +299,7 @@ export async function startJob(
   const vod = known && (mode === 'transcode' || mode === 'remux')
   const job: TranscodeJob = {
     id, userId, filePath, mode, start: vod || mode === 'remux' ? 0 : start, vod, total, audioCopy,
-    cuts: null, complete: new Set(), listFile: null, indexing: null, segStart: 0, restartedAt: 0, dir,
+    cuts: null, complete: new Map(), runDir: null, listFile: null, junk: null, gen: 0, indexing: null, segStart: 0, restartedAt: 0, dir,
     proc: null, done: false, failed: null, lastAccess: Date.now(), createdAt: Date.now(),
   }
   jobs.set(id, job)
@@ -276,11 +307,11 @@ export async function startJob(
     const known = await readIndex(filePath)
     if (known) {
       job.cuts = segmentCuts(known, total!, SEGMENT_SECONDS)
-      launch(job, 0)
+      launch(job, segmentAt(job.cuts, start))
     } else {
       job.indexing = buildIndex(filePath, total).then((keyframes) => {
         job.cuts = segmentCuts(keyframes, total!, SEGMENT_SECONDS)
-        if (jobs.has(job.id)) launch(job, 0)
+        if (jobs.has(job.id)) launch(job, segmentAt(job.cuts, start))
       }, (err: Error) => {
         // No index (odd file): convert the whole file first, as before
         logger.warn(`Keyframe index failed for ${filePath}: ${err.message}`)
@@ -302,14 +333,31 @@ function launch(job: TranscodeJob, segment: number) {
   job.restartedAt = Date.now()
   job.done = false
   job.failed = null
-  let args: string[]
-  if (job.vod && job.cuts) {
-    job.listFile = path.join(job.dir, 'segments.csv')
-    args = remuxSegmentArgs(job.filePath, job.cuts, job.dir, job.listFile, job.audioCopy)
-  } else {
-    const from = job.vod ? segment * SEGMENT_SECONDS : job.start
-    args = ffmpegArgs(job.filePath, job.mode, from, job.dir, job.vod ? segment : undefined, job.audioCopy)
-  }
+  if (job.vod && job.cuts) { void launchRemux(job, segment); return }
+  const from = job.vod ? segment * SEGMENT_SECONDS : job.start
+  spawnJob(job, ffmpegArgs(job.filePath, job.mode, from, job.dir, job.vod ? segment : undefined, job.audioCopy))
+}
+
+/** Remux on demand: a copy run from segment `k` (finished segments of earlier runs are kept). */
+async function launchRemux(job: TranscodeJob, k: number) {
+  refreshComplete(job)
+  job.proc = null
+  const gen = ++job.gen
+  const cuts = job.cuts!
+  const landing = k > 0 ? await landingTime(job.filePath, cuts[k] + 0.001) ?? cuts[k] : 0
+  if (gen !== job.gen || !jobs.has(job.id)) return
+  const runDir = path.join(job.dir, `run-${gen}`)
+  await fs.promises.mkdir(runDir, { recursive: true })
+  if (gen !== job.gen || !jobs.has(job.id)) return
+  const listFile = path.join(runDir, 'segments.csv')
+  const { args, junk } = remuxSegmentArgs(job.filePath, cuts, k, landing, runDir, listFile, job.audioCopy)
+  job.runDir = runDir
+  job.listFile = listFile
+  job.junk = junk
+  spawnJob(job, args)
+}
+
+function spawnJob(job: TranscodeJob, args: string[]) {
   const proc = spawn(FFMPEG, args, { stdio: ['ignore', 'ignore', 'pipe'] })
   job.proc = proc
   let stderr = ''
@@ -326,17 +374,30 @@ function launch(job: TranscodeJob, segment: number) {
   })
 }
 
+/** Segment that contains `t` seconds (resume: the copy starts there). */
+function segmentAt(cuts: number[], t: number): number {
+  let i = 0
+  while (i + 1 < cuts.length - 1 && cuts[i + 1] <= t) i++
+  return i
+}
+
+/** How far ahead (segments) the running copy is waited for instead of starting a new one there. */
+const remuxJumpAhead = () => Number(process.env.REMUX_JUMP_SEGMENTS ?? 20)
+
 const segName = (n: number) => `seg${String(n).padStart(5, '0')}.ts`
 const segmentCount = (job: TranscodeJob) => job.cuts ? job.cuts.length - 1 : Math.max(1, Math.ceil((job.total ?? 0) / SEGMENT_SECONDS))
 
 /** Remux on demand: the segment muxer lists each segment once it is finished. */
 function refreshComplete(job: TranscodeJob) {
-  if (!job.listFile) return
+  if (!job.listFile || !job.runDir) return
   let text = ''
   try { text = fs.readFileSync(job.listFile, 'utf8') } catch { return }
   for (const line of text.split('\n')) {
-    const m = /^seg(\d{5})\.ts,/.exec(line)
-    if (m) job.complete.add(Number(m[1]))
+    const m = /^(seg(\d{5})\.ts),/.exec(line)
+    if (!m) continue
+    const index = Number(m[2])
+    // The piece before the seek point is not a real segment
+    if (index !== job.junk && !job.complete.has(index)) job.complete.set(index, path.join(job.runDir, m[1]))
   }
 }
 
@@ -377,14 +438,23 @@ function nextSegment(job: TranscodeJob): number {
  */
 export async function segmentFile(job: TranscodeJob, index: number, timeoutMs = 90_000): Promise<string | null> {
   const file = path.join(job.dir, segName(index))
-  if (segmentReady(job, index)) return file
+  if (segmentReady(job, index)) return job.complete.get(index) ?? file
   if (!job.vod) return fs.existsSync(file) ? file : null
   if (job.indexing) await job.indexing
   if (!job.vod) return fs.existsSync(file) ? file : null
   if (index < 0 || index >= segmentCount(job)) return null
-  // Remux on demand: the single copy run reaches every segment quickly, never restarted
-  if (job.cuts) return waitSegment(job, index, file, timeoutMs)
   const next = nextSegment(job)
+  if (job.cuts) {
+    // Copying is fast (~190x real time): wait when the run gets there within seconds,
+    // start a run there for a jump further ahead (or back to a part not copied yet)
+    const coming = index >= job.segStart && index <= next + remuxJumpAhead() && (!job.done || index < next)
+    const justRestarted = Date.now() - job.restartedAt < 3000 && index >= job.segStart && index <= job.segStart + 4
+    if (!coming && !justRestarted) {
+      logger.info(`Transcode ${job.id}: jump to segment ${index} (was copying ${job.segStart}…${next})`)
+      launch(job, index)
+    }
+    return waitSegment(job, index, file, timeoutMs)
+  }
   const coming = !job.done && index >= job.segStart && index <= next + 4
   // Several requests right after a restart: wait for that ffmpeg rather than restarting again
   const justRestarted = Date.now() - job.restartedAt < 3000 && index >= job.segStart && index <= job.segStart + 4
@@ -400,7 +470,7 @@ async function waitSegment(job: TranscodeJob, index: number, file: string, timeo
   while (Date.now() < until) {
     if (!jobs.has(job.id)) return null
     job.lastAccess = Date.now()
-    if (segmentReady(job, index)) return file
+    if (segmentReady(job, index)) return job.complete.get(index) ?? file
     if (job.done && !segmentReady(job, index)) {
       // ffmpeg finished or failed without this segment (a restart elsewhere does not end up here)
       if (job.failed) return null

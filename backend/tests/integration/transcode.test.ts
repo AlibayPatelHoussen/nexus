@@ -243,6 +243,45 @@ d('Remux on demand (keyframe index)', () => {
     await request(app).delete(`/api/files/transcode/${id}`).set(auth)
   }, 90_000)
 
+  it('a jump far ahead starts a copy there: same cuts, same timeline, nothing lost', async () => {
+    process.env.REMUX_JUMP_SEGMENTS = '0'      // every jump is « far » in a 60 s file
+    try {
+      const res = await request(app).post(`/api/files/transcode?${q(files.irregular)}`).set(auth)
+      const id = res.body.data.id
+      const pl = await request(app).get(`${res.body.data.playlist}?token=${stream()}`)
+      const durations = [...pl.text.matchAll(/#EXTINF:([\d.]+)/g)].map((m) => Number(m[1]))
+      const base = res.body.data.playlist.replace('index.m3u8', '')
+      const bodies: Buffer[] = []
+      // 5 (a new run from the middle), 6, then back to 0 (another run), 1 … 4
+      for (const i of [5, 6, 0, 1, 2, 3, 4]) {
+        const seg = await get(`${base}seg0000${i}.ts?token=${stream()}`)
+        expect(seg.status).toBe(200)
+        bodies[i] = seg.body as Buffer
+      }
+      const runs = fs.readdirSync(listJobs().find((j) => j.id === id)!.dir).filter((n) => n.startsWith('run-'))
+      expect(runs.length).toBeGreaterThan(1)
+      const firstPts = (b: Buffer, n: number) => {
+        const f = path.join(DIR, `jump-${n}.ts`)
+        fs.writeFileSync(f, b)
+        const pts = Number(ffprobeJson(f, 'packet=pts_time', ['-select_streams', 'v:0', '-read_intervals', '%+#1']).packets[0].pts_time)
+        const frames = Number(ffprobeJson(f, 'stream=nb_read_packets', ['-select_streams', 'v:0', '-count_packets']).streams[0].nb_read_packets)
+        fs.rmSync(f)
+        return { pts, frames }
+      }
+      const cuts = durations.reduce((c, d) => [...c, c[c.length - 1] + d], [0])
+      const source0 = Number(ffprobeJson(files.irregular, 'packet=pts_time', ['-select_streams', 'v:0', '-read_intervals', '%+#1']).packets[0].pts_time)
+      const s0 = firstPts(bodies[0], 0)
+      let total = s0.frames
+      for (let i = 1; i < 7; i++) {
+        const s = firstPts(bodies[i], i)
+        expect(s.pts - s0.pts).toBeCloseTo(cuts[i] - source0, 2)
+        total += s.frames
+      }
+      expect(total).toBe(60 * 24)
+      await request(app).delete(`/api/files/transcode/${id}`).set(auth)
+    } finally { delete process.env.REMUX_JUMP_SEGMENTS }
+  }, 90_000)
+
   it('the index is kept: the next playback is ready at once', async () => {
     const res = await request(app).post(`/api/files/transcode?${q(files.irregular)}`).set(auth)
     const status = (await request(app).get(`/api/files/transcode/${res.body.data.id}/status?token=${stream()}`)).body.data
