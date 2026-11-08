@@ -29,6 +29,7 @@ export interface ProbeStream {
   pix_fmt?:    string
   width?:      number
   height?:     number
+  channels?:   number
 }
 export interface ProbeResult {
   format:   { format_name?: string; duration?: string }
@@ -63,7 +64,7 @@ export async function probe(filePath: string): Promise<ProbeResult> {
 
   const { stdout } = await execFileAsync(FFPROBE, [
     '-v', 'error',
-    '-show_entries', 'format=format_name,duration:stream=index,codec_type,codec_name,pix_fmt,width,height',
+    '-show_entries', 'format=format_name,duration:stream=index,codec_type,codec_name,pix_fmt,width,height,channels',
     '-of', 'json',
     filePath,
   ], { timeout: 20_000, maxBuffer: 4 * 1024 * 1024 })
@@ -79,6 +80,11 @@ export type PlayMode = 'direct' | 'remux' | 'transcode'
 
 export interface PlayDecision {
   mode:      PlayMode
+  /**
+   * The audio can go into the stream as it is (AAC / MP3, stereo): re-encoding it was what
+   * made a remux slow (one CPU core, ~30x real time: 3-4 min for a 1 h 30 film)
+   */
+  audioCopy?: boolean
   duration:  number | null
   video:     string | null
   audio:     string | null
@@ -103,7 +109,8 @@ export function decide(p: ProbeResult, caps: ClientCaps = {}): PlayDecision {
   const a = p.streams.find((s) => s.codec_type === 'audio')
   const fmt = p.format.format_name ?? ''
   const dur = p.format.duration ? Number(p.format.duration) : NaN
-  const base = { duration: Number.isFinite(dur) ? dur : null, video: v?.codec_name ?? null, audio: a?.codec_name ?? null }
+  const audioCopy = !!a && (a.codec_name === 'aac' || a.codec_name === 'mp3') && (a.channels ?? 2) <= 2
+  const base = { duration: Number.isFinite(dur) ? dur : null, video: v?.codec_name ?? null, audio: a?.codec_name ?? null, audioCopy }
 
   const isMp4   = /(^|,)(mp4|mov)(,|$)/.test(fmt)
   const isWebm  = /(^|,)webm(,|$)/.test(fmt)
@@ -125,7 +132,9 @@ export function decide(p: ProbeResult, caps: ClientCaps = {}): PlayDecision {
  * `firstSegment` (on-demand conversion): the segments are numbered from it and their
  * timestamps start at `start`, so they fit the full-length playlist the player has.
  */
-export function ffmpegArgs(input: string, mode: Exclude<PlayMode, 'direct'>, start: number, outDir: string, firstSegment?: number): string[] {
+export function ffmpegArgs(
+  input: string, mode: Exclude<PlayMode, 'direct'>, start: number, outDir: string, firstSegment?: number, audioCopy = false,
+): string[] {
   const video = mode === 'remux'
     ? ['-c:v', 'copy']
     : [
@@ -143,7 +152,7 @@ export function ffmpegArgs(input: string, mode: Exclude<PlayMode, 'direct'>, sta
     '-i', input,
     '-map', '0:v:0', '-map', '0:a:0?',
     ...video,
-    '-c:a', 'aac', '-b:a', '192k', '-ac', '2',
+    ...(audioCopy ? ['-c:a', 'copy'] : ['-c:a', 'aac', '-b:a', '192k', '-ac', '2']),
     ...(firstSegment != null ? ['-output_ts_offset', start.toFixed(3), '-start_number', String(firstSegment)] : []),
     '-f', 'hls',
     '-hls_time', String(SEGMENT_SECONDS),
@@ -170,6 +179,8 @@ export interface TranscodeJob {
   vod:        boolean
   /** Full duration in seconds (vod) */
   total:      number | null
+  /** The audio is copied as it is (AAC / MP3 stereo) */
+  audioCopy:  boolean
   /** First segment of the running ffmpeg (vod) */
   segStart:   number
   restartedAt: number
@@ -205,7 +216,7 @@ export function stopJob(id: string, reason = 'stopped'): void {
 }
 
 export async function startJob(
-  userId: string, filePath: string, mode: Exclude<PlayMode, 'direct'>, start: number, total: number | null = null,
+  userId: string, filePath: string, mode: Exclude<PlayMode, 'direct'>, start: number, total: number | null = null, audioCopy = false,
 ): Promise<TranscodeJob> {
   // One playback per user and file at a time, and a global cap for the CPU
   for (const j of jobs.values()) if (j.userId === userId && j.filePath === filePath) stopJob(j.id, 'replaced')
@@ -221,12 +232,12 @@ export async function startJob(
   // so a full playlist cannot be written in advance).
   const vod = mode === 'transcode' && !!total && total > 0
   const job: TranscodeJob = {
-    id, userId, filePath, mode, start: vod || mode === 'remux' ? 0 : start, vod, total, segStart: 0, restartedAt: 0, dir,
+    id, userId, filePath, mode, start: vod || mode === 'remux' ? 0 : start, vod, total, audioCopy, segStart: 0, restartedAt: 0, dir,
     proc: null, done: false, failed: null, lastAccess: Date.now(), createdAt: Date.now(),
   }
   jobs.set(id, job)
   launch(job, vod ? Math.floor(start / SEGMENT_SECONDS) : 0)
-  logger.info(`Transcode ${id}: ${mode}${vod ? ' (on demand)' : ''} from ${start}s — ${filePath}`)
+  logger.info(`Transcode ${id}: ${mode}${vod ? ' (on demand)' : ''}${audioCopy ? ', audio copied' : ''} from ${start}s — ${filePath}`)
   return job
 }
 
@@ -238,7 +249,7 @@ function launch(job: TranscodeJob, segment: number) {
   job.done = false
   job.failed = null
   const from = job.vod ? segment * SEGMENT_SECONDS : job.start
-  const proc = spawn(FFMPEG, ffmpegArgs(job.filePath, job.mode, from, job.dir, job.vod ? segment : undefined), { stdio: ['ignore', 'ignore', 'pipe'] })
+  const proc = spawn(FFMPEG, ffmpegArgs(job.filePath, job.mode, from, job.dir, job.vod ? segment : undefined, job.audioCopy), { stdio: ['ignore', 'ignore', 'pipe'] })
   job.proc = proc
   let stderr = ''
   proc.stderr?.on('data', (d) => { stderr = (stderr + d.toString()).slice(-2000) })

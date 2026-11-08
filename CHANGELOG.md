@@ -4,6 +4,9 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Fixed — « Préparation de la vidéo » very slow
+- Films whose sound is already AAC / MP3 stereo (most WEB-DL / WEBRip MKV) keep it as it is instead of re-encoding it: on the server, re-encoding the sound (one CPU core, ~30x real time) was what made a 1 h 30 film take 3-4 min to prepare; copying it is limited by the disk only (~30 s for 2.5 GB). Measured on the owner's server
+
 ### Changed — converted films are whole in the player from the start
 - A film that must be converted no longer shows only the part converted so far (iPhone full screen, timeline): the player gets the whole film at once, like series
   - re-encoded films (HEVC…): the playlist of the whole film is given at once and each part is converted when the player asks for it (a jump far ahead converts from there, without a new conversion of everything)

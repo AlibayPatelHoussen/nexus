@@ -37,6 +37,17 @@ describe('decide', () => {
   })
 })
 
+describe('audio copy', () => {
+  it('AAC / MP3 stereo is copied, surround or AC-3 is converted', () => {
+    expect(decide(probe('matroska,webm', ['h264'], 'aac')).audioCopy).toBe(true)
+    expect(decide(probe('avi', ['h264'], 'mp3')).audioCopy).toBe(true)
+    expect(decide(probe('matroska,webm', ['h264'], 'ac3')).audioCopy).toBe(false)
+    const surround = probe('matroska,webm', ['h264'], 'aac')
+    surround.streams[1].channels = 6
+    expect(decide(surround).audioCopy).toBe(false)
+  })
+})
+
 describe('ffmpegArgs', () => {
   it('remux copies the video and converts audio to AAC', () => {
     const a = ffmpegArgs('/in.mkv', 'remux', 0, '/tmp/x').join(' ')
@@ -56,6 +67,12 @@ describe('ffmpegArgs', () => {
     const a = ffmpegArgs('/in.mkv', 'transcode', 360, '/tmp/x', 60).join(' ')
     expect(a).toContain('-ss 360.000 -i /in.mkv')
     expect(a).toContain('-output_ts_offset 360.000 -start_number 60')
+  })
+  it('copies AAC / MP3 stereo audio instead of re-encoding it (what made a remux slow)', () => {
+    const a = ffmpegArgs('/in.mkv', 'remux', 0, '/tmp/x', undefined, true).join(' ')
+    expect(a).toContain('-c:v copy')
+    expect(a).toContain('-c:a copy')
+    expect(a).not.toContain('-c:a aac')
   })
 })
 
