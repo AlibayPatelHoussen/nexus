@@ -8,7 +8,7 @@ import { useConfirm } from '@/components/ui/useConfirm'
 import Page from '@/components/shell/Page'
 import { useShell } from '@/components/shell/shellContext'
 import { useCoarsePointer } from '@/hooks/useDevice'
-import ActionSheet from '@/components/ui/ActionSheet'
+import { useContextMenu } from '@/components/ui/useContextMenu'
 import Button from '@/components/ui/Button'
 import { cn } from '@/utils'
 
@@ -94,7 +94,7 @@ export default function TerminalPage() {
   const [info,       setInfo]       = useState<TerminalInfo | null>(null)
   const [fullscreen, setFullscreen] = useState(false)
   const [fontSize,   setFontSize]   = useState(() => Number(store(FONT_KEY)) || (window.innerWidth < 640 ? 12 : 13))
-  const [menuOpen,   setMenuOpen]   = useState(false)
+  const menu = useContextMenu()
   const { device } = useShell()
   const phone = device === 'phone'
   const coarse = useCoarsePointer()
@@ -254,7 +254,17 @@ export default function TerminalPage() {
   const icon = 'w-8 h-8 grid place-items-center rounded-full text-label2 hoverable disabled:opacity-40'
 
   const actions = phone ? (
-    <button type="button" className="w-11 h-11 grid place-items-center text-accent-text active:opacity-50" onClick={() => setMenuOpen(true)} aria-label="Options du terminal">
+    <button type="button" className="w-11 h-11 grid place-items-center text-accent-text active:opacity-50" aria-haspopup="menu" aria-label="Options du terminal"
+      onClick={(e) => menu.openFrom(e.currentTarget, [
+        { label: 'Copier la sélection', icon: <Copy />, onSelect: copySelection },
+        { label: 'Coller', icon: <ClipboardPaste />, onSelect: paste },
+        { separator: true },
+        { label: 'Agrandir le texte', icon: <Plus />, onSelect: bigger },
+        { label: 'Réduire le texte', icon: <Minus />, onSelect: smaller },
+        { label: fullscreen ? 'Quitter le plein écran' : 'Plein écran', icon: fullscreen ? <Minimize2 /> : <Maximize2 />, onSelect: toggleFullscreen },
+        { separator: true },
+        { label: status === 'ended' ? 'Nouvelle session' : 'Réinitialiser', icon: <RotateCcw />, onSelect: reset, destructive: status !== 'ended' },
+      ], `${where} · ${statusText}`)}>
       <Ellipsis size={24} strokeWidth={1.75} />
     </button>
   ) : (
@@ -331,19 +341,7 @@ export default function TerminalPage() {
           <div className="flex flex-col h-full">{surface}</div>
         </Page>
       </div>
-      <ActionSheet
-        open={menuOpen}
-        onClose={() => setMenuOpen(false)}
-        title={`${where} · ${statusText}`}
-        actions={[
-          { label: 'Copier la sélection', onSelect: copySelection },
-          { label: 'Coller', onSelect: paste },
-          { label: 'Agrandir le texte', onSelect: bigger },
-          { label: 'Réduire le texte', onSelect: smaller },
-          { label: 'Plein écran', onSelect: toggleFullscreen },
-          { label: status === 'ended' ? 'Nouvelle session' : 'Réinitialiser', onSelect: reset, destructive: status !== 'ended' },
-        ]}
-      />
+      {menu.element}
     </>
   )
 }

@@ -173,7 +173,7 @@
 @keyframes nx-pulse { 50% { opacity: 0.55; } }
 @keyframes nx-spin { to { transform: rotate(360deg); } }
 /* Context menus open from where they were asked (macOS / iOS) */
-@keyframes nx-menu-in { from { transform: scale(0.9); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes nx-menu-in { from { transform: scale(0.6); opacity: 0; } to { transform: none; opacity: 1; } }
 /* Tab bar icon when its tab is chosen */
 @keyframes nx-tab-bounce { 0% { transform: scale(1); } 35% { transform: scale(0.82); } 70% { transform: scale(1.08); } 100% { transform: scale(1); } }
 /* Images fade in once loaded instead of popping */
