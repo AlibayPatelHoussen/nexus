@@ -168,6 +168,8 @@ DOWNLOADERS_DIR=$ROOT/e2e/fake-downloaders
 IMAGE_PROXY_ALLOW_LOCAL=1
 TMDB_API_KEY=e2e-test-key
 YTDLP_AUTO_UPDATE=off
+# The E2E MKV fixtures must stay MKV (conversion tested in backend/tests/integration/mp4Convert.test.ts)
+MP4_CONVERT=off
 TMDB_BASE_URL=http://localhost:$MOCK_PORT/3
 TMDB_IMAGE_BASE_URL=http://localhost:$MOCK_PORT/img
 IMDB_RATINGS_URL=http://localhost:$MOCK_PORT/imdb/title.ratings.tsv.gz

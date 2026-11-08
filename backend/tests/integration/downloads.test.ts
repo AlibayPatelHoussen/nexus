@@ -267,7 +267,7 @@ describe('Downloads: queue', () => {
       id: 'oxtorrent:film:703', title: 'X', item: 'x;rm -rf /', part: '<b>', version: { resolution: '1080p; rm', language: 'multi --x' } })
     expect(odd.status).toBe(201)
     expect(odd.body.data.options).toEqual({})
-  })
+  }, 20_000)   // several queue round trips: slow when ffmpeg tests run alongside on CI
 
   it('warns about duplicates instead of downloading again (unless forced)', async () => {
     const body = { id: 'anisama:manga:one-piece', title: 'One Piece', lang: 'VF', chapters: [2, 3] }
