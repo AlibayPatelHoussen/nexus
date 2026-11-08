@@ -43,6 +43,16 @@ d('MKV → MP4 (read directly, like the MP4 films)', () => {
     await query('DELETE FROM media_items WHERE id = $1', [rows[0].id])
   }, 60_000)
 
+  it('a 5.1 track made AAC stays 5.1 (no surround lost)', async () => {
+    const mkv = path.join(DIR, 'Surround (2020).mkv')
+    ffmpeg(['-f', 'lavfi', '-i', 'testsrc=size=320x180:rate=24', '-f', 'lavfi', '-i', 'sine=frequency=440', '-t', '5',
+      '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'ac3', '-ac', '6', mkv])
+    old(mkv)
+    const mp4 = await convertToMp4(mkv)
+    const ch = JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-select_streams', 'a:0', '-show_entries', 'stream=codec_name,channels', '-of', 'json', mp4!]).toString()).streams[0]
+    expect(ch).toEqual({ codec_name: 'aac', channels: 6 })
+  }, 60_000)
+
   it('leaves alone what it should not convert: HEVC, a file still being written', async () => {
     const hevc = path.join(DIR, 'Hevc (2020).mkv')
     ffmpeg(['-f', 'lavfi', '-i', 'testsrc=size=320x180:rate=24', '-t', '3', '-c:v', 'libx265', '-x265-params', 'log-level=error', hevc])

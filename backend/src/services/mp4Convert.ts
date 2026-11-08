@@ -12,7 +12,7 @@ import { hintFor } from './scanner'
  * iPhone / browsers read directly, like the MP4 films that already work well: instant
  * start, instant jumps, native full screen. The picture is copied (no quality change, about
  * 30 s for a 2.5 GB film); the first audio track is made AAC if it is not (the browser plays
- * the first one); other audio tracks and text subtitles are kept. Done after each download
+ * the first one), keeping its channels (5.1 stays 5.1); other audio tracks and text subtitles are kept. Done after each download
  * / library scan and for the films already there, in the background, one at a time.
  * The MP4 replaces the original only once checked (owner's choice: no extra disk space).
  */
@@ -47,7 +47,11 @@ export function mp4Args(input: string, output: string, p: ProbeResult): string[]
   audio.forEach((a, i) => {
     const keep = i === 0 ? BROWSER_AUDIO.includes(a.codec_name ?? '') : MP4_AUDIO.includes(a.codec_name ?? '')
     if (keep) args.push(`-c:a:${i}`, 'copy')
-    else args.push(`-c:a:${i}`, 'aac', `-b:a:${i}`, '192k', `-ac:a:${i}`, '2')
+    else {
+      // Same number of channels (5.1 stays 5.1: browsers and iPhones play AAC 5.1), at most 6
+      const ch = Math.min(6, a.channels ?? 2)
+      args.push(`-c:a:${i}`, 'aac', `-b:a:${i}`, ch > 2 ? '448k' : '192k', `-ac:a:${i}`, String(ch))
+    }
   })
   if (subs.length) args.push('-c:s', 'mov_text')
   // The first audio track is the default one; MP4 index at the start (playback starts at once)
