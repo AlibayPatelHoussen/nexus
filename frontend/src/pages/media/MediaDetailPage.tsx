@@ -9,7 +9,7 @@ import Artwork from '@/components/media/Artwork'
 import Skeleton from '@/components/ui/Skeleton'
 import ChaptersSection from '@/components/media/ChaptersSection'
 import { mediaService } from '@/services/mediaService'
-import { formatDuration, formatBytes } from '@/utils'
+import { formatDuration, formatBytes, statusLabel } from '@/utils'
 import EpisodesSection from '@/components/media/EpisodesSection'
 import type { Episode, Chapter, MediaItem } from '@/types'
 import toast from 'react-hot-toast'
@@ -331,9 +331,9 @@ export default function MediaDetailPage() {
           {media.genres?.length > 0 && <ListRow title="Genres" detail={media.genres.join(', ')} />}
           {media.year && <ListRow title="Année" detail={String(media.year)} />}
           {media.duration ? <ListRow title="Durée" detail={formatDuration(media.duration)} /> : null}
-          {media.status && <ListRow title="Statut" detail={media.status} />}
+          {media.status && <ListRow title="Statut" detail={statusLabel(media.status)} />}
           {media.language && <ListRow title="Langue" detail={media.language.toUpperCase()} />}
-          {media.fileSize ? <ListRow title="Taille" detail={formatBytes(media.fileSize)} /> : null}
+          {media.fileSize && media.fileSize > 0 ? <ListRow title="Taille" detail={formatBytes(media.fileSize)} /> : null}
         </Group>
       </div>
       ) : null}

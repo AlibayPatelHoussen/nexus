@@ -40,7 +40,8 @@ function mapMedia(row: Record<string, any>) {
     imdbVotes:     row['imdb_votes'] ?? null,
     status:        row['status'],
     language:      row['language'],
-    fileSize:      row['file_size'],
+    // bigint comes back as a string (« 0 » is truthy): always a number, null when unknown
+    fileSize:      row['file_size'] != null && Number(row['file_size']) > 0 ? Number(row['file_size']) : null,
     duration:      row['duration'],
     channel:       row['channel'] ?? null,
     createdAt:     row['created_at'],
@@ -146,7 +147,10 @@ export class MediaService {
         `SELECT * FROM episodes WHERE media_item_id = $1 ORDER BY season, episode_number`,
         [id],
       )
-      return { ...mapped, episodes: episodes.rows.map(mapEpisode) }
+      const eps = episodes.rows.map(mapEpisode)
+      // A series' size is that of its episodes (media_items.file_size is only a film's file)
+      const total = eps.reduce((sum, e) => sum + (e.fileSize ?? 0), 0)
+      return { ...mapped, fileSize: mapped.fileSize ?? (total > 0 ? total : null), episodes: eps }
     }
 
     if (type === 'manga' || type === 'webtoon') {

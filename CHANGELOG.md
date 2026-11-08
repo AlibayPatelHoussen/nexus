@@ -4,6 +4,10 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Fixed — « Taille : 0 o », English statuses
+- A detail page no longer shows « Taille : 0 o »: an unknown size hides the row; a series' / anime's size is that of its episodes
+- The status is in French (« ongoing », « RELEASING », « Returning Series » → « En cours »…)
+
 ### Changed — test notification
 - The test notification says what it is (« Notifications activées ») instead of repeating « Nexus », like download notifications (« Échec du téléchargement »…); iOS already shows the app's name
 
