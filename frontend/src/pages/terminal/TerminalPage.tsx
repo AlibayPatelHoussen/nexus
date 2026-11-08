@@ -156,7 +156,8 @@ export default function TerminalPage() {
           sessionRef.current = i.sessionId
           store(SESSION_KEY, i.sessionId)
           if (!i.resumed) term.reset()
-          term.focus()
+          // Touch screens: the keyboard opens only when the terminal itself is tapped
+          if (!window.matchMedia('(pointer: coarse)').matches) term.focus()
         },
         onOutput:  (data) => term.write(data),
         onReplay:  (data) => { term.reset(); term.write(data) },
@@ -228,7 +229,7 @@ export default function TerminalPage() {
     const sel = xtermRef.current?.getSelection()
     if (!sel) { toast('Sélectionne du texte dans le terminal'); return }
     if (await copyText(sel)) toast.success('Copié')
-    xtermRef.current?.focus()
+    if (!coarse) xtermRef.current?.focus()      // touch: no soft keyboard popping up
   }
 
   async function paste() {
@@ -236,7 +237,7 @@ export default function TerminalPage() {
       const text = await navigator.clipboard.readText()
       if (text) xtermRef.current?.paste(text)
     } catch { toast('Utilise Ctrl+Shift+V (ou appui long → Coller)') }
-    xtermRef.current?.focus()
+    if (!coarse) xtermRef.current?.focus()
   }
 
   function toggleFullscreen() {
@@ -313,9 +314,10 @@ export default function TerminalPage() {
               type="button"
               className="px-3 min-w-[44px] h-[38px] rounded-[6px] text-[15px] font-mono text-label flex-shrink-0 active:opacity-60"
               style={{ background: 'var(--seg-on)', boxShadow: '0 1px 0 rgba(0,0,0,.25)' }}
-              // Keep focus (and the soft keyboard) on the terminal
+              // Never opens the soft keyboard (owner's request); if it is already open, it stays
+              // open (the button does not take the focus from the terminal)
               onMouseDown={(e) => e.preventDefault()}
-              onClick={() => { send(k.seq); xtermRef.current?.focus() }}
+              onClick={() => send(k.seq)}
             >
               {k.label}
             </button>
