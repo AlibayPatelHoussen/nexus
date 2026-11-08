@@ -139,6 +139,30 @@ d('HLS conversion', () => {
     await request(app).delete(`/api/files/transcode/${job.id}`).set(auth)
   }, 90_000)
 
+  it('dragging the timeline (many far jumps in a row) starts ffmpeg once, at the last position', async () => {
+    const res = await request(app).post(`/api/files/transcode?${q(files.long)}`).set(auth)
+    const base = res.body.data.playlist.replace('index.m3u8', '')
+    const job = listJobs().find((j) => j.id === res.body.data.id)!
+    const restarts: number[] = []
+    const seen = new Set<number>()
+    const spy = setInterval(() => { if (!seen.has(job.restartedAt)) { seen.add(job.restartedAt); restarts.push(job.segStart) } }, 5)
+    const t0 = Date.now()
+    // 10 positions passed over while dragging, 40 ms apart, then the one where the finger lifts
+    const passed = [20, 27, 34, 41, 48, 55, 62, 69, 76, 83].map((n, i) =>
+      new Promise((r) => setTimeout(r, i * 40)).then(() => request(app).get(`${base}seg${String(n).padStart(5, '0')}.ts?token=${stream()}`)))
+    const last = new Promise((r) => setTimeout(r, 450)).then(() => request(app).get(`${base}seg00090.ts?token=${stream()}`))
+    const answers = await Promise.all(passed)
+    const final = await last
+    clearInterval(spy)
+    expect(final.status).toBe(200)
+    expect(job.segStart).toBe(90)
+    // The positions only passed over are dropped (the player moved on), quickly
+    expect(answers.every((a) => a.status === 404)).toBe(true)
+    expect(restarts.filter((n) => n !== 0)).toEqual([90])
+    expect(Date.now() - t0).toBeLessThan(20_000)
+    await request(app).delete(`/api/files/transcode/${job.id}`).set(auth)
+  }, 60_000)
+
   it('remux: the player waits for the keyframe index, then gets the whole film', async () => {
     const res = await request(app).post(`/api/files/transcode?${q(files.remux)}&start=8`).set(auth)
     expect(res.body.data).toMatchObject({ vod: true, start: 0, at: 8 })
@@ -246,14 +270,16 @@ d('Remux on demand (keyframe index)', () => {
   it('a jump far ahead starts a copy there: same cuts, same timeline, nothing lost', async () => {
     process.env.REMUX_JUMP_SEGMENTS = '0'      // every jump is « far » in a 60 s file
     try {
-      const res = await request(app).post(`/api/files/transcode?${q(files.irregular)}`).set(auth)
+      // Resumed at 40 s: the copy starts at the cut before (segment 4), so going back to the
+      // start needs another run
+      const res = await request(app).post(`/api/files/transcode?${q(files.irregular)}&start=40`).set(auth)
       const id = res.body.data.id
       const pl = await request(app).get(`${res.body.data.playlist}?token=${stream()}`)
       const durations = [...pl.text.matchAll(/#EXTINF:([\d.]+)/g)].map((m) => Number(m[1]))
       const base = res.body.data.playlist.replace('index.m3u8', '')
       const bodies: Buffer[] = []
-      // 5 (a new run from the middle), 6, then back to 0 (another run), 1 … 4
-      for (const i of [5, 6, 0, 1, 2, 3, 4]) {
+      // 4, 5, 6 from the resume run, then back to 0 (another run), 1 … 3
+      for (const i of [4, 5, 6, 0, 1, 2, 3]) {
         const seg = await get(`${base}seg0000${i}.ts?token=${stream()}`)
         expect(seg.status).toBe(200)
         bodies[i] = seg.body as Buffer

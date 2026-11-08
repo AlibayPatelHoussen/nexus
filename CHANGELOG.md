@@ -4,7 +4,8 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
-### Fixed — « Reprendre » right after leaving a film started from 0
+### Fixed — « Reprendre » right after leaving a film started from 0; dragging the timeline
+- Dragging the iPhone timeline over a converted film asked for many positions in one second, each restarting the conversion: a far jump now starts ffmpeg only when no other one follows within 0.3 s, and the positions only passed over are dropped at once
 - The player read the resume position from its cache (the one from before watching: nothing for a first watch → from 0) and could read it before the save made when leaving had arrived: it now always reads the saved position, after that save
 
 ### Fixed — « Reprendre » on iPhone (again), jumping far in an MKV film, up-to-date progress
