@@ -4,7 +4,8 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
-### Fixed — « Reprendre » on iPhone (again), jumping far in an MKV film
+### Fixed — « Reprendre » on iPhone (again), jumping far in an MKV film, up-to-date progress
+- Leaving a film / an episode (or reaching its end) refreshes « Reprendre », the title page's « Reprendre · 67 % » and the next resume position at once; before, they were only updated after a library scan or a reload (and reopening the film within 30 s resumed at the old position)
 - The resume position was given up 20 s after the player opened; the iPhone loads nothing before ▶ is tapped, so it was often given up before playing: it now counts from when playback really starts
 - Jumping to the middle of an MKV film no longer waits for the copy to get there from the start: a copy starts right at that point (cut at the same keyframes, same timeline; the piece before the keyframe ffmpeg lands on is not served), like MP4 films
 
