@@ -1,9 +1,9 @@
 import { useNavigate } from 'react-router-dom'
 import { useQueryClient } from '@tanstack/react-query'
-import { Heart, Info, Play, Trash2 } from 'lucide-react'
+import { Check, Info, Play, Plus, Trash2 } from 'lucide-react'
 import toast from 'react-hot-toast'
 import type { MediaItem } from '@/types'
-import { mediaService } from '@/services/mediaService'
+import { useFavorites } from '@/hooks/useFavorites'
 import { useAuthStore } from '@/stores/authStore'
 import { api } from '@/services/api'
 import { useConfirm } from '@/components/ui/useConfirm'
@@ -21,19 +21,14 @@ export function useMediaActions() {
   const qc = useQueryClient()
   const isAdmin = useAuthStore((s) => s.user?.role === 'admin')
   const confirm = useConfirm()
+  const favorites = useFavorites()
 
   return (item: MediaItem): MenuItem[] => [
     { label: isReading(item.type) ? 'Lire' : 'Lecture', icon: <Play />, onSelect: () => navigate(isReading(item.type) ? `/media/${item.id}` : `/player/${item.id}`) },
     { label: 'Plus d’infos', icon: <Info />, onSelect: () => navigate(`/media/${item.id}`) },
-    {
-      label: 'Ajouter à ma liste', icon: <Heart />,
-      onSelect: async () => {
-        try {
-          const fav = await mediaService.toggleFavorite(item.id)
-          toast.success(fav ? 'Ajouté à ma liste' : 'Retiré de ma liste')
-        } catch { toast.error('Impossible de modifier ta liste') }
-      },
-    },
+    favorites.isFav(item.id)
+      ? { label: 'Retirer de ma liste', icon: <Check />, onSelect: () => favorites.toggle(item) }
+      : { label: 'Ajouter à ma liste', icon: <Plus />, onSelect: () => favorites.toggle(item) },
     ...(isAdmin ? [
       { separator: true } as const,
       {

@@ -17,6 +17,7 @@ const NetworkPage  = lazy(() => import('@/pages/network/NetworkPage'))
 const SettingsPage = lazy(() => import('@/pages/settings/SettingsPage'))
 const DownloadsPage = lazy(() => import('@/pages/downloads/DownloadsPage'))
 const YoutubePage  = lazy(() => import('@/pages/youtube/YoutubePage'))
+const MyListPage   = lazy(() => import('@/pages/mylist/MyListPage'))
 const PlayerPage   = lazy(() => import('@/pages/player/PlayerPage'))
 const MangaReader  = lazy(() => import('@/pages/player/MangaReaderPage'))
 const MediaDetail  = lazy(() => import('@/pages/media/MediaDetailPage'))
@@ -58,6 +59,7 @@ export default function App() {
           <Route path="settings"  element={<S><SettingsPage /></S>} />
           <Route path="downloads" element={<S><DownloadsPage /></S>} />
           <Route path="youtube"   element={<S><YoutubePage /></S>} />
+          <Route path="ma-liste"  element={<S><MyListPage /></S>} />
           <Route path="media/:id" element={<S><MediaDetail  /></S>} />
         </Route>
 

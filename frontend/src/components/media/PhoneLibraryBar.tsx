@@ -15,13 +15,15 @@ export const VIDEO_SECTIONS = [
 /** iPhone: « Films ⌄ » at the top left, a pull-down menu to switch section (the tab bar already says « Médias »). */
 export function SectionMenu({ value }: { value: string }) {
   const navigate = useNavigate()
-  const current = VIDEO_SECTIONS.find((s) => s.value === value) ?? VIDEO_SECTIONS[0]
+  // « Ma liste » too: on iPhone the tab bar has no room for it (desktop: in the sidebar)
+  const sections = [...VIDEO_SECTIONS, { value: 'ma-liste', label: 'Ma liste', to: '/ma-liste' }]
+  const current = sections.find((s) => s.value === value) ?? sections[0]
   return (
     <PullDownMenu
       label="Section"
       value={current.value}
-      onChange={(v) => navigate(VIDEO_SECTIONS.find((s) => s.value === v)!.to)}
-      options={VIDEO_SECTIONS.map(({ value: v, label }) => ({ value: v, label }))}
+      onChange={(v) => navigate(sections.find((s) => s.value === v)!.to)}
+      options={sections.map(({ value: v, label }) => ({ value: v, label }))}
       className="h-11 pl-4 pr-3 text-[17px] font-semibold text-label"
     >
       {current.label}

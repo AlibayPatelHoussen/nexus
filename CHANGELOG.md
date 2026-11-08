@@ -4,6 +4,11 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Fixed — « Ma liste » (the + buttons) did not work, and there was nowhere to see it
+- Every « Ajouter à ma liste » button now shares one state: the billboard's « + » showed « + » even for a title already in the list (a tap then removed it), and the menu always said « Ajouter à ma liste » (removing a title already in it). They now show ✓ / « Retirer de ma liste » when the title is in the list, at once (no wait for the server)
+- New « Ma liste » page (sidebar › Médias on desktop; « Films ⌄ » menu and the « Ma liste › » shelf on iPhone): the titles added, newest first, filtered by kind (Films, Séries, Animes, Manga, YouTube: only those present)
+- « Ma liste » shelf in Films et séries, Animes, Manga (after « Reprendre »), with « Tout voir »
+
 ### Changed — « Supprimer de la bibliothèque » deletes the title everywhere
 - The menu of a title (admin) deletes it everywhere: its files on the disk (a series / anime / manga: its folder; a film alone in its folder: the folder; a film next to others: its file and what goes with it — subtitles, `.nexus.json`), its row (episodes, chapters, progress, « Reprendre », lists and ratings), the downloads that made it (stopped if running), its follow (new episodes are no longer downloaded), the conversions being played and the keyframe indexes. Before, only the row was removed and the next scan brought the title back
 - Never outside the library nor a library folder itself; a collection folder holding other films is never deleted whole. Files owned by root: the server's sudo password is asked, as in the file manager
