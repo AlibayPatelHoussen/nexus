@@ -294,6 +294,13 @@ class YtdlpStall(unittest.TestCase):
         self.assertIn("NXFILE|/x.mp4", lines)
         self.assertIn("Assemblage", emitted)
 
+    def test_merge_read_before_the_last_progress_line(self):
+        # The CI runner: stderr (merge started) was read before the last stdout progress line
+        code, _, runs, _ = self.run_fake(
+            "echo 'NXPP|started|Merger' >&2\nsleep 0.3\necho 'NXP|500|NA|NA|10|5'\nsleep 4\n"
+            "echo 'NXPP|finished|Merger' >&2\necho 'NXFILE|/x.mp4'\n", stall=2)
+        self.assertEqual((code, runs), (0, 1))
+
     def test_a_finished_file_waiting_is_not_a_stall(self):
         code, _, runs, _ = self.run_fake("echo 'NXP|1000|1000|1000|10|0'\nsleep 4\necho 'NXFILE|/x.mp4'\n", stall=2)
         self.assertEqual((code, runs), (0, 1))
