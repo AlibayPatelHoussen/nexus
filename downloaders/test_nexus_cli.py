@@ -2,6 +2,7 @@
 import io
 import json
 import os
+import shutil
 import signal
 import subprocess
 import sys
@@ -390,6 +391,137 @@ class StopWithNexus(unittest.TestCase):
                 for pid in (ytdlp, script):
                     if _alive(pid):
                         os.kill(pid, signal.SIGKILL)
+
+
+class HlsPlaylists(unittest.TestCase):
+    def test_master_takes_the_best_variant(self):
+        text = ("#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=800000,RESOLUTION=640x360\nlow/index.m3u8\n"
+                "#EXT-X-STREAM-INF:BANDWIDTH=3000000,RESOLUTION=1920x1080\nhigh/index.m3u8\n")
+        self.assertEqual(nexus_cli.hls_parse_master(text, "https://cdn.x/v/master.m3u8"),
+                         ("https://cdn.x/v/high/index.m3u8", None))
+
+    def test_master_with_separate_audio_says_so(self):
+        text = ('#EXTM3U\n#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="aud",NAME="fr",URI="fr.m3u8"\n'
+                '#EXT-X-STREAM-INF:BANDWIDTH=1,AUDIO="aud"\nv.m3u8\n')
+        self.assertEqual(nexus_cli.hls_parse_master(text, "https://h/m.m3u8"), ("https://h/v.m3u8", "aud"))
+
+    def test_media_playlist_is_rewritten_to_local_files(self):
+        text = ('#EXTM3U\n#EXT-X-TARGETDURATION:6\n#EXT-X-KEY:METHOD=AES-128,URI="/k/key",IV=0x1\n'
+                '#EXTINF:6.0,\nseg-1.ts?t=a\n#EXTINF:6.0,\nhttps://other/seg-2.png\n#EXT-X-ENDLIST\n')
+        entries, reason = nexus_cli.hls_parse_media(text, "https://cdn.x/v/index.m3u8")
+        self.assertIsNone(reason)
+        self.assertEqual(nexus_cli._hls_files(entries), [
+            ("key1.bin", "https://cdn.x/k/key"), ("seg00001.ts", "https://cdn.x/v/seg-1.ts?t=a"),
+            ("seg00002.ts", "https://other/seg-2.png")])
+        local = nexus_cli.hls_local_playlist(entries)
+        self.assertIn('#EXT-X-KEY:METHOD=AES-128,URI="key1.bin",IV=0x1', local)
+        self.assertIn("seg00001.ts\n#EXTINF:6.0,\nseg00002.ts", local)
+        self.assertNotIn("cdn.x", local)
+
+    def test_what_is_left_to_ffmpeg(self):
+        self.assertEqual(nexus_cli.hls_parse_media("#EXTM3U\n#EXTINF:6,\na.ts\n", "https://h/")[1], "live")
+        self.assertEqual(nexus_cli.hls_parse_media(
+            "#EXTM3U\n#EXT-X-KEY:METHOD=SAMPLE-AES,URI=\"k\"\n#EXTINF:6,\na.ts\n#EXT-X-ENDLIST\n", "https://h/")[1],
+            "chiffrement SAMPLE-AES")
+        self.assertEqual(nexus_cli.hls_parse_media(
+            "#EXTM3U\n#EXT-X-BYTERANGE:100@0\n#EXTINF:6,\na.ts\n#EXT-X-ENDLIST\n", "https://h/")[1], "byterange")
+
+
+@unittest.skipUnless(shutil.which("ffmpeg") and shutil.which("ffprobe"), "ffmpeg needed")
+class HlsDownload(unittest.TestCase):
+    """A real HLS stream made by ffmpeg, served by a local HTTP server that checks the Referer."""
+
+    @classmethod
+    def setUpClass(cls):
+        import functools
+        import http.server
+        import threading
+        cls.root = tempfile.mkdtemp()
+        cls.hits = []
+        root = cls.root
+        for name, extra in (("plain", []), ("crypt", ["-hls_key_info_file", "keyinfo"])):
+            d = Path(root, name)
+            d.mkdir()
+            if extra:
+                (d / "enc.key").write_bytes(bytes(range(16)))
+                (d / "keyinfo").write_text("/crypt/enc.key\nenc.key\n")
+            subprocess.run(["ffmpeg", "-loglevel", "error", "-f", "lavfi", "-i", "testsrc=size=160x90:rate=10",
+                            "-f", "lavfi", "-i", "sine=frequency=440", "-t", "12", "-c:v", "libx264", "-g", "10",
+                            "-c:a", "aac", "-f", "hls", "-hls_time", "1", "-hls_playlist_type", "vod", *extra,
+                            "-hls_segment_filename", "s%03d.ts", "index.m3u8"], cwd=d, check=True)
+            (d / "master.m3u8").write_text("#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1000\nindex.m3u8\n")
+
+        class Handler(http.server.SimpleHTTPRequestHandler):
+            def do_GET(self):
+                cls.hits.append(self.path)
+                if self.headers.get("Referer") != "https://player.example/":
+                    self.send_error(403)
+                    return
+                super().do_GET()
+
+            def log_message(self, *a):
+                pass
+        cls.server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), functools.partial(Handler, directory=root))
+        threading.Thread(target=cls.server.serve_forever, daemon=True).start()
+        cls.base = f"http://127.0.0.1:{cls.server.server_address[1]}"
+
+    @classmethod
+    def tearDownClass(cls):
+        cls.server.shutdown()
+        shutil.rmtree(cls.root, ignore_errors=True)
+
+    def download(self, path, headers={"Referer": "https://player.example/"}, out=None):
+        out = out or Path(tempfile.mkdtemp(dir=self.root), ".part-film.mp4")
+        buf = io.StringIO()
+        old, nexus_cli._OUT = nexus_cli._OUT, buf
+        try:
+            res = nexus_cli.hls_download(self.base + path, out, "Film", headers, workers=4)
+        finally:
+            nexus_cli._OUT = old
+        return res, out, [json.loads(l) for l in buf.getvalue().splitlines()]
+
+    def duration(self, f):
+        return float(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration", "-of", "csv=p=0", str(f)],
+                                    capture_output=True, text=True).stdout)
+
+    def test_plain_stream_through_master(self):
+        res, out, lines = self.download("/plain/master.m3u8")
+        self.assertTrue(res)
+        self.assertAlmostEqual(self.duration(out), 12, delta=0.6)
+        self.assertEqual([p for p in out.parent.iterdir()], [out])   # segments folder removed
+        progress = [l for l in lines if l["type"] == "progress" and l["item"] == "Film"]
+        self.assertEqual(progress[-1]["percent"], 100.0)
+
+    def test_aes128_stream(self):
+        res, out, _ = self.download("/crypt/index.m3u8")
+        self.assertTrue(res)
+        self.assertAlmostEqual(self.duration(out), 12, delta=0.6)
+
+    def test_refused_stream_and_direct_file_are_left_to_ffmpeg(self):
+        self.assertIsNone(self.download("/plain/master.m3u8", headers={})[0])
+        self.assertIsNone(self.download("/plain/s000.ts")[0])
+
+    def test_failed_segment_is_a_failure_and_the_rest_is_kept_for_next_time(self):
+        d = Path(self.root, "plain")
+        (d / "s005.ts").rename(d / "s005.bak")
+        orig, nexus_cli.HLS_RETRIES = nexus_cli.HLS_RETRIES, 1
+        try:
+            res, out, _ = self.download("/plain/index.m3u8")
+            self.assertFalse(res)
+            kept = {p.name for p in out.with_name(".hls-part-film.mp4").iterdir()}
+            self.assertIn("seg00001.ts", kept)
+            self.assertNotIn("seg00006.ts", kept)
+        finally:
+            nexus_cli.HLS_RETRIES = orig
+            (d / "s005.bak").rename(d / "s005.ts")
+        # Next try (after a pause, or the next source): only the missing segments are fetched
+        before = len(self.hits)
+        res, _, _ = self.download("/plain/index.m3u8", out=out)
+        self.assertTrue(res)
+        fetched = [h for h in self.hits[before:] if h.endswith(".ts")]
+        self.assertEqual(len(fetched), 12 - (len([k for k in kept if k.startswith("seg")])))
+        self.assertIn("/plain/s005.ts", fetched)
+        self.assertAlmostEqual(self.duration(out), 12, delta=0.6)
 
 
 if __name__ == "__main__":

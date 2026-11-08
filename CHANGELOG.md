@@ -4,6 +4,11 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Fixed — movix films and episodes took very long to download
+- ffmpeg fetched the HLS stream one segment after the other: the segments are now fetched 8 at a time (one kept-open connection per thread, 4 tries each), then ffmpeg only assembles the local copy (`-c copy`, a few seconds). About 5× faster with a host that is slow to answer (24 segments at 300 ms: 7.6 s → 1.4 s). Encrypted streams (AES-128) and master playlists (best quality) work; a direct MP4, a live stream, a separate audio track or another cipher are left to plain ffmpeg, as before, and so is a stream whose parallel download fails
+- A paused or stopped download keeps its segments (hidden `.hls-…` folder next to the file, skipped by the library scan): the next try only fetches the missing ones
+- Finding the stream in a web player no longer waits a fixed 5 s on each player (it goes on as soon as the stream is seen); a player that needs a click is clicked again every 10 s; the player's Origin header is passed on too
+
 ### Fixed — MP4 conversion lost the 5.1 sound
 - A first audio track converted to AAC (DTS, AC-3, TrueHD…) keeps its channels: 5.1 stays 5.1 (448 kb/s); it was mixed down to stereo
 
