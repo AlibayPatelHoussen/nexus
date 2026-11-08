@@ -562,7 +562,11 @@ function rescanLibrary(kind: Kind, attempt = 0): Promise<void> {
     return new Promise((resolve) => { setTimeout(() => { void rescanLibrary(kind, attempt + 1).then(resolve) }, 60_000).unref() })
   }
   return MediaScanner.exclusive(scan[0], scan[1])
-    .then((n) => { logger.info(`Library rescan after download (${kind}): ${n}`); indexLibrarySoon() })
+    .then((n) => {
+      logger.info(`Library rescan after download (${kind}): ${n}`)
+      // MKV → MP4 once the file has settled (a file written less than a minute ago is skipped)
+      setTimeout(indexLibrarySoon, 90_000).unref()
+    })
     .catch((err: Error) => { logger.warn(`Library rescan after download: ${err.message}`) })
 }
 

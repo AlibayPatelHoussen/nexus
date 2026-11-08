@@ -4,6 +4,11 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Changed — MKV films and episodes become MP4
+- H.264 films / episodes in MKV (AVI, TS…) are converted to MP4 in the background, after each download and for those already in the library (owner's choice): read directly like the MP4 films that already work well (instant start and jumps, native full screen), same picture (copied, about 30 s for 2.5 GB). The first audio track is made AAC when it is not; other audio tracks (VF, VO…) and text subtitles are kept
+- The MP4 replaces the MKV only once checked (same length, picture, as many audio tracks); title, progress and « Reprendre » follow the new file. Skipped: a film being watched, a file written less than a minute ago, not enough free space, a folder Nexus cannot write. `MP4_CONVERT=off` turns it off
+- HEVC films are not converted (they still need re-encoding); files that cannot be converted keep the keyframe index
+
 ### Fixed — « Reprendre » right after leaving a film started from 0; dragging the timeline
 - Dragging the iPhone timeline over a converted film asked for many positions in one second, each restarting the conversion: a far jump now starts ffmpeg only when no other one follows within 0.3 s, and the positions only passed over are dropped at once
 - The player read the resume position from its cache (the one from before watching: nothing for a first watch → from 0) and could read it before the save made when leaving had arrived: it now always reads the saved position, after that save

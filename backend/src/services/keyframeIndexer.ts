@@ -2,11 +2,12 @@ import { query } from '../config/database'
 import { logger } from '../utils/logger'
 import { buildIndex, readIndex } from './keyframes'
 import { decide, hasFfmpeg, probe } from './transcode'
+import { convertToMp4 } from './mp4Convert'
 
 /*
- * « Netflix-like » start for MKV films / episodes (picture copied, container changed):
- * their keyframe index is built ahead of time, in the background, so playing them starts
- * in 2-3 s with the whole film in the player. After each library scan / download, and
+ * Library preparation, in the background: H.264 MKV films / episodes are converted to MP4
+ * (services/mp4Convert.ts); the ones that still need their container changed (conversion
+ * not possible) get a keyframe index so playing them starts in 2-3 s with the whole film. After each library scan / download, and
  * once a day; one file at a time, low CPU priority.
  */
 
@@ -20,8 +21,11 @@ export function indexLibrary(): Promise<number> {
       `SELECT file_path FROM media_items WHERE type = 'film' AND file_path IS NOT NULL
        UNION SELECT file_path FROM episodes WHERE file_path IS NOT NULL`)
     let built = 0
+    let converted = 0
     for (const { file_path: file } of rows) {
       try {
+        // H.264 MKV → MP4 (read directly, like the MP4 films); the index is for the others
+        if (process.env.MP4_CONVERT !== 'off' && await convertToMp4(file)) { converted++; continue }
         if (await readIndex(file)) continue
         const decision = decide(await probe(file))
         if (decision.mode !== 'remux' || !decision.duration) continue
@@ -32,7 +36,8 @@ export function indexLibrary(): Promise<number> {
       }
     }
     if (built) logger.info(`Keyframe index: ${built} films / episodes ready to start at once`)
-    return built
+    if (converted) logger.info(`MP4: ${converted} films / episodes converted`)
+    return built + converted
   })().finally(() => { running = null })
   return running
 }
