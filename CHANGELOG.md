@@ -4,6 +4,12 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Changed — converted films are whole in the player from the start
+- A film that must be converted no longer shows only the part converted so far (iPhone full screen, timeline): the player gets the whole film at once, like series
+  - re-encoded films (HEVC…): the playlist of the whole film is given at once and each part is converted when the player asks for it (a jump far ahead converts from there, without a new conversion of everything)
+  - films whose video is only copied (MKV H.264…): prepared completely before playback (fast), « Préparation de la vidéo… 42 % »
+- A paused converted film keeps its place: ffmpeg stops and restarts where the player asks
+
 ### Fixed — menus closing right after opening on iPhone
 - A « … » menu (Reprendre cards…) closed by itself most of the time: the small scroll a tap causes (a shelf snapping back, the page settling, focusing the menu) or the viewport resizing when iOS moves its bars counted as « the user scrolled ». Only a real scroll (over 16 px) or a width change closes it now
 

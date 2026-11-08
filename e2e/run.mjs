@@ -663,20 +663,23 @@ test('conversion: MKV h264+AC3 (audio converted) plays', async () => {
   await page.context().close()
 })
 
-test('conversion: seeking past the converted part restarts ffmpeg there', async () => {
+test('conversion: the whole film is in the player at once, seeking far converts there', async () => {
   const id = sql(`SELECT id FROM media_items WHERE file_path LIKE '%Hevc Test%'`)
   const page = await newPage(admin, { width: 1280, height: 800 })
   await page.goto(`${B}/player/${id}`)
   await page.waitForSelector('video')
   await playVideo(page)
   await page.waitForFunction(() => document.querySelector('video').currentTime > 1, null, { timeout: 30000 })
-  // Click at 80 % of the scrubber (72 s of 90 s)
-  const restart = page.waitForResponse((r) => r.url().includes('/api/files/transcode?') && r.url().includes('start=7'), { timeout: 15000 })
+  // The video element itself knows the real length (iPhone full screen shows it), not just the converted part
+  const length = await page.evaluate(() => document.querySelector('video').duration)
+  if (!(length > 88 && length < 92)) throw new Error(`video duration ${length}, expected the whole 90 s`)
+  // Click at 80 % of the scrubber (72 s of 90 s): the player asks for that segment, the server converts it
+  const segment = page.waitForResponse((r) => /\/api\/files\/transcode\/[^/]+\/seg0001[0-3]\.ts/.test(r.url()), { timeout: 15000 })
   const bar = await page.$('[role="slider"][aria-label="Position dans la vidéo"]')
   const box = await bar.boundingBox()
   await page.mouse.click(box.x + box.width * 0.8, box.y + box.height / 2)
-  const res = await restart
-  eq(res.status(), 201, 'new conversion')
+  const res = await segment
+  eq(res.status(), 200, 'segment converted on demand')
   // Time displayed ≈ 72 s and keeps playing
   await page.waitForFunction(() => /^1:1\d sur 1:30$/.test(document.querySelector('[role="slider"][aria-label="Position dans la vidéo"]')?.getAttribute('aria-valuetext') || ''), null, { timeout: 30000 })
   await page.context().close()

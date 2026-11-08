@@ -15,9 +15,22 @@ export interface PlayInfo {
 export interface TranscodeSession {
   id:       string
   mode:     Exclude<PlayMode, 'direct'>
+  /** Timeline start of the stream (0 when the playlist holds the whole film) */
   start:    number
+  /** Position asked for (resume / seek): the player seeks there */
+  at?:      number
+  /** Whole-film playlist converted on demand */
+  vod?:     boolean
   duration: number | null
   playlist: string
+}
+
+export interface TranscodeStatus { ready: boolean; done: boolean; failed: string | null; percent: number | null }
+
+/** A remux is played once complete (the whole film is then in the player). */
+export async function getTranscodeStatus(id: string): Promise<TranscodeStatus> {
+  const { data } = await api.get<{ success: boolean; data: TranscodeStatus }>(`/files/transcode/${encodeURIComponent(id)}/status`)
+  return data.data
 }
 
 /** WebM is played directly only by browsers that really support it. */

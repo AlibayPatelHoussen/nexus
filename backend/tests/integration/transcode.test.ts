@@ -91,16 +91,50 @@ d('HLS conversion', () => {
     expect(probeSegment(segment)).toEqual({ video: 'h264', audio: 'aac' })
   }, 60_000)
 
-  it('starts at the requested position (seek)', async () => {
-    const { job } = await startAndFetch(files.transcode, 12)
-    expect(job.start).toBe(12)
-    const pl = await request(app).get(`${job.playlist}?token=${stream()}`)
-    // 20 s file started at 12 s → about 8 s of output
+  it('re-encoding: the player gets the WHOLE film at once (iPhone full screen shows its real length)', async () => {
+    const res = await request(app).post(`/api/files/transcode?${q(files.transcode)}&start=12`).set(auth)
+    expect(res.body.data).toMatchObject({ vod: true, start: 0, at: 12 })
+    const pl = await request(app).get(`${res.body.data.playlist}?token=${stream()}`)
+    expect(pl.text).toContain('#EXT-X-PLAYLIST-TYPE:VOD')
+    expect(pl.text).toContain('#EXT-X-ENDLIST')
     const total = [...pl.text.matchAll(/#EXTINF:([\d.]+)/g)].reduce((s, m) => s + Number(m[1]), 0)
-    await new Promise((r) => setTimeout(r, 1500))
-    const final = await request(app).get(`${job.playlist}?token=${stream()}`)
-    const totalFinal = [...final.text.matchAll(/#EXTINF:([\d.]+)/g)].reduce((s, m) => s + Number(m[1]), 0)
-    expect(Math.max(total, totalFinal)).toBeLessThan(10)
+    expect(total).toBeGreaterThan(19)
+    expect(total).toBeLessThan(21)
+  }, 60_000)
+
+  it('re-encoding: a segment is converted where it is asked (seek), with its real timestamps', async () => {
+    const res = await request(app).post(`/api/files/transcode?${q(files.long)}`).set(auth)
+    const base = res.body.data.playlist.replace('index.m3u8', '')
+    // 10 min file: segment 60 (6 min) is far from the start → ffmpeg restarts there
+    const ts = await request(app).get(`${base}seg00060.ts?token=${stream()}`).buffer(true).parse((r, cb) => {
+      const chunks: Buffer[] = []
+      r.on('data', (c: Buffer) => chunks.push(c)); r.on('end', () => cb(null, Buffer.concat(chunks)))
+    })
+    expect(ts.status).toBe(200)
+    const f = path.join(DIR, `seek-${Date.now()}.ts`)
+    fs.writeFileSync(f, ts.body as Buffer)
+    const start = Number(execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'format=start_time', '-of', 'csv=p=0', f]).toString())
+    fs.unlinkSync(f)
+    expect(start).toBeGreaterThan(359)
+    expect(start).toBeLessThan(363)
+    const job = listJobs().find((j) => j.id === res.body.data.id)!
+    expect(job.segStart).toBe(60)
+    await request(app).delete(`/api/files/transcode/${job.id}`).set(auth)
+  }, 90_000)
+
+  it('remux: converted completely before playback, with progress', async () => {
+    const res = await request(app).post(`/api/files/transcode?${q(files.remux)}&start=8`).set(auth)
+    expect(res.body.data).toMatchObject({ vod: false, start: 0, at: 8 })
+    let status = { ready: false, percent: 0 as number | null }
+    for (let i = 0; i < 50 && !status.ready; i++) {
+      await new Promise((r) => setTimeout(r, 200))
+      status = (await request(app).get(`/api/files/transcode/${res.body.data.id}/status?token=${stream()}`)).body.data
+    }
+    expect(status).toMatchObject({ ready: true, percent: 100 })
+    const pl = await request(app).get(`${res.body.data.playlist}?token=${stream()}`)
+    expect(pl.text).toContain('#EXT-X-ENDLIST')
+    const total = [...pl.text.matchAll(/#EXTINF:([\d.]+)/g)].reduce((s, m) => s + Number(m[1]), 0)
+    expect(total).toBeGreaterThan(19)
   }, 60_000)
 
   it('DELETE kills ffmpeg immediately', async () => {
@@ -127,8 +161,11 @@ d('HLS conversion', () => {
     expect(proc.exitCode).toBeNull() // still converting the 10 min file
     // TRANSCODE_IDLE_MS is 1500 in tests (setupEnv)
     await new Promise((r) => setTimeout(r, 4000))
-    expect(listJobs().some((j) => j.id === job.id)).toBe(false)
     expect(proc.killed || proc.exitCode !== null).toBe(true)
+    // A film converted on demand keeps its place (paused): it restarts where the player asks
+    const kept = listJobs().find((j) => j.id === job.id)
+    expect(kept?.vod).toBe(true)
+    expect(kept?.done).toBe(true)
   }, 30_000)
 })
 

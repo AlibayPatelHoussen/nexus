@@ -120,8 +120,12 @@ export function decide(p: ProbeResult, caps: ClientCaps = {}): PlayDecision {
   return { ...base, mode: 'transcode', reason: `${v.codec_name}${v.pix_fmt ? ` (${v.pix_fmt})` : ''} needs re-encoding` }
 }
 
-/** ffmpeg arguments producing an HLS (MPEG-TS) stream from `start` seconds. */
-export function ffmpegArgs(input: string, mode: Exclude<PlayMode, 'direct'>, start: number, outDir: string): string[] {
+/**
+ * ffmpeg arguments producing an HLS (MPEG-TS) stream from `start` seconds.
+ * `firstSegment` (on-demand conversion): the segments are numbered from it and their
+ * timestamps start at `start`, so they fit the full-length playlist the player has.
+ */
+export function ffmpegArgs(input: string, mode: Exclude<PlayMode, 'direct'>, start: number, outDir: string, firstSegment?: number): string[] {
   const video = mode === 'remux'
     ? ['-c:v', 'copy']
     : [
@@ -140,6 +144,7 @@ export function ffmpegArgs(input: string, mode: Exclude<PlayMode, 'direct'>, sta
     '-map', '0:v:0', '-map', '0:a:0?',
     ...video,
     '-c:a', 'aac', '-b:a', '192k', '-ac', '2',
+    ...(firstSegment != null ? ['-output_ts_offset', start.toFixed(3), '-start_number', String(firstSegment)] : []),
     '-f', 'hls',
     '-hls_time', String(SEGMENT_SECONDS),
     '-hls_list_size', '0',
@@ -157,6 +162,17 @@ export interface TranscodeJob {
   filePath:   string
   mode:       Exclude<PlayMode, 'direct'>
   start:      number
+  /**
+   * On-demand conversion (re-encode with a known duration): the player gets the playlist
+   * of the WHOLE film at once (iPhone full screen shows the real length) and ffmpeg is
+   * restarted at the segment the player asks for when it is far from what is converted.
+   */
+  vod:        boolean
+  /** Full duration in seconds (vod) */
+  total:      number | null
+  /** First segment of the running ffmpeg (vod) */
+  segStart:   number
+  restartedAt: number
   dir:        string
   proc:       ChildProcess | null
   done:       boolean
@@ -189,7 +205,7 @@ export function stopJob(id: string, reason = 'stopped'): void {
 }
 
 export async function startJob(
-  userId: string, filePath: string, mode: Exclude<PlayMode, 'direct'>, start: number,
+  userId: string, filePath: string, mode: Exclude<PlayMode, 'direct'>, start: number, total: number | null = null,
 ): Promise<TranscodeJob> {
   // One playback per user and file at a time, and a global cap for the CPU
   for (const j of jobs.values()) if (j.userId === userId && j.filePath === filePath) stopJob(j.id, 'replaced')
@@ -200,25 +216,111 @@ export async function startJob(
   const dir = path.join(ROOT, id)
   await fs.promises.mkdir(dir, { recursive: true })
 
+  // Re-encoding: whole-film playlist, converted on demand. Remux (copy, fast): the whole
+  // file is converted before playback starts (its segments follow the source keyframes,
+  // so a full playlist cannot be written in advance).
+  const vod = mode === 'transcode' && !!total && total > 0
   const job: TranscodeJob = {
-    id, userId, filePath, mode, start, dir,
+    id, userId, filePath, mode, start: vod || mode === 'remux' ? 0 : start, vod, total, segStart: 0, restartedAt: 0, dir,
     proc: null, done: false, failed: null, lastAccess: Date.now(), createdAt: Date.now(),
   }
-  const proc = spawn(FFMPEG, ffmpegArgs(filePath, mode, start, dir), { stdio: ['ignore', 'ignore', 'pipe'] })
+  jobs.set(id, job)
+  launch(job, vod ? Math.floor(start / SEGMENT_SECONDS) : 0)
+  logger.info(`Transcode ${id}: ${mode}${vod ? ' (on demand)' : ''} from ${start}s — ${filePath}`)
+  return job
+}
+
+/** (Re)starts ffmpeg; on demand, from segment `segment`. */
+function launch(job: TranscodeJob, segment: number) {
+  if (job.proc && job.proc.exitCode === null) job.proc.kill('SIGKILL')
+  job.segStart = segment
+  job.restartedAt = Date.now()
+  job.done = false
+  job.failed = null
+  const from = job.vod ? segment * SEGMENT_SECONDS : job.start
+  const proc = spawn(FFMPEG, ffmpegArgs(job.filePath, job.mode, from, job.dir, job.vod ? segment : undefined), { stdio: ['ignore', 'ignore', 'pipe'] })
   job.proc = proc
   let stderr = ''
   proc.stderr?.on('data', (d) => { stderr = (stderr + d.toString()).slice(-2000) })
-  proc.on('error', (err) => { job.failed = err.message; job.done = true })
+  // A replaced ffmpeg (restart at another segment) no longer speaks for the job
+  proc.on('error', (err) => { if (job.proc !== proc) return; job.failed = err.message; job.done = true })
   proc.on('exit', (code, signal) => {
+    if (job.proc !== proc) return
     job.done = true
     if (code !== 0 && signal !== 'SIGKILL') {
       job.failed = stderr.trim() || `ffmpeg exited with code ${code}`
-      logger.error(`Transcode ${id} failed: ${job.failed}`)
+      logger.error(`Transcode ${job.id} failed: ${job.failed}`)
     }
   })
-  jobs.set(id, job)
-  logger.info(`Transcode ${id}: ${mode} from ${start}s — ${filePath}`)
-  return job
+}
+
+const segName = (n: number) => `seg${String(n).padStart(5, '0')}.ts`
+const segmentCount = (job: TranscodeJob) => Math.max(1, Math.ceil((job.total ?? 0) / SEGMENT_SECONDS))
+
+/** Playlist of the whole film (on-demand conversion), segments carry the stream token. */
+export function vodPlaylist(job: TranscodeJob, token: string): string {
+  const q = `?token=${encodeURIComponent(token)}`
+  const n = segmentCount(job)
+  const lines = ['#EXTM3U', '#EXT-X-VERSION:3', `#EXT-X-TARGETDURATION:${SEGMENT_SECONDS + 1}`, '#EXT-X-MEDIA-SEQUENCE:0',
+    '#EXT-X-PLAYLIST-TYPE:VOD', '#EXT-X-INDEPENDENT-SEGMENTS']
+  for (let i = 0; i < n; i++) {
+    const d = Math.min(SEGMENT_SECONDS, (job.total ?? 0) - i * SEGMENT_SECONDS)
+    lines.push(`#EXTINF:${Math.max(0.1, d).toFixed(3)},`, segName(i) + q)
+  }
+  lines.push('#EXT-X-ENDLIST', '')
+  return lines.join('\n')
+}
+
+/** Segments ffmpeg already wrote from its current start (contiguous). */
+function nextSegment(job: TranscodeJob): number {
+  let n = job.segStart
+  while (fs.existsSync(path.join(job.dir, segName(n)))) n++
+  return n
+}
+
+/**
+ * Path of a segment, waiting for ffmpeg to write it. On demand, a segment far from
+ * what is being converted (a seek) restarts ffmpeg there. Null when it never comes.
+ */
+export async function segmentFile(job: TranscodeJob, index: number, timeoutMs = 90_000): Promise<string | null> {
+  const file = path.join(job.dir, segName(index))
+  if (fs.existsSync(file)) return file
+  if (!job.vod) return null
+  if (index < 0 || index >= segmentCount(job)) return null
+  const next = nextSegment(job)
+  const coming = !job.done && index >= job.segStart && index <= next + 4
+  // Several requests right after a restart: wait for that ffmpeg rather than restarting again
+  const justRestarted = Date.now() - job.restartedAt < 3000 && index >= job.segStart && index <= job.segStart + 4
+  if (!coming && !justRestarted) {
+    logger.info(`Transcode ${job.id}: seek to segment ${index} (was converting ${job.segStart}…${next})`)
+    launch(job, index)
+  }
+  const until = Date.now() + timeoutMs
+  while (Date.now() < until) {
+    if (!jobs.has(job.id)) return null
+    job.lastAccess = Date.now()
+    if (fs.existsSync(file)) return file
+    if (job.done && !fs.existsSync(file)) {
+      // ffmpeg finished or failed without this segment (a restart elsewhere does not end up here)
+      if (job.failed) return null
+      if (index < job.segStart || index >= nextSegment(job)) return null
+    }
+    await new Promise((r) => setTimeout(r, 200))
+  }
+  return null
+}
+
+/** Conversion state for the player: a remux is played once it is complete. */
+export async function jobStatus(job: TranscodeJob): Promise<{ ready: boolean; done: boolean; failed: string | null; percent: number | null }> {
+  if (job.vod) return { ready: true, done: job.done, failed: job.failed, percent: null }
+  let percent: number | null = null
+  if (job.total) {
+    const text = await fs.promises.readFile(path.join(job.dir, 'index.m3u8'), 'utf8').catch(() => '')
+    const converted = [...text.matchAll(/#EXTINF:([\d.]+)/g)].reduce((sum, m) => sum + Number(m[1]), 0)
+    percent = Math.min(100, Math.round((converted / Math.max(1, job.total - job.start)) * 100))
+  }
+  const ready = job.mode === 'remux' ? job.done && !job.failed : true
+  return { ready, done: job.done, failed: job.failed, percent: job.done && !job.failed ? 100 : percent }
 }
 
 /**
@@ -259,7 +361,15 @@ function reap() {
     // Running: the player stopped fetching (closed tab, app in background…)
     // Finished: keep segments a little while for seeking back, then clean up
     const ttl = job.done ? IDLE_MS * 10 : IDLE_MS
-    if (now - job.lastAccess > ttl) stopJob(job.id, job.done ? 'expired' : 'client gone')
+    if (now - job.lastAccess <= ttl) continue
+    // On demand (paused film): stop ffmpeg but keep the job a while, it restarts where asked
+    if (job.vod && !job.done && now - job.lastAccess < IDLE_MS * 60) {
+      job.proc?.kill('SIGKILL')
+      job.done = true
+      logger.info(`Transcode ${job.id} paused (client idle)`)
+      continue
+    }
+    stopJob(job.id, job.done ? 'expired' : 'client gone')
   }
 }
 const reaper = setInterval(reap, Math.min(10_000, Math.max(1000, IDLE_MS / 3)))

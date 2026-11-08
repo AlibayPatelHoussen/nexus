@@ -14,8 +14,8 @@ import { AppError, ForbiddenError, NotFoundError, ValidationError } from '../uti
 import { query } from '../config/database'
 import { archivePages, chapterKind } from '../services/chapters'
 import {
-  decide, getJob, hasFfmpeg, probe, rewritePlaylist, startJob, stopJob, waitForPlaylist,
-  type ClientCaps,
+  decide, getJob, hasFfmpeg, jobStatus, probe, rewritePlaylist, segmentFile, startJob, stopJob,
+  vodPlaylist, waitForPlaylist, type ClientCaps,
 } from '../services/transcode'
 
 const MEDIA_ROOT = process.env.MEDIA_ROOT || '/media'
@@ -154,13 +154,16 @@ router.post('/transcode', authenticateStream, asyncHandler(async (req: Request, 
   let start = Math.max(0, Number(req.query.start) || 0)
   if (decision.duration) start = Math.min(start, Math.max(0, decision.duration - 1))
 
-  const job = await startJob(req.user!.userId, filePath, mode, start)
+  const job = await startJob(req.user!.userId, filePath, mode, start, decision.duration)
   res.status(201).json({
     success: true,
     data: {
       id:       job.id,
       mode,
-      start,
+      // Timeline start of the stream (0: the whole film is in the playlist; the player seeks to `at`)
+      start:    job.start,
+      at:       start,
+      vod:      job.vod,
       duration: decision.duration,
       playlist: `/api/files/transcode/${job.id}/index.m3u8`,
     },
@@ -173,8 +176,19 @@ function ownJob(req: Request) {
   return job
 }
 
+/** Conversion progress: a remux is played once complete (the whole film is then seekable). */
+router.get('/transcode/:id/status', authenticateStream, asyncHandler(async (req: Request, res: Response) => {
+  res.json({ success: true, data: await jobStatus(ownJob(req)) })
+}))
+
 router.get('/transcode/:id/index.m3u8', authenticateStream, asyncHandler(async (req: Request, res: Response) => {
   const job = ownJob(req)
+  if (job.vod) {
+    res.setHeader('Content-Type', 'application/vnd.apple.mpegurl')
+    res.setHeader('Cache-Control', 'no-cache')
+    res.send(vodPlaylist(job, String(req.query.token ?? '')))
+    return
+  }
   const text = await waitForPlaylist(job)
   if (!text) throw new AppError(job.failed ? `Conversion failed: ${job.failed}` : 'Conversion did not start in time', 502)
   res.setHeader('Content-Type', 'application/vnd.apple.mpegurl')
@@ -182,11 +196,12 @@ router.get('/transcode/:id/index.m3u8', authenticateStream, asyncHandler(async (
   res.send(rewritePlaylist(text, String(req.query.token ?? '')))
 }))
 
-router.get('/transcode/:id/:segment', authenticateStream, asyncHandler((req: Request, res: Response) => {
-  if (!/^seg\d{5}\.ts$/.test(req.params.segment)) throw new NotFoundError('Segment')
+router.get('/transcode/:id/:segment', authenticateStream, asyncHandler(async (req: Request, res: Response) => {
+  const m = /^seg(\d{5})\.ts$/.exec(req.params.segment)
+  if (!m) throw new NotFoundError('Segment')
   const job = ownJob(req)
-  const file = path.join(job.dir, req.params.segment)
-  if (!fs.existsSync(file)) throw new NotFoundError('Segment')
+  const file = await segmentFile(job, Number(m[1]))
+  if (!file) throw new NotFoundError('Segment')
   res.setHeader('Content-Type', 'video/mp2t')
   res.setHeader('Cache-Control', 'no-cache')
   fs.createReadStream(file).pipe(res)
