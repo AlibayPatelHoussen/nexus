@@ -4,6 +4,10 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Changed — MKV films start at once, like Netflix
+- Films / episodes whose picture is only copied (MKV H.264…) start in 2-3 s with the whole film in the player (iPhone full screen included), instead of « Préparation de la vidéo… » for the whole file: Nexus reads each such file once in the background (after a scan, a download, and daily; low priority) and keeps the times where it can be cut (a few KB in backend/cache/keyframes). Playing it then gives the whole film at once and copies it in one run cut at those times (~190x real time on the server)
+- A file not indexed yet is indexed when first played (« Préparation de la vidéo… » with its progress, about 30 s for 2.5 GB), then never again; the original files are never changed
+
 ### Fixed — « Préparation de la vidéo » very slow
 - Films whose sound is already AAC / MP3 stereo (most WEB-DL / WEBRip MKV) keep it as it is instead of re-encoding it: on the server, re-encoding the sound (one CPU core, ~30x real time) was what made a 1 h 30 film take 3-4 min to prepare; copying it is limited by the disk only (~30 s for 2.5 GB). Measured on the owner's server
 

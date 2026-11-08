@@ -28,6 +28,7 @@ import { startFollowChecker } from './services/follows'
 import { startCatalogueRefresher } from './services/catalogue'
 import { startImdbSync } from './services/imdb'
 import { startYtDlpUpdater } from './services/ytdlp'
+import { startKeyframeIndexer } from './services/keyframeIndexer'
 import terminalRoutes from './routes/terminal'
 import imagesRoutes   from './routes/images'
 import { registerSocketHandlers } from './socket'
@@ -150,6 +151,7 @@ if (require.main === module) {
     startCatalogueRefresher()
     startImdbSync()
     startYtDlpUpdater()
+    startKeyframeIndexer()
   })
 }
 

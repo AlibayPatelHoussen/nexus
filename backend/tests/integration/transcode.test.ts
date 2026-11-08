@@ -18,6 +18,7 @@ const files = {
   remux:     path.join(DIR, 'remux.mkv'),      // h264 + ac3 in mkv
   remuxAac:  path.join(DIR, 'remux-aac.mkv'),  // h264 + aac stereo in mkv (audio copied)
   transcode: path.join(DIR, 'hevc.mkv'),       // hevc + aac
+  irregular: path.join(DIR, 'irregular.mkv'),  // h264 + aac, 60 s, keyframes at irregular times
   long:      path.join(DIR, 'long.avi'),       // mpeg4 + mp3, 10 min (conversion keeps running)
 }
 const auth = { Authorization: `Bearer ${makeToken('user')}` }
@@ -33,6 +34,13 @@ beforeAll(() => {
   if (!fs.existsSync(files.remux))     ffmpeg([...src, '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '48', '-c:a', 'ac3', files.remux])
   if (!fs.existsSync(files.remuxAac))  ffmpeg([...src, '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '48', '-c:a', 'aac', '-ac', '2', files.remuxAac])
   if (!fs.existsSync(files.transcode)) ffmpeg([...src, '-c:v', 'libx265', '-x265-params', 'log-level=error', '-c:a', 'aac', files.transcode])
+  if (!fs.existsSync(files.irregular)) {
+    // Keyframes like a real film: irregular gaps (2-9 s), never on the 6 s grid
+    const kf = [0, 2.5, 9.1, 11, 17.4, 21, 29.9, 31.2, 38.8, 44, 46.3, 55.7].join(',')
+    ffmpeg(['-f', 'lavfi', '-i', 'testsrc=size=320x180:rate=24', '-f', 'lavfi', '-i', 'sine=frequency=440', '-t', '60',
+      '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-g', '1000', '-sc_threshold', '0', '-force_key_frames', kf,
+      '-c:a', 'aac', '-ac', '2', files.irregular])
+  }
   if (!fs.existsSync(files.long)) {
     ffmpeg(['-f', 'lavfi', '-i', 'testsrc=size=640x360:rate=24', '-f', 'lavfi', '-i', 'sine=frequency=440', '-t', '600', '-c:v', 'mpeg4', '-q:v', '10', '-c:a', 'libmp3lame', files.long])
   }
@@ -131,15 +139,15 @@ d('HLS conversion', () => {
     await request(app).delete(`/api/files/transcode/${job.id}`).set(auth)
   }, 90_000)
 
-  it('remux: converted completely before playback, with progress', async () => {
+  it('remux: the player waits for the keyframe index, then gets the whole film', async () => {
     const res = await request(app).post(`/api/files/transcode?${q(files.remux)}&start=8`).set(auth)
-    expect(res.body.data).toMatchObject({ vod: false, start: 0, at: 8 })
+    expect(res.body.data).toMatchObject({ vod: true, start: 0, at: 8 })
     let status = { ready: false, percent: 0 as number | null }
     for (let i = 0; i < 50 && !status.ready; i++) {
       await new Promise((r) => setTimeout(r, 200))
       status = (await request(app).get(`/api/files/transcode/${res.body.data.id}/status?token=${stream()}`)).body.data
     }
-    expect(status).toMatchObject({ ready: true, percent: 100 })
+    expect(status).toMatchObject({ ready: true })
     const pl = await request(app).get(`${res.body.data.playlist}?token=${stream()}`)
     expect(pl.text).toContain('#EXT-X-ENDLIST')
     const total = [...pl.text.matchAll(/#EXTINF:([\d.]+)/g)].reduce((s, m) => s + Number(m[1]), 0)
@@ -175,6 +183,71 @@ d('HLS conversion', () => {
     const kept = listJobs().find((j) => j.id === job.id)
     expect(kept?.vod).toBe(true)
     expect(kept?.done).toBe(true)
+  }, 30_000)
+})
+
+d('Remux on demand (keyframe index)', () => {
+  const get = (url: string) => request(app).get(url).buffer(true).parse((r, cb) => {
+    const chunks: Buffer[] = []
+    r.on('data', (c: Buffer) => chunks.push(c)); r.on('end', () => cb(null, Buffer.concat(chunks)))
+  })
+  const ffprobeJson = (f: string, entries: string, extra: string[] = []) =>
+    JSON.parse(execFileSync('ffprobe', ['-v', 'error', ...extra, '-show_entries', entries, '-of', 'json', f]).toString())
+
+  it('the whole film is in the playlist at once, cut at the keyframes; far segments are copied when asked', async () => {
+    fs.rmSync(path.resolve(__dirname, '../../cache/keyframes'), { recursive: true, force: true })
+    const res = await request(app).post(`/api/files/transcode?${q(files.irregular)}&start=40`).set(auth)
+    expect(res.body.data).toMatchObject({ mode: 'remux', vod: true, start: 0, at: 40 })
+    const id = res.body.data.id
+    let status = { ready: false }
+    for (let i = 0; i < 100 && !status.ready; i++) {
+      status = (await request(app).get(`/api/files/transcode/${id}/status?token=${stream()}`)).body.data
+      if (!status.ready) await new Promise((r) => setTimeout(r, 100))
+    }
+    expect(status.ready).toBe(true)
+
+    const pl = await request(app).get(`${res.body.data.playlist}?token=${stream()}`)
+    expect(pl.text).toContain('#EXT-X-PLAYLIST-TYPE:VOD')
+    expect(pl.text).toContain('#EXT-X-ENDLIST')
+    const durations = [...pl.text.matchAll(/#EXTINF:([\d.]+)/g)].map((m) => Number(m[1]))
+    // Cuts at the first keyframe 6 s or more after the previous cut: 0, 9.1, 17.4, 29.9, 38.8, 46.3, 55.7
+    expect(durations.map((x) => Number(x.toFixed(1)))).toEqual([9.1, 8.3, 12.5, 8.9, 7.5, 9.4, 4.3])
+
+    // Segments asked out of order (a seek to the end, then the start) are each the right part
+    const base = res.body.data.playlist.replace('index.m3u8', '')
+    const bodies: Buffer[] = []
+    for (const i of [5, 6, 0, 1, 2, 3, 4]) {
+      const seg = await get(`${base}seg0000${i}.ts?token=${stream()}`)
+      expect(seg.status).toBe(200)
+      bodies[i] = seg.body as Buffer
+    }
+    // Exact cuts (the keyframes fall on 24 fps frames: 38.8 s is the frame at 38.833 s)
+    const cuts = durations.reduce((c, d) => [...c, c[c.length - 1] + d], [0])
+    let totalFrames = 0
+    for (let i = 0; i < 7; i++) {
+      const f = path.join(DIR, `remux-seg-${i}.ts`)
+      fs.writeFileSync(f, bodies[i])
+      const frames = ffprobeJson(f, 'stream=nb_read_packets', ['-select_streams', 'v:0', '-count_packets']).streams[0].nb_read_packets
+      // 24 fps: the frames between the two cuts (± the B-frames stored just after a keyframe)
+      expect(Math.abs(Number(frames) - Math.round((cuts[i + 1] - cuts[i]) * 24))).toBeLessThanOrEqual(2)
+      totalFrames += Number(frames)
+      // Each segment starts on its cut, on the same timeline as the source (restarts included)
+      const first = Number(ffprobeJson(f, 'packet=pts_time', ['-select_streams', 'v:0', '-read_intervals', '%+#1']).packets[0].pts_time)
+      const first0 = Number(ffprobeJson(path.join(DIR, 'remux-seg-0.ts'), 'packet=pts_time', ['-select_streams', 'v:0', '-read_intervals', '%+#1']).packets[0].pts_time)
+      const source0 = Number(ffprobeJson(files.irregular, 'packet=pts_time', ['-select_streams', 'v:0', '-read_intervals', '%+#1']).packets[0].pts_time)
+      if (i > 0) expect(first - first0).toBeCloseTo(cuts[i] - source0, 2)
+    }
+    // Not a frame lost or repeated over the whole film
+    expect(totalFrames).toBe(60 * 24)
+    for (let i = 0; i < 7; i++) fs.rmSync(path.join(DIR, `remux-seg-${i}.ts`), { force: true })
+    await request(app).delete(`/api/files/transcode/${id}`).set(auth)
+  }, 90_000)
+
+  it('the index is kept: the next playback is ready at once', async () => {
+    const res = await request(app).post(`/api/files/transcode?${q(files.irregular)}`).set(auth)
+    const status = (await request(app).get(`/api/files/transcode/${res.body.data.id}/status?token=${stream()}`)).body.data
+    expect(status.ready).toBe(true)
+    await request(app).delete(`/api/files/transcode/${res.body.data.id}`).set(auth)
   }, 30_000)
 })
 

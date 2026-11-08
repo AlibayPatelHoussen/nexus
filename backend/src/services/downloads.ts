@@ -7,6 +7,7 @@ import { logger } from '../utils/logger'
 import { AppError, ConflictError, NotFoundError, ValidationError } from '../utils/errors'
 import { signedImage } from './images'
 import { MediaScanner, hintFor } from './scanner'
+import { indexLibrarySoon } from './keyframeIndexer'
 import {
   LANG_RE, SEASON_RE, SOURCES, collect, destFor, parseSourceId, runScript, selectionArg,
   type Kind, type RunHandle, type ScriptEvent, type Source,
@@ -561,7 +562,7 @@ function rescanLibrary(kind: Kind, attempt = 0): Promise<void> {
     return new Promise((resolve) => { setTimeout(() => { void rescanLibrary(kind, attempt + 1).then(resolve) }, 60_000).unref() })
   }
   return MediaScanner.exclusive(scan[0], scan[1])
-    .then((n) => { logger.info(`Library rescan after download (${kind}): ${n}`) })
+    .then((n) => { logger.info(`Library rescan after download (${kind}): ${n}`); indexLibrarySoon() })
     .catch((err: Error) => { logger.warn(`Library rescan after download: ${err.message}`) })
 }
 
