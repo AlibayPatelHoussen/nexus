@@ -4,6 +4,9 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Fixed — MP4 conversion lost the 5.1 sound
+- A first audio track converted to AAC (DTS, AC-3, TrueHD…) keeps its channels: 5.1 stays 5.1 (448 kb/s); it was mixed down to stereo
+
 ### Changed — MKV films and episodes become MP4
 - H.264 films / episodes in MKV (AVI, TS…) are converted to MP4 in the background, after each download and for those already in the library (owner's choice): read directly like the MP4 films that already work well (instant start and jumps, native full screen), same picture (copied, about 30 s for 2.5 GB). The first audio track is made AAC when it is not; other audio tracks (VF, VO…) and text subtitles are kept
 - The MP4 replaces the MKV only once checked (same length, picture, as many audio tracks); title, progress and « Reprendre » follow the new file. Skipped: a film being watched, a file written less than a minute ago, not enough free space, a folder Nexus cannot write. `MP4_CONVERT=off` turns it off
