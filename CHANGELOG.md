@@ -4,6 +4,10 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Fixed — « Reprendre » started from the beginning (iPhone)
+- The iPhone ignores a position set before the video can play: the resume position is now set again on every media event until the video really is there (given up after 20 s or when the user moves the position)
+- Nothing is saved before the resume position is reached: starting from 0 by mistake no longer overwrote the saved position nor removed the film from « Reprendre »
+
 ### Changed — MKV films start at once, like Netflix
 - Films / episodes whose picture is only copied (MKV H.264…) start in 2-3 s with the whole film in the player (iPhone full screen included), instead of « Préparation de la vidéo… » for the whole file: Nexus reads each such file once in the background (after a scan, a download, and daily; low priority) and keeps the times where it can be cut (a few KB in backend/cache/keyframes). Playing it then gives the whole film at once and copies it in one run cut at those times (~190x real time on the server)
 - A file not indexed yet is indexed when first played (« Préparation de la vidéo… » with its progress, about 30 s for 2.5 GB), then never again; the original files are never changed
