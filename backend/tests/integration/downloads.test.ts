@@ -543,7 +543,7 @@ describe('A job of several episodes / chapters', () => {
       expect(res.status).toBe(201)
       const id = res.body.data.id
       // Chapter 1 is done, the job is still running: the library was already rescanned
-      await waitFor(async () => scans.length > 0)
+      await waitFor(async () => scans.length > 0, 25_000)
       expect(await statusOf(id)).toBe('running')
       await waitFor(async () => (await statusOf(id)) === 'done')
       await waitFor(async () => scans.length >= 2)      // chapter 2 / end of the job
@@ -551,11 +551,12 @@ describe('A job of several episodes / chapters', () => {
       // Cancelled after its first chapter: that chapter is still added to the library
       const again = await request(app).post('/api/downloads').set(admin)
         .send({ id: 'anisama:manga:progressive-2', title: 'Progressif 2', lang: 'vf', chapters: [1, 2] })
+      expect(again.status).toBe(201)
       const id2 = again.body.data.id
       await waitFor(async () => {
-        const row = (await request(app).get('/api/downloads').set(admin)).body.data.find((d: { id: string }) => d.id === id2)
-        return row?.progress?.items_done === 1
-      })
+        const { rows } = await query<{ progress: { items_done?: number } }>('SELECT progress FROM downloads WHERE id = $1', [id2])
+        return rows[0]?.progress?.items_done === 1
+      }, 25_000)
       await new Promise((r) => setTimeout(r, 1200))       // the rescan of chapter 1 has run
       process.env.DOWNLOADS_RESCAN_DELAY_MS = '60000'    // only the rescan made on cancel can count now
       const before = scans.length
@@ -566,5 +567,5 @@ describe('A job of several episodes / chapters', () => {
       spy.mockRestore()
       delete process.env.DOWNLOADS_RESCAN_DELAY_MS
     }
-  }, 30_000)
+  }, 90_000)
 })

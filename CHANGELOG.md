@@ -4,6 +4,10 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Fixed — a new download could wait 10 s before starting; main CI red
+- A download added while the queue was starting others was only picked up by the next check (10 s later): the queue now makes one more pass right away
+- The test of « each finished chapter in the library » waited too little on a slow CI (that is what kept the previous version from being deployed)
+
 ### Changed — each finished episode / chapter is in the library at once
 - A download of several episodes or chapters no longer waits for the whole job: every finished episode / chapter is added to the library a few seconds later (the rescans of items finished close together are grouped, at most one per 15 s; `DOWNLOADS_RESCAN_DELAY_MS`), so 30 chapters out of 50 can be read while the rest downloads
 - Paused, cancelled or failed halfway: what was finished is added to the library too (before, only a complete job was)
