@@ -7,20 +7,37 @@ import DashboardPage from '@/pages/dashboard/DashboardPage'
 import NotFoundPage  from '@/pages/NotFoundPage'
 import Spinner       from '@/components/ui/Spinner'
 
-const FilesPage    = lazy(() => import('@/pages/files/FilesPage'))
+const FilesPage = lazy(() => import('@/pages/files/FilesPage'))
 const TerminalPage = lazy(() => import('@/pages/terminal/TerminalPage'))
-const CinemaPage   = lazy(() => import('@/pages/cinema/CinemaPage'))
-const AnimesPage   = lazy(() => import('@/pages/animes/AnimesPage'))
-const MangaPage    = lazy(() => import('@/pages/manga/MangaPage'))
+const CinemaPage = lazy(() => import('@/pages/cinema/CinemaPage'))
+const AnimesPage = lazy(() => import('@/pages/animes/AnimesPage'))
+const MangaPage = lazy(() => import('@/pages/manga/MangaPage'))
 const ServicesPage = lazy(() => import('@/pages/services/ServicesPage'))
-const NetworkPage  = lazy(() => import('@/pages/network/NetworkPage'))
+const NetworkPage = lazy(() => import('@/pages/network/NetworkPage'))
 const SettingsPage = lazy(() => import('@/pages/settings/SettingsPage'))
 const DownloadsPage = lazy(() => import('@/pages/downloads/DownloadsPage'))
-const YoutubePage  = lazy(() => import('@/pages/youtube/YoutubePage'))
-const MyListPage   = lazy(() => import('@/pages/mylist/MyListPage'))
-const PlayerPage   = lazy(() => import('@/pages/player/PlayerPage'))
-const MangaReader  = lazy(() => import('@/pages/player/MangaReaderPage'))
-const MediaDetail  = lazy(() => import('@/pages/media/MediaDetailPage'))
+const YoutubePage = lazy(() => import('@/pages/youtube/YoutubePage'))
+const MyListPage = lazy(() => import('@/pages/mylist/MyListPage'))
+const PlayerPage = lazy(() => import('@/pages/player/PlayerPage'))
+const MangaReader = lazy(() => import('@/pages/player/MangaReaderPage'))
+const MediaDetail = lazy(() => import('@/pages/media/MediaDetailPage'))
+
+const PAGE_CHUNKS: (() => Promise<unknown>)[] = [
+  () => import('@/pages/files/FilesPage'),
+  () => import('@/pages/terminal/TerminalPage'),
+  () => import('@/pages/cinema/CinemaPage'),
+  () => import('@/pages/animes/AnimesPage'),
+  () => import('@/pages/manga/MangaPage'),
+  () => import('@/pages/services/ServicesPage'),
+  () => import('@/pages/network/NetworkPage'),
+  () => import('@/pages/settings/SettingsPage'),
+  () => import('@/pages/downloads/DownloadsPage'),
+  () => import('@/pages/youtube/YoutubePage'),
+  () => import('@/pages/mylist/MyListPage'),
+  () => import('@/pages/player/PlayerPage'),
+  () => import('@/pages/player/MangaReaderPage'),
+  () => import('@/pages/media/MediaDetailPage'),
+]
 
 function PageLoader() {
   return <div className="flex items-center justify-center h-full min-h-[300px]"><Spinner /></div>
@@ -39,6 +56,14 @@ export default function App() {
   const appearance = useAuthStore((s) => s.appearance)
 
   useEffect(() => { applyAppearance(appearance) }, [appearance])
+  // Section pages loaded in the background once the app is idle: switching tab never
+  // waits for their code (a spinner flashed on the first visit of each tab)
+  useEffect(() => {
+    const load = () => { for (const f of PAGE_CHUNKS) void f().catch(() => {}) }
+    const ric = (window as Window & { requestIdleCallback?: (cb: () => void) => number }).requestIdleCallback
+    const t = setTimeout(() => (ric ? ric(load) : load()), 1200)
+    return () => clearTimeout(t)
+  }, [])
 
   return (
     <BrowserRouter>
