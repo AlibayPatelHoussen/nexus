@@ -4,6 +4,9 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Fixed — tab bar lens stuttering on iPhone after a tap
+- The lens no longer shrinks when the finger lifts (Safari redrew its blur at every frame while the new page rendered: ~10 fps). It glides onto the chosen tab and fades out (a CSS opacity transition, done by the compositor), and the page changes right after the glide instead of during it
+
 ### Fixed — iPhone tab bar: switching tab by tapping looked glitchy
 - Like Apple Music: after a tap the glass lens no longer vanishes where it was, it glides onto the chosen tab and melts into its pill
 - The new tab appears at once (no more fade from blank), and its page renders without blocking the animation
