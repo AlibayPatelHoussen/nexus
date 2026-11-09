@@ -81,6 +81,26 @@ function mapChapter(row: Record<string, any>) {
 
 export class MediaService {
 
+  /**
+   * « À la une »: titles drawn at random among ALL the titles of this type (not only the
+   * newest), those with a backdrop and a synopsis first so the billboard looks right.
+   */
+  static async getFeatured(type: string, count = 8) {
+    const n = Math.min(Math.max(Math.trunc(count) || 8, 1), 20)
+    const { rows } = await query(
+      `SELECT id, type, title, original_title, poster_path, backdrop_path,
+              genres, year, rating, vote_count, status, overview, duration,
+              file_path, file_size, created_at, channel, imdb_id, imdb_rating, imdb_votes,
+              key_art_path, logo_path, hero_backdrop_path
+         FROM media_items
+        WHERE type = $1
+        ORDER BY (backdrop_path IS NOT NULL AND COALESCE(overview, '') <> '') DESC,
+                 (poster_path IS NOT NULL OR backdrop_path IS NOT NULL) DESC,
+                 random()
+        LIMIT $2`, [type, n])
+    return rows.map(mapMedia)
+  }
+
   static async getAll(filters: MediaFilters = {}) {
     const {
       type, genre, year, search,

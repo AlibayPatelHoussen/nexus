@@ -4,6 +4,10 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Changed — « À la une » drawn at random among all the titles
+- The billboard of Films, Séries, Animes (and YouTube) shows titles drawn at random among ALL the titles of that section, a new draw each time the page opens (it stays the same while the page is open). Before: 6 titles in a row among the 300 newest, the same ones all day
+- Titles with a backdrop and a synopsis come first, so the billboard keeps its look; the others fill in when too few have one. New `GET /api/media/featured?type=…&count=…` (up to 20)
+
 ### Added — « Télécharger » on the page of a series, an anime or a manga
 - Admin: a round download button next to « + » (series, animes) or a « Télécharger » button (mangas) opens the download sheet of that title on its site (movix for series, anime-sama for animes and mangas): seasons, languages, the episodes / chapters already downloaded marked, pick more and download them, without searching for the title again
 - The title is found like the automatic downloads: from the downloads that made its files, else by its name on the site (a few seconds; the button waits, then opens). Not found: a message says so

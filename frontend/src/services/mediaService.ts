@@ -56,6 +56,12 @@ export const mediaService = {
     return data.data
   },
 
+  /** « À la une »: drawn at random by the server among every title of this type. */
+  async getFeatured(type: string, count = 8): Promise<MediaItem[]> {
+    const { data } = await api.get<{ success: boolean; data: MediaItem[] }>('/media/featured', { params: { type, count } })
+    return data.data
+  },
+
   async getContinueWatching(): Promise<WatchHistoryItem[]> {
     const { data } = await api.get<{ success: boolean; data: WatchHistoryItem[] }>('/media/continue')
     return data.data

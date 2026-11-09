@@ -56,16 +56,6 @@ function imdbScore(i: MediaItem) {
 const VIEW_KEY = 'nexus-media-view'
 const readView = (): View => { try { return localStorage.getItem(VIEW_KEY) === 'list' ? 'list' : 'grid' } catch { return 'grid' } }
 
-/** Titles for the billboard: up to 6, with artwork + synopsis first, starting point changing each day. */
-function pickFeatured(items: MediaItem[]): MediaItem[] {
-  const pool = items.filter((i) => i.backdropPath && i.overview)
-  const list = pool.length >= 3 ? pool : items.filter((i) => i.posterPath || i.backdropPath)
-  if (!list.length) return items.slice(0, 1)
-  const day = Math.floor(Date.now() / 86_400_000)
-  const start = day % list.length
-  return [...list.slice(start), ...list.slice(0, start)].slice(0, 6)
-}
-
 export { VIDEO_SECTIONS }
 
 /** Films / Séries / Animes / YouTube: one switch, same place on every video page. */
@@ -130,7 +120,13 @@ export default function MediaBrowser({ title, tabs, yearFilter, emptyIcon, video
   const items = useMemo(() => catalog?.items ?? [], [catalog])
   const favorites = useFavorites()
   const myList = useMemo(() => favorites.items.filter((m) => m.type === type || (books && m.type === 'webtoon')), [favorites.items, type, books])
-  const featured = useMemo(() => pickFeatured(items), [items])
+  // « À la une »: a new random draw among ALL the titles of this type each time the page
+  // opens (not only the newest ones); it stays the same while the page is open
+  const { data: featuredData } = useQuery({
+    queryKey: ['featured', type], queryFn: () => mediaService.getFeatured(type),
+    enabled: !books, staleTime: Infinity, gcTime: 0, refetchOnWindowFocus: false,
+  })
+  const featured = featuredData ?? []
   const continueRow: RowItem[] = useMemo(() => (continueW ?? [])
     .filter((w) => w.type === type)
     .map((w) => ({
