@@ -44,6 +44,8 @@ export default function PlayerPage() {
   const [seekTo,     setSeekTo]     = useState<{ time: number; key: number } | undefined>()
   /** Right of the top bar: the player puts AirPlay / Image dans l’image / lock there */
   const [toolbarSlot, setToolbarSlot] = useState<HTMLDivElement | null>(null)
+  /** Under the video (phone): « Épisodes » / « Épisode suivant » */
+  const [belowSlot, setBelowSlot] = useState<HTMLDivElement | null>(null)
 
   const { data: media } = useQuery({
     queryKey: ['media', id],
@@ -212,6 +214,7 @@ export default function PlayerPage() {
               onEnded={handleEnded}
               title={playerTitle}
               toolbarSlot={toolbarSlot}
+              belowSlot={belowSlot}
               artwork={media?.posterPath}
               episodes={playerEpisodes}
               onSelectEpisode={(epId) => navigate(`/player/${id}?ep=${epId}`, { replace: true })}
@@ -240,6 +243,8 @@ export default function PlayerPage() {
             </div>
           )}
         </div>
+        {/* Phone: « Épisodes » / « Épisode suivant » (put here by the player) */}
+        <div ref={setBelowSlot} />
       </div>
 
       {/* Media info + episodes */}

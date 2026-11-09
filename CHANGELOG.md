@@ -4,6 +4,10 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Changed — player controls better spread out on the phone
+- Inline on a phone: smaller centre buttons (−10 s / Lecture / +10 s) centred in the picture, a slim timeline capsule at the bottom, and « Épisodes » / « Épisode suivant » as two glass capsules under the video instead of inside the bar; full screen keeps the larger controls
+- A TV refusing the video now shows its reason in Nexus (it was sent as 502, which a proxy in front of Nexus replaces: « Request failed with status code 502 »)
+
 ### Fixed — player options on iPhone (owner's feedback)
 - AirPlay / Image dans l’image / lock buttons moved up into the top bar next to « Retour » (they covered the +10 s button); in full screen they stay over the video
 - iPhone, iPad, Mac: the cast button opens the system AirPlay list at once, i.e. every AirPlay TV on the phone's own network (Roku, Samsung, LG… TVs), not the server's. Safari now plays converted videos with its own HLS player, the only one AirPlay and Picture in Picture accept (hls.js was used on recent iPhones)

@@ -89,11 +89,12 @@ async function fetchText(url: string, init: RequestInit = {}, roku = false): Pro
   try {
     res = await fetch(url, { ...init, signal: AbortSignal.timeout(HTTP_TIMEOUT) })
   } catch {
-    throw new AppError('La TV ne répond pas (éteinte, ou plus sur le réseau du serveur)', 502, true, 'CAST_UNREACHABLE')
+    throw new AppError('La TV ne répond pas (éteinte, ou plus sur le réseau du serveur)', 422, true, 'CAST_UNREACHABLE')
   }
   const text = await res.text()
-  if (roku && (res.status === 401 || res.status === 403)) throw new AppError(ROKU_REFUSED, 502, true, 'CAST_ROKU_REFUSED')
-  if (!res.ok) throw new AppError(`La TV a refusé la commande (erreur ${res.status})`, 502, true, 'CAST_DEVICE_ERROR')
+  if (roku && (res.status === 401 || res.status === 403)) throw new AppError(ROKU_REFUSED, 422, true, 'CAST_ROKU_REFUSED')
+  // 422, not 502: a proxy in front of Nexus (Cloudflare…) replaces 5xx answers and their message
+  if (!res.ok) throw new AppError(`La TV a refusé la commande (erreur ${res.status})`, 422, true, 'CAST_DEVICE_ERROR')
   return text
 }
 

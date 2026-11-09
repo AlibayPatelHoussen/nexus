@@ -111,7 +111,7 @@ describe('Cast to a TV (DLNA / Roku)', () => {
     try {
       const d = await probeLocation(`http://127.0.0.1:${(refusing.address() as AddressInfo).port}/`)
       const res = await request(app).post('/api/cast/play').set(user).send({ deviceId: d!.id, path: FILE })
-      expect(res.status).toBe(502)
+      expect(res.status).toBe(422)
       expect(res.body.error).toMatch(/Contrôle par les applications mobiles/)
       expect(res.body.error).toMatch(/AirPlay/)
     } finally { refusing.close() }
