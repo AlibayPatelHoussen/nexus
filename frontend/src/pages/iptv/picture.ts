@@ -58,6 +58,18 @@ export function rememberConverted(id: string, stream: number, on: boolean) {
   } catch { /* private mode: asked again next time */ }
 }
 
+// ─── Does this browser tell which frames it shows? ───────────────────────────────
+// Safari can know the size of a stream's picture and still show none of it (sound over a black
+// screen until the app is left and reopened). requestVideoFrameCallback tells when a frame is
+// really shown; its silence only means something on a browser where it was seen to work.
+const FRAMES = 'nexus-iptv-frames'
+export function framesReported(): boolean {
+  try { return localStorage.getItem(FRAMES) === '1' } catch { return false }
+}
+export function rememberFramesReported() {
+  try { if (localStorage.getItem(FRAMES) !== '1') localStorage.setItem(FRAMES, '1') } catch { /* private mode */ }
+}
+
 /** Why a channel is left with its sound only, for the viewer */
 export const SOUND_ONLY: Record<PictureReason, string> = {
   audio: 'Cette chaîne ne diffuse pas d’image, seulement du son.',

@@ -603,6 +603,30 @@ test('IPTV on iPhone (Safari reads the stream itself): sound without a picture �
   await page.waitForSelector('text=Son uniquement', { timeout: 30000 })
   eq(await page.evaluate(() => window.__loads), 1, 'a radio is not loaded again')
   await page.context().close()
+
+  // The other way Safari leaves a black screen: it knows the size of the picture but shows no frame.
+  // Seen only where the browser was found to tell which frames it shows.
+  const blind = await newPage(admin)
+  await blind.addInitScript(() => {
+    window.WebKitPlaybackTargetAvailabilityEvent = function () {}
+    localStorage.setItem('nexus-iptv-frames', '1')
+    window.__loads = 0
+    const src = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'src')
+    Object.defineProperty(HTMLMediaElement.prototype, 'src', { get() { return src.get.call(this) }, set(v) { window.__loads++; src.set.call(this, v) } })
+    const frame = HTMLVideoElement.prototype.requestVideoFrameCallback
+    // No frame is reported as shown during the first load
+    HTMLVideoElement.prototype.requestVideoFrameCallback = function (cb) { return frame.call(this, (...a) => { if (window.__loads > 1) cb(...a) }) }
+  })
+  await blind.goto(`${B}/iptv/watch/Kids.fr`, { waitUntil: 'domcontentloaded' })
+  await playVideo(blind)
+  await blind.waitForFunction(() => { const v = document.querySelector('video'); return window.__loads >= 2 && v.videoWidth > 0 && v.currentTime > 0.5 }, null, { timeout: 60000 })
+  // Three taps on « EN DIRECT »: what the browser really plays, to report a problem
+  for (let i = 0; i < 3; i++) await blind.click('text=EN DIRECT')
+  await blind.waitForSelector('text=/Lecteur : Safari · flux direct · chargement n° 2/', { timeout: 10000 })
+  await blind.waitForSelector('text=/affichée : oui/', { timeout: 10000 })
+  await blind.waitForSelector('text=/rechargé : image connue mais non affichée/', { timeout: 10000 })
+  await blind.screenshot({ path: `${SHOTS}/iptv-player-details.png` })
+  await blind.context().close()
 })
 
 test('IMDb: ids from TMDB, ratings from the dataset, Top 10 ranked by IMDb', async () => {
