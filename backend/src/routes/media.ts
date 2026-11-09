@@ -25,7 +25,7 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
   res.json({ success: true, data: result })
 }))
 
-// « À la une »: a new random draw among every title of this type at each visit
+// « À la une »: a random draw among every title of this type, a new one each hour
 router.get('/featured', asyncHandler(async (req: Request, res: Response) => {
   const type = String(req.query.type ?? '')
   if (!['film', 'serie', 'anime', 'manga', 'webtoon', 'youtube'].includes(type)) {

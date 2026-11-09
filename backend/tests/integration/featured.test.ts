@@ -2,6 +2,7 @@ import request from 'supertest'
 import { app } from '../../src/index'
 import { query } from '../../src/config/database'
 import { makeToken } from '../helpers'
+import { MediaService } from '../../src/services/media'
 
 const auth = { Authorization: `Bearer ${makeToken('user')}` }
 // webtoon: a type no other test file fills, so this file owns what the draw can return
@@ -27,10 +28,15 @@ describe('« À la une »', () => {
     const first = await draw()
     expect(first).toHaveLength(8)
     expect(first.every((m) => m.type === 'webtoon' && m.title.startsWith('Avec visuel'))).toBe(true)
-    // Several draws: not always the same titles in the same order
-    const draws = new Set<string>()
-    for (let n = 0; n < 6; n++) draws.add((await draw()).map((m) => m.title).join('|'))
-    expect(draws.size).toBeGreaterThan(1)
+    // The same titles all hour long (every visit), others the next hours
+    const hour = Math.floor(Date.now() / 3_600_000) + 100
+    const titles = async (h: number) => (await MediaService.getFeatured('webtoon', 8, h)).map((m) => m.title)
+    expect(await titles(hour)).toEqual(await titles(hour))
+    const hours = new Set<string>()
+    for (let h = 1; h <= 6; h++) hours.add((await titles(hour + h)).join('|'))
+    expect(hours.size).toBeGreaterThan(1)
+    // A later hour still puts the titles with artwork first
+    expect((await MediaService.getFeatured('webtoon', 8, hour + 1)).every((m) => m.title.startsWith('Avec visuel'))).toBe(true)
   })
 
   it('fills with the other titles when too few have artwork; bounded count; known types only', async () => {
