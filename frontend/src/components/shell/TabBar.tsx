@@ -13,8 +13,8 @@ const OVERFLOW = 5      // the lens spills over the bar, top and bottom (pt)
 // settles back into the pill a bit slower (≈ .5 / .8)
 const FOLLOW = { stiffness: 700, damping: 42, mass: 0.6 }
 const SETTLE = { type: 'spring', stiffness: 300, damping: 28 } as const
-/** After the finger lifts, the lens glides onto the chosen tab before melting into its pill */
-const RELEASE_MS = 240
+/** After the finger lifts, the lens glides onto the chosen tab (the page changes after) */
+const GLIDE_MS = 170
 
 /**
  * iOS 26 tab bar (Apple's iOS 26 kit, "Tab Bar – iPhone"; motion from a screen
@@ -81,6 +81,10 @@ export default function TabBar() {
     const max = width - PAD - lensW + tabW * 0.12
     return want < min ? min - (min - want) * 0.3 : want > max ? max + (want - max) * 0.3 : want
   })
+  // The lens grows in when the finger lands (main thread is free then); it never shrinks
+  // back: on release it only fades (opacity, run by the compositor), so a page rendering
+  // at the same time cannot make it stutter (it did at ~10 fps on iPhone)
+  const lensScale = useSpring(1, { stiffness: 520, damping: 30 })
   // 0 at rest, 1 while touching: drives the tint / magnification of the tabs
   const touch = useSpring(0, { stiffness: 500, damping: 40 })
 
@@ -98,6 +102,7 @@ export default function TabBar() {
       // The lens grows out of the selected pill, then runs to the finger
       const from = active >= 0 ? PAD + (active + 0.5) * tabW : x
       center.jump(from); finger.jump(from)
+      lensScale.jump(0.8); lensScale.set(1)
     }
     finger.set(x)
     touch.set(1)
@@ -113,20 +118,24 @@ export default function TabBar() {
   const end = (select: boolean, clientX?: number) => {
     if (!pressing) return
     if (!select || clientX == null) {
-      setPhase('idle'); touch.set(0); setUnder(null)
+      setPhase('idle'); touch.jump(0); setUnder(null)
       return
     }
     const i = indexAt(relX(clientX))
     setUnder(i)
     // Apple Music: on a tap the lens does not vanish where it is, it glides onto the
-    // chosen tab, then melts into its pill
+    // chosen tab, then fades into its pill. The page changes once the glide is over:
+    // rendering it meanwhile would steal the frames of the glide
     finger.set(PAD + (i + 0.5) * tabW)
     setPhase('release')
-    releaseTimer.current = setTimeout(() => { releaseTimer.current = null; setPhase('idle'); touch.set(0) }, RELEASE_MS)
     navigator.vibrate?.(8)
-    // The new page renders without blocking the lens animation (interruptible render)
     const to = tabs[i]?.to
-    if (to) requestAnimationFrame(() => startTransition(() => navigate(to)))   // the same tab again goes back to its root
+    releaseTimer.current = setTimeout(() => {
+      releaseTimer.current = null
+      setPhase('idle')
+      touch.jump(0)
+      if (to) startTransition(() => navigate(to))   // the same tab again goes back to its root
+    }, GLIDE_MS)
   }
   const pill = under ?? active
   // The pill moves instantly when the finger chose the tab (it is hidden under the lens);
@@ -163,18 +172,17 @@ export default function TabBar() {
                 className="absolute z-0 left-0 rounded-pill pointer-events-none bg-[color:var(--glass-select)]"
                 style={{ top: PAD, bottom: PAD, width: tabW }}
                 initial={false}
-                animate={{ x: PAD + pill * tabW, opacity: phase === 'idle' ? 1 : 0, scale: phase === 'idle' ? 1 : 1.15 }}
-                transition={{ ...SETTLE, x: pillMove }}
+                animate={{ x: PAD + pill * tabW, opacity: phase === 'idle' ? 1 : 0 }}
+                transition={{ x: pillMove, opacity: { duration: 0.16, ease: 'easeOut' } }}
               />
             )}
-            {/* The glass lens: only while touching; grows in, follows the finger, shrinks back */}
+            {/* The glass lens: only while touching; grows in, follows the finger, glides to the tab, fades */}
             <motion.span
               aria-hidden="true"
               className="tab-lens absolute z-20 left-0 rounded-pill pointer-events-none"
-              style={{ x: lensX, width: lensW, top: -OVERFLOW, bottom: -OVERFLOW }}
-              initial={false}
-              animate={{ opacity: phase === 'idle' ? 0 : 1, scale: phase === 'idle' ? 0.8 : 1 }}
-              transition={phase === 'idle' ? { type: 'spring', stiffness: 420, damping: 34 } : { type: 'spring', stiffness: 520, damping: 30 }}
+              style={{ x: lensX, scale: lensScale, width: lensW, top: -OVERFLOW, bottom: -OVERFLOW,
+                // CSS opacity transition: done by the compositor, smooth even while the new page renders
+                opacity: phase === 'idle' ? 0 : 1, transition: `opacity ${phase === 'idle' ? 160 : 90}ms ease-out` }}
             />
           </>
         )}
