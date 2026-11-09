@@ -478,6 +478,49 @@ test('UI: "Ma liste" toggles a favourite', async () => {
   await page.context().close()
 })
 
+test('IPTV: catalogue from iptv-org, filters, favourites, player plays the demo stream', async () => {
+  admin = await login('admin', 'Admin1234')
+  const r = await api('/api/iptv/refresh', { token: admin.accessToken, method: 'POST' })
+  assert([200, 202].includes(r.status), `refresh → ${r.status}`)
+  let summary
+  for (let i = 0; i < 60; i++) {
+    summary = (await api('/api/iptv/summary', { token: admin.accessToken })).json?.data
+    if (!summary?.refresh?.running && summary?.total > 0) break
+    await sleep(500)
+  }
+  eq(summary.total, 7, 'channels imported (the nsfw one left out)')
+  await api('/api/iptv/favorites/Kids.fr', { token: admin.accessToken, method: 'DELETE' })   // the test can be run again
+  const fr = (await api('/api/iptv/channels?country=FR', { token: admin.accessToken })).json.data
+  eq(fr.items.map((c) => c.name).sort(), ['Géo Bloquée', 'Nexus Démo', 'Petits Loups', 'Sport Direct'], 'country filter')
+  assert(!JSON.stringify(fr).includes('/iptv-hls/'), 'stream addresses never reach the client')
+
+  const page = await newPage(admin)
+  await page.goto(`${B}/iptv`, { waitUntil: 'networkidle' })
+  await page.waitForSelector('text=Nexus Démo', { timeout: 15000 })
+  await page.goto(`${B}/iptv/chaines`, { waitUntil: 'networkidle' })
+  await page.fill('input[placeholder="Rechercher une chaîne"]', 'loups')
+  await page.waitForFunction(() => !document.body.innerText.includes('Sport Direct') && document.body.innerText.includes('Petits Loups'), null, { timeout: 10000 })
+  await page.click('button[aria-label="Ajouter Petits Loups aux favoris"]')
+  await page.waitForSelector('text=Ajoutée aux favoris', { timeout: 10000 })
+  admin = await login('admin', 'Admin1234')
+  const favs = (await api('/api/iptv/favorites', { token: admin.accessToken })).json.data
+  eq(favs.map((c) => c.id), ['Kids.fr'], 'favourite saved')
+
+  // The player: the demo HLS stream relayed by the server really plays
+  await page.click('button[aria-label="Regarder Petits Loups"]')
+  await page.waitForURL(/\/iptv\/watch\/Kids\.fr/)
+  await playVideo(page)
+  await page.waitForFunction(() => (document.querySelector('video')?.currentTime ?? 0) > 1, null, { timeout: 30000 })
+  const hist = (await api('/api/iptv/history', { token: admin.accessToken })).json.data
+  assert(hist.some((c) => c.id === 'Kids.fr'), 'recently watched')
+  await page.screenshot({ path: `${SHOTS}/iptv-player.png` })
+
+  // A geo-blocked stream: a clear message, never a blank player
+  await page.goto(`${B}/iptv/watch/Geo.fr`, { waitUntil: 'networkidle' })
+  await page.waitForSelector('text=/géo-bloqué/i', { timeout: 30000 })
+  await page.context().close()
+})
+
 test('IMDb: ids from TMDB, ratings from the dataset, Top 10 ranked by IMDb', async () => {
   const user = await login('alice', 'User12345')
   eq((await api('/api/media/imdb/refresh', { method: 'POST', token: user.accessToken })).status, 403, 'non-admin refused')

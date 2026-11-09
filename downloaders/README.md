@@ -24,3 +24,32 @@ Output: one JSON object per line — `result`, `details`, `item_start`, `progres
   copied from `/media/scripts/catalogue.json` the first time; posters and
   synopses found during searches are added to it.
 - Files being downloaded are named `.part-…` and renamed when complete.
+
+## IPTV (`iptv_cli.py` + package `iptv/`)
+
+Not a copy of an owner's script: the IPTV module of Nexus, standard library only.
+It reads the public lists of [iptv-org](https://github.com/iptv-org/iptv) (the
+`api/*.json` files, the `index.m3u` playlist as a fallback) and never invents data.
+
+```
+python3 iptv_cli.py refresh --out /tmp/catalogue.json     # fetch + parse + merge → catalogue
+python3 iptv_cli.py check --in /tmp/streams.json --workers 4   # check a few streams
+python3 iptv_cli.py epg --url https://…/guide.xml.gz --ids TF1.fr,France2.fr --hours 24
+```
+
+- `sources.py`: downloads with timeouts, conditional requests (ETag / Last-Modified)
+  and a cache in `data/iptv/` (not versioned); mirrors in order, then the cached copy
+  when every mirror is down. `IPTV_API_BASE` / `IPTV_PLAYLIST_URL` (comma lists) and
+  `IPTV_DATA_DIR` override the defaults.
+- `catalogue.py`: one entry per channel with its streams (deduplicated, http(s) only,
+  main feed first), logo, country, categories, languages. Channels on the iptv-org
+  blocklist (DMCA / NSFW), adult and closed channels are left out.
+- `stream_checker.py`: reads at most 64 KB of a stream (the playlist, then its first
+  variant) and says if it answers; 401 / 403 / 451 are reported as « géo-bloqué ».
+  Nexus checks favourites and watched channels first, a few at a time — never the
+  whole list.
+- `epg.py`: iptv-org publishes no ready-made guide; with an XMLTV address set in
+  Nexus (IPTV › Paramètres), the programmes of the catalogue channels are read
+  (streamed, gzip accepted).
+- Output: JSON lines (`progress`, `result`, `done` / `error`) like the other scripts.
+- Tests: `python3 -m unittest discover downloaders` (local HTTP server, no internet).

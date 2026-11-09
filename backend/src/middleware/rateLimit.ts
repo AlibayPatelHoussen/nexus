@@ -25,6 +25,7 @@ export const apiLimiter = rateLimit({
   limit: parseInt(process.env.RATE_LIMIT_MAX || '1000', 10),
   // Playback (direct streaming, HLS playlists / segments, play info) is never limited
   skip: (req) => /^\/files\/(stream|transcode|play-info|archive-page)(\/|$)/.test(req.path) || req.path.startsWith('/images/')
+    || req.path.startsWith('/iptv/play/')
     || /^\/media\/chapters\/[^/]+\/page\//.test(req.path),
 })
 

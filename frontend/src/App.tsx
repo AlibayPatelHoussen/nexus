@@ -21,6 +21,8 @@ const MyListPage = lazy(() => import('@/pages/mylist/MyListPage'))
 const PlayerPage = lazy(() => import('@/pages/player/PlayerPage'))
 const MangaReader = lazy(() => import('@/pages/player/MangaReaderPage'))
 const MediaDetail = lazy(() => import('@/pages/media/MediaDetailPage'))
+const IptvPage = lazy(() => import('@/pages/iptv/IptvPage'))
+const IptvPlayer = lazy(() => import('@/pages/iptv/IptvPlayerPage'))
 
 const PAGE_CHUNKS: (() => Promise<unknown>)[] = [
   () => import('@/pages/files/FilesPage'),
@@ -37,6 +39,7 @@ const PAGE_CHUNKS: (() => Promise<unknown>)[] = [
   () => import('@/pages/player/PlayerPage'),
   () => import('@/pages/player/MangaReaderPage'),
   () => import('@/pages/media/MediaDetailPage'),
+  () => import('@/pages/iptv/IptvPage'),
 ]
 
 function PageLoader() {
@@ -86,11 +89,14 @@ export default function App() {
           <Route path="youtube"   element={<S><YoutubePage /></S>} />
           <Route path="ma-liste"  element={<S><MyListPage /></S>} />
           <Route path="media/:id" element={<S><MediaDetail  /></S>} />
+          <Route path="iptv"       element={<S><IptvPage /></S>} />
+          <Route path="iptv/:view" element={<S><IptvPage /></S>} />
         </Route>
 
         {/* Full-screen — no sidebar */}
         <Route path="/player/:id" element={<Guard><S><PlayerPage  /></S></Guard>} />
         <Route path="/reader/:id" element={<Guard><S><MangaReader /></S></Guard>} />
+        <Route path="/iptv/watch/:id" element={<Guard><S><IptvPlayer /></S></Guard>} />
 
         <Route path="*" element={<NotFoundPage />} />
       </Routes>
