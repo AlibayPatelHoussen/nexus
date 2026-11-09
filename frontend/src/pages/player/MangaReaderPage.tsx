@@ -59,7 +59,17 @@ export default function MangaReaderPage() {
   const chapterId         = searchParams.get('ch') || undefined
   const langParam         = searchParams.get('lang') || undefined
 
-  const [mode,       setMode]       = useState<ReadMode>('vertical')
+  // The reading mode chosen last is kept on this device (a manga read right to left stays so)
+  const [mode,       setModeRaw]    = useState<ReadMode>(() => {
+    try {
+      const m = localStorage.getItem('nexus-reader-mode')
+      return m === 'page' || m === 'page-rtl' ? m : 'vertical'
+    } catch { return 'vertical' }
+  })
+  const setMode = (m: ReadMode) => {
+    setModeRaw(m)
+    try { localStorage.setItem('nexus-reader-mode', m) } catch { /* private mode */ }
+  }
   const [zoom,       setZoom]       = useState(100)
   const [currentPage, setCurrentPage] = useState(0)
   const [fullscreen,  setFullscreen]  = useState(false)
@@ -116,8 +126,12 @@ export default function MangaReaderPage() {
   useEffect(() => {
     function handleKey(e: KeyboardEvent) {
       if (mode === 'vertical') return
-      if (e.key === 'ArrowRight' || e.key === 'ArrowDown')  setCurrentPage((p) => Math.min(p + 1, pages.length - 1))
-      if (e.key === 'ArrowLeft'  || e.key === 'ArrowUp')    setCurrentPage((p) => Math.max(p - 1, 0))
+      // Right to left (manga): ← is the next page, like turning a paper manga
+      const rtl = mode === 'page-rtl'
+      const next = e.key === 'ArrowDown' || e.key === (rtl ? 'ArrowLeft' : 'ArrowRight')
+      const prev = e.key === 'ArrowUp' || e.key === (rtl ? 'ArrowRight' : 'ArrowLeft')
+      if (next) setCurrentPage((p) => Math.min(p + 1, pages.length - 1))
+      if (prev) setCurrentPage((p) => Math.max(p - 1, 0))
     }
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
@@ -299,21 +313,27 @@ export default function MangaReaderPage() {
               revoke={!pdfUrl}
               eager
               className="object-contain"
-              style={{ maxHeight: '100dvh', maxWidth: '100%', width: isDesktop ? `${zoom}%` : '100%', transform: mode === 'page-rtl' ? 'scaleX(-1)' : 'none' }}
+              style={{ maxHeight: '100dvh', maxWidth: '100%', width: isDesktop ? `${zoom}%` : '100%' }}
             />
           )}
-          {isDesktop && (
-            <>
-              <button type="button" className="absolute left-3 top-1/2 -translate-y-1/2 w-10 h-10 grid place-items-center rounded-full glass-media disabled:opacity-0 transition-opacity" style={{ opacity: showUI ? 1 : 0 }}
-                onClick={(e) => { e.stopPropagation(); setCurrentPage((p) => Math.max(0, p - 1)) }} disabled={currentPage === 0} aria-label="Page précédente">
-                <ChevronLeft size={20} strokeWidth={1.75} />
-              </button>
-              <button type="button" className="absolute right-3 top-1/2 -translate-y-1/2 w-10 h-10 grid place-items-center rounded-full glass-media disabled:opacity-0 transition-opacity" style={{ opacity: showUI ? 1 : 0 }}
-                onClick={(e) => { e.stopPropagation(); setCurrentPage((p) => Math.min(pages.length - 1, p + 1)) }} disabled={currentPage >= pages.length - 1} aria-label="Page suivante">
-                <ChevronRight size={20} strokeWidth={1.75} />
-              </button>
-            </>
-          )}
+          {isDesktop && (() => {
+            // Right to left (manga): the next page is on the left
+            const rtl = mode === 'page-rtl'
+            const prev = () => setCurrentPage((p) => Math.max(0, p - 1))
+            const next = () => setCurrentPage((p) => Math.min(pages.length - 1, p + 1))
+            const side = (which: 'left' | 'right') => {
+              const isNext = (which === 'left') === rtl
+              return (
+                <button type="button" className={`absolute ${which === 'left' ? 'left-3' : 'right-3'} top-1/2 -translate-y-1/2 w-10 h-10 grid place-items-center rounded-full glass-media disabled:opacity-0 transition-opacity`} style={{ opacity: showUI ? 1 : 0 }}
+                  onClick={(e) => { e.stopPropagation(); if (isNext) next(); else prev() }}
+                  disabled={isNext ? currentPage >= pages.length - 1 : currentPage === 0}
+                  aria-label={isNext ? 'Page suivante' : 'Page précédente'}>
+                  {which === 'left' ? <ChevronLeft size={20} strokeWidth={1.75} /> : <ChevronRight size={20} strokeWidth={1.75} />}
+                </button>
+              )
+            }
+            return <>{side('left')}{side('right')}</>
+          })()}
         </div>
       )}
 

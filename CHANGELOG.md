@@ -4,6 +4,10 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Fixed — « Page par page, de droite à gauche » showed mirrored pages
+- The manga reading mode flipped every page like a mirror (text unreadable): pages are now shown as they are, only the turning direction changes. ← is the next page (keyboard and desktop arrows), → the previous one; swiping and the position slider already followed the direction
+- The reading mode chosen last (vertical, page, right to left) is kept on the device
+
 ### Changed — « À la une » changes every hour
 - The billboard draw (among all the titles of the section) now changes once an hour instead of at every visit: the same titles all hour long, others the next hour. The order comes from a hash of each title with the hour, nothing is stored
 
