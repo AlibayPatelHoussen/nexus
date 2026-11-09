@@ -4,6 +4,9 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Added — « book » page turn in the manga reader
+- Page by page: the page turns on its spine like a paper page (it darkens as it turns away and uncovers the next one; going back, the previous page turns back over it). The spine is the real edge of the drawn page: on the left, on the right when the manga is read right to left. Springs, transform / opacity only; off with « Réduire les animations »
+
 ### Fixed — « Page par page, de droite à gauche » showed mirrored pages
 - The manga reading mode flipped every page like a mirror (text unreadable): pages are now shown as they are, only the turning direction changes. ← is the next page (keyboard and desktop arrows), → the previous one; swiping and the position slider already followed the direction
 - The reading mode chosen last (vertical, page, right to left) is kept on the device
