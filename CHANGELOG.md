@@ -4,6 +4,10 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Changed — anime synopses and genres in French
+- An anime's synopsis is now taken in French: TMDB's French synopsis first, else anime-sama's, AniList's English one only as a last resort; a French synopsis replaces the English one stored by earlier scans
+- AniList genres are translated into French and refreshed. Existing animes are updated by « Analyser la bibliothèque »
+
 ### Changed — manga synopses and genres in French
 - A manga's synopsis is now taken in French: MangaDex's French description first, else the French synopsis anime-sama's catalogue knows for this title, English only as a last resort. The MangaDex Markdown (links list, bold) is cleaned
 - A French synopsis replaces the English one stored by earlier scans; genres (MangaDex tags) are translated into French and refreshed. Existing mangas are updated by « Analyser la bibliothèque »

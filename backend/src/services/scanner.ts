@@ -219,11 +219,11 @@ export async function linkAnimesToTmdb(limit = 100): Promise<number> {
       `UPDATE media_items SET tmdb_id = $2,
          poster_path   = COALESCE($3, poster_path),
          backdrop_path = COALESCE($4, backdrop_path),
-         overview      = COALESCE(overview, $5),
+         overview      = COALESCE($5, overview),
          imdb_checked_at = NULL, artwork_checked_at = NULL
        WHERE id = $1 AND tmdb_id IS NULL`,
       [r.id, tmdb.id, tmdb.poster_path ? `${TMDB_IMG}/w500${tmdb.poster_path}` : null,
-        tmdb.backdrop_path ? `${TMDB_IMG}/w1280${tmdb.backdrop_path}` : null, tmdb.overview || null])
+        tmdb.backdrop_path ? `${TMDB_IMG}/w1280${tmdb.backdrop_path}` : null, tmdb.overview?.trim() || null])
     linked++
     logger.info(`Anime « ${r.title} » linked to TMDB ${tmdb.id}`)
   }
@@ -840,6 +840,12 @@ export class MediaScanner {
         // The folder name first (AniList may have matched a movie / OVA / one season of it)
         const tmdb = known.rows[0]?.tmdb_id ? null
           : await findAnimeOnTMDB([title, anilist?.title?.english, anilist?.title?.romaji], anilist?.startDate?.year)
+        // French first: TMDB's French synopsis (asked in fr-FR, empty when it has none), else
+        // anime-sama's, else AniList's English one
+        const tmdbFr = tmdb ?? (known.rows[0]?.tmdb_id ? await getTMDBDetails(known.rows[0].tmdb_id, 'tv') : null)
+        const frOverview = tmdbFr?.overview?.trim()
+          || await catalogueSynopsis(title, anilist?.title?.romaji, anilist?.title?.english)
+        const overview = frOverview || anilist?.description?.replace(/<[^>]*>/g, '').trim() || null
 
         const { rows } = await query(
           `INSERT INTO media_items
@@ -849,13 +855,16 @@ export class MediaScanner {
            ON CONFLICT (file_path) DO UPDATE SET
              anilist_id    = COALESCE(media_items.anilist_id,    EXCLUDED.anilist_id),
              tmdb_id       = COALESCE(media_items.tmdb_id,       EXCLUDED.tmdb_id),
-             overview      = COALESCE(media_items.overview,      EXCLUDED.overview),
+             -- a French synopsis replaces the English one stored by earlier scans
+             overview      = CASE WHEN $15::boolean AND EXCLUDED.overview IS NOT NULL THEN EXCLUDED.overview
+                                  ELSE COALESCE(media_items.overview, EXCLUDED.overview) END,
              -- A TMDB poster (with the title) replaces an AniList cover (textless)
              poster_path   = CASE WHEN EXCLUDED.poster_path LIKE $14 || '%' AND COALESCE(media_items.poster_path, '') NOT LIKE $14 || '%'
                                   THEN EXCLUDED.poster_path ELSE COALESCE(media_items.poster_path, EXCLUDED.poster_path) END,
              backdrop_path = CASE WHEN EXCLUDED.backdrop_path LIKE $14 || '%' AND COALESCE(media_items.backdrop_path, '') NOT LIKE $14 || '%'
                                   THEN EXCLUDED.backdrop_path ELSE COALESCE(media_items.backdrop_path, EXCLUDED.backdrop_path) END,
-             genres        = CASE WHEN cardinality(media_items.genres) > 0 THEN media_items.genres ELSE EXCLUDED.genres END,
+             -- genres come from AniList (now in French): taken again when it answers
+             genres        = CASE WHEN cardinality(EXCLUDED.genres) > 0 THEN EXCLUDED.genres ELSE media_items.genres END,
              year          = COALESCE(media_items.year,   EXCLUDED.year),
              rating        = COALESCE(media_items.rating, EXCLUDED.rating),
              status        = COALESCE(media_items.status, EXCLUDED.status),
@@ -867,15 +876,16 @@ export class MediaScanner {
             anilist?.title?.native || null,
             animePath,
             anilist?.id || null,
-            anilist?.description?.replace(/<[^>]*>/g, '') || tmdb?.overview || null,
+            overview,
             tmdb?.poster_path ? `${TMDB_IMG}/w500${tmdb.poster_path}` : anilist?.coverImage?.extraLarge || anilist?.coverImage?.large || null,
             tmdb?.backdrop_path ? `${TMDB_IMG}/w1280${tmdb.backdrop_path}` : anilist?.bannerImage || null,
-            anilist?.genres || [],
+            anilist?.genres?.map(tagFr) || [],
             anilist?.startDate?.year || null,
             anilist?.averageScore ? anilist.averageScore / 10 : null,
             anilist?.status || null,
             tmdb?.id || null,
             TMDB_IMG,
+            !!frOverview,
           ],
         )
 
