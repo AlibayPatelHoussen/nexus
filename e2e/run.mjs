@@ -488,7 +488,7 @@ test('IPTV: catalogue from iptv-org and Free-TV, priority countries, filters, fa
     if (!summary?.refresh?.running && summary?.total > 0) break
     await sleep(500)
   }
-  eq(summary.total, 12, 'channels imported: 10 from iptv-org (the nsfw one left out) + 2 only Free-TV lists')
+  eq(summary.total, 14, 'channels imported: 12 from iptv-org (the nsfw one left out) + 2 only Free-TV lists')
   eq(summary.refresh.sources, ['iptv-org', 'free-tv'], 'both sources used')
   // The owner's countries first, in their order; Madagascar has no channel in any source and says so
   eq(summary.priority.map((p) => [p.code, p.count]), [['CA', 1], ['FR', 5], ['MG', 0], ['US', 1]], 'priority countries')
@@ -579,6 +579,51 @@ test('IPTV: sound without a picture — sound-only variant left out, MPEG-2 conv
   await page.context().close()
 })
 
+test('IPTV: broadcast formats converted without waiting (Dolby sound, bare MPEG-TS), and on the viewer’s request', async () => {
+  admin = await login('admin', 'Admin1234')
+  const page = await newPage(admin)
+  const plays = () => page.waitForFunction(() => { const v = document.querySelector('video'); return !!v && v.videoWidth > 0 && v.currentTime > 0.5 }, null, { timeout: 60000 })
+  const isConverted = async () => (await page.evaluate(() => document.querySelector('button[aria-label="Revenir au flux direct"]') != null))
+  // Interlaced H.264 with Dolby sound, as broadcast: the picture would show here but not the sound.
+  // The server says what the stream holds, the player asks for the conversion at once.
+  const held = (await api('/api/iptv/play/Tnt.it/0/convert?probe=1', { token: admin.accessToken, method: 'POST' })).json.data
+  eq([held.video, held.audio, held.interlaced], ['h264', 'ac3', true], 'what the stream holds')
+  if (!(await page.evaluate(() => MediaSource.isTypeSupported('audio/mp4; codecs="ac-3"')))) {
+    await page.goto(`${B}/iptv/watch/Tnt.it`, { waitUntil: 'domcontentloaded' })
+    await page.waitForFunction(() => document.querySelector('button[aria-label="Revenir au flux direct"]') != null, null, { timeout: 60000 })
+    await playVideo(page)
+    await plays()
+    // The converted sound is decoded (the Dolby one never was)
+    await page.waitForFunction(() => (document.querySelector('video').webkitAudioDecodedByteCount ?? 1) > 0, null, { timeout: 20000 })
+  }
+  // A bare MPEG-TS stream: no browser reads it; no stream of the channel starts, the server converts it
+  await page.goto(`${B}/iptv/watch/Ts.it`, { waitUntil: 'domcontentloaded' })
+  await page.waitForFunction(() => document.querySelector('button[aria-label="Revenir au flux direct"]') != null, null, { timeout: 60000 })
+  await playVideo(page)
+  await plays()
+  // The viewer's own switch: a channel that plays as it is, converted on request, and back
+  await page.goto(`${B}/iptv/watch/Sport.fr`, { waitUntil: 'domcontentloaded' })
+  await playVideo(page)
+  await plays()
+  eq(await isConverted(), false, 'plays as it is')
+  await page.click('button[aria-label^="Image ou son absent"]')
+  await page.waitForFunction(() => document.querySelector('button[aria-label="Revenir au flux direct"]') != null, null, { timeout: 60000 })
+  await playVideo(page)
+  await plays()
+  assert((await page.evaluate(() => document.querySelector('video').currentSrc || '')) !== '', 'converted stream loaded')
+  await page.screenshot({ path: `${SHOTS}/iptv-player-asked.png` })
+  await page.click('button[aria-label="Revenir au flux direct"]')
+  await page.waitForFunction(() => document.querySelector('button[aria-label^="Image ou son absent"]') != null, null, { timeout: 20000 })
+  await playVideo(page)
+  await plays()
+  // Not converted again by itself, and not remembered
+  await page.goto(`${B}/iptv/watch/Sport.fr`, { waitUntil: 'domcontentloaded' })
+  await playVideo(page)
+  await plays()
+  eq(await isConverted(), false, 'back to the stream as it is, also when the channel is opened again')
+  await page.context().close()
+})
+
 test('IPTV on iPhone (Safari reads the stream itself): sound without a picture → the stream is loaded again', async () => {
   admin = await login('admin', 'Admin1234')
   const page = await newPage(admin)
@@ -627,6 +672,30 @@ test('IPTV on iPhone (Safari reads the stream itself): sound without a picture �
   await blind.waitForSelector('text=/rechargé : image connue mais non affichée/', { timeout: 10000 })
   await blind.screenshot({ path: `${SHOTS}/iptv-player-details.png` })
   await blind.context().close()
+
+  // Interlaced broadcast video, the owner's case (sound, black screen until the app is left and
+  // playback started again): Safari gets its chance; when it shows no frame the server converts.
+  const safari = (shows) => `
+    window.WebKitPlaybackTargetAvailabilityEvent = function () {}
+    const frame = HTMLVideoElement.prototype.requestVideoFrameCallback
+    HTMLVideoElement.prototype.requestVideoFrameCallback = function (cb) { return frame.call(this, (...a) => { if (${shows} || (this.currentSrc || '').includes('/converted/')) cb(...a) }) }`
+  const black = await newPage(admin)
+  await black.addInitScript(safari(false))
+  await black.goto(`${B}/iptv/watch/Tnt.it`, { waitUntil: 'domcontentloaded' })
+  await playVideo(black)
+  await black.waitForFunction(() => { const v = document.querySelector('video'); return (v.currentSrc || '').includes('/converted/') && v.videoWidth > 0 && v.currentTime > 0.5 }, null, { timeout: 90000 })
+  for (let i = 0; i < 3; i++) await black.click('text=EN DIRECT')
+  await black.waitForSelector('text=/h264 entrelacé · son ac3/', { timeout: 10000 })
+  await black.waitForSelector('text=/converti : vidéo entrelacée/', { timeout: 10000 })
+  await black.context().close()
+  // The same stream where Safari does show it: left as it is
+  const fine = await newPage(admin)
+  await fine.addInitScript(safari(true))
+  await fine.goto(`${B}/iptv/watch/Tnt.it`, { waitUntil: 'domcontentloaded' })
+  await playVideo(fine)
+  await fine.waitForFunction(() => { const v = document.querySelector('video'); return v.videoWidth > 0 && v.currentTime > 6 }, null, { timeout: 60000 })
+  assert(!(await fine.evaluate(() => document.querySelector('video').currentSrc)).includes('/converted/'), 'an interlaced stream Safari shows is not converted')
+  await fine.context().close()
 })
 
 test('IMDb: ids from TMDB, ratings from the dataset, Top 10 ranked by IMDb', async () => {

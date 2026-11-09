@@ -59,8 +59,9 @@ python3 iptv_cli.py epg --url https://…/guide.xml.gz --ids TF1.fr,France2.fr -
   only, HLS only. Without yt-dlp these channels say so; `IPTV_YTDLP` names another command.
 - `stream_checker.py`: reads at most 64 KB of a stream (the playlist, then its first
   variant) and says if it answers; 401 / 403 / 451 are reported as « géo-bloqué ». A web
-  page, a DASH manifest or a bare MPEG-TS stream answers but cannot be played in a browser:
-  reported unavailable, with the reason.
+  page or a DASH manifest answers but cannot be played: reported unavailable, with the
+  reason. A bare MPEG-TS stream counts as available: the Nexus server converts it with ffmpeg
+  when it is watched.
   Nexus checks favourites and watched channels first, a few at a time — never the
   whole list.
 - `epg.py`: iptv-org publishes no ready-made guide; with an XMLTV address set in

@@ -4,6 +4,15 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Fixed — IPTV: broadcast streams passed on as they are (Gulli, M6…: sound without a picture on iPhone, « Lecture impossible » on a computer)
+- Owner's report with the channel: a source that only starts its stream when asked, and passes broadcast video on as it is. The server now tells the player what each stream holds while it starts (ffprobe through the relay: codecs, interlaced or not), and the player asks for the conversion without waiting for the trouble: interlaced video Safari shows no frame of, Dolby sound (AC-3 / E-AC-3) outside Safari, MPEG-2, 10-bit H.264
+- The conversion always re-encodes: progressive H.264 with a keyframe at the start of each segment and AAC sound (a mere repackaging keeps what the browser could not show)
+- A channel no stream of which starts is tried through the server's conversion before « Lecture impossible »: slow sources, formats the browser refuses, bare MPEG-TS streams (now counted as available by the checker)
+- New button in the player bar: « Image ou son absent ? Convertir par le serveur » — the viewer's own switch, remembered for the channel on this browser; pressed again, back to the stream as it is
+- Sources slow to start get more time (relay 20 s, player 25 s for the first playlist)
+- Playback details (three taps on « EN DIRECT ») also say what the stream holds
+- Tests: backend (interlaced H.264 + AC-3 re-encoded, from a playlist and from bare MPEG-TS), frontend (which streams need the conversion in which browser), Python, E2E (Dolby, MPEG-TS, the button, Safari stand-in with an interlaced stream it shows / does not show)
+
 ### Fixed — IPTV on iPhone: a picture Safari knows but does not show
 - Owner's report: a channel starts with its sound only; after leaving the app and pressing play again, the picture is there — without the stream being loaded again. Safari can know the size of a picture and show none of it: the player now asks the browser which frames it really shows (requestVideoFrameCallback) and, when none is shown after 3 s of sound, loads the stream again by itself, once. Only on a browser where that report was seen to work, so a healthy stream is never reloaded for nothing
 - Playback details, hidden: three quick taps on « EN DIRECT » show what the browser really plays (Safari or hls.js, direct or converted, picture size, frames shown or not, number of loads, why it was loaded again) — to report a problem from a phone

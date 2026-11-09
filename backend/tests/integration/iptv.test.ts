@@ -524,6 +524,12 @@ if (!hasFfmpeg) console.warn('ffmpeg not installed: IPTV conversion tests skippe
     // What an old broadcast encoder sends (a browser plays its sound, not its picture), and a radio
     hls('old', ['-f', 'lavfi', '-i', 'testsrc=size=320x180:rate=25', ...tone, '-t', '12', '-c:v', 'mpeg2video', '-b:v', '600k', '-g', '12', '-c:a', 'mp2', '-b:a', '96k'])
     hls('radio', [...tone, '-t', '8', '-c:a', 'aac', '-b:a', '64k'])
+    // Broadcast video passed on as it is: interlaced H.264 with AC-3 sound (a browser reads the format, yet
+    // shows or plays only part of it), and the same as a bare MPEG-TS stream instead of a playlist
+    const tv = ['-f', 'lavfi', '-i', 'testsrc=size=720x576:rate=25', ...tone, '-t', '10', '-c:v', 'libx264', '-preset', 'ultrafast', '-pix_fmt', 'yuv420p',
+      '-flags', '+ilme+ildct', '-x264opts', 'tff=1', '-g', '25', '-c:a', 'ac3', '-b:a', '128k']
+    hls('tv', tv)
+    execFileSync('ffmpeg', ['-loglevel', 'error', '-y', ...tv, '-f', 'mpegts', path.join(genDir, 'tv', 'direct.ts')])
     // ffmpeg reads the stream through the relay: the server must be listening
     listener = app.listen(0, '127.0.0.1')
     await new Promise<void>((r) => listener.once('listening', () => r()))
@@ -534,6 +540,7 @@ if (!hasFfmpeg) console.warn('ffmpeg not installed: IPTV conversion tests skippe
         channel('Old.fr', 'Vieux Format', { streams: [{ url: `${base}/gen/old/index.m3u8` }] }),
         channel('Radio.fr', 'Radio Test', { streams: [{ url: `${base}/gen/radio/index.m3u8` }] }),
         channel('Gone.fr', 'Parti', { streams: [{ url: `${base}/gen/missing/index.m3u8` }] }),
+        channel('Tnt.fr', 'Télé Entrelacée', { streams: [{ url: `${base}/gen/tv/index.m3u8` }, { url: `${base}/gen/tv/direct.ts` }] }),
       ],
       countries: [], categories: [], languages: [],
     })
@@ -548,7 +555,7 @@ if (!hasFfmpeg) console.warn('ffmpeg not installed: IPTV conversion tests skippe
   it('MPEG-2 video is converted to H.264: a playlist and segments the browser reads', async () => {
     const res = await request(app).post('/api/iptv/play/Old.fr/0/convert').set(alice)
     expect(res.status).toBe(200)
-    expect(res.body.data).toEqual({ video: 'mpeg2video', audio: 'mp2', convert: true, reason: null })
+    expect(res.body.data).toEqual({ video: 'mpeg2video', audio: 'mp2', interlaced: false, plain: true, convert: true, reason: null })
     const list = await request(app).get(`/api/iptv/play/Old.fr/0/converted/index.m3u8?token=${token()}`)
     expect(list.status).toBe(200)
     expect(list.headers['content-type']).toMatch(/mpegurl/)
@@ -566,17 +573,35 @@ if (!hasFfmpeg) console.warn('ffmpeg not installed: IPTV conversion tests skippe
     expect(convertJobs()).toEqual(['Old.fr|0'])
   }, 120_000)
 
+  it('interlaced H.264 with AC-3 sound is re-encoded, not repackaged; a bare MPEG-TS stream is read too', async () => {
+    stopConversions()
+    const told = (await request(app).post('/api/iptv/play/Tnt.fr/0/convert?probe=1').set(alice)).body.data
+    expect(told).toEqual({ video: 'h264', audio: 'ac3', interlaced: true, plain: true, convert: false, reason: null })
+    for (const s of [0, 1]) {
+      expect((await request(app).post(`/api/iptv/play/Tnt.fr/${s}/convert`).set(alice)).body.data).toMatchObject({ video: 'h264', audio: 'ac3', convert: true })
+      const list = await request(app).get(`/api/iptv/play/Tnt.fr/${s}/converted/index.m3u8?token=${token()}`)
+      const line = list.text.split('\n').find((l) => /^seg\d+\.ts\?token=/.test(l))!
+      const seg = await request(app).get(`/api/iptv/play/Tnt.fr/${s}/converted/${line}`).buffer(true)
+      const file = path.join(genDir, `tnt-${s}.ts`)
+      fs.writeFileSync(file, seg.body)
+      const out = execFileSync('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=codec_name,field_order', '-of', 'csv=p=0', file]).toString().trim().split('\n')[0]
+      expect(out).toBe('h264,progressive')
+      expect(execFileSync('ffprobe', ['-v', 'error', '-select_streams', 'a:0', '-show_entries', 'stream=codec_name', '-of', 'csv=p=0', file]).toString().trim().split('\n')[0]).toBe('aac')
+    }
+    stopConversions()
+  }, 180_000)
+
   it('?probe=1 only says what the stream holds: nothing is started', async () => {
     stopConversions()
     const res = await request(app).post('/api/iptv/play/Old.fr/0/convert?probe=1').set(alice)
-    expect(res.body.data).toEqual({ video: 'mpeg2video', audio: 'mp2', convert: false, reason: null })
+    expect(res.body.data).toEqual({ video: 'mpeg2video', audio: 'mp2', interlaced: false, plain: true, convert: false, reason: null })
     expect(convertJobs()).toEqual([])
     expect((await request(app).post('/api/iptv/play/Old.fr/0/convert').set(alice)).body.data.convert).toBe(true)
   }, 120_000)
 
   it('a stream without any picture is a radio: nothing to convert', async () => {
     const res = await request(app).post('/api/iptv/play/Radio.fr/0/convert').set(alice)
-    expect(res.body.data).toEqual({ video: null, audio: 'aac', convert: false, reason: 'audio' })
+    expect(res.body.data).toEqual({ video: null, audio: 'aac', interlaced: false, plain: true, convert: false, reason: 'audio' })
     expect(convertJobs()).toEqual(['Old.fr|0'])
   }, 60_000)
 

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { framesReported, rememberConverted, rememberFramesReported, variantsToDrop, wasConverted } from './picture'
+import { describeStream, framesReported, needsConversion, rememberConverted, rememberFramesReported, variantsToDrop, wasConverted } from './picture'
 
 describe('variantsToDrop (sound-only variants of a stream)', () => {
   const none = new Set<string>()
@@ -26,6 +26,46 @@ describe('variantsToDrop (sound-only variants of a stream)', () => {
   it('always leaves one variant (a radio with several bitrates keeps its best)', () => {
     expect(variantsToDrop([{ uri: 'a' }, { uri: 'b' }], new Set(['a', 'b']))).toEqual([0])
     expect(variantsToDrop([{ uri: 'a' }], new Set(['a']))).toEqual([])
+  })
+})
+
+describe('needsConversion (what the server says a stream holds, against what this browser plays)', () => {
+  const chrome = { native: false, hevc: false, ac3: false, eac3: false }
+  const safari = { native: true, hevc: true, ac3: true, eac3: true }
+  const held = (o: Partial<Parameters<typeof needsConversion>[0]>) => ({ video: 'h264', audio: 'aac', interlaced: false, plain: true, ...o })
+
+  it('plays the usual streams as they are', () => {
+    expect(needsConversion(held({}), chrome)).toBeNull()
+    expect(needsConversion(held({ audio: 'mp3' }), safari)).toBeNull()
+    expect(needsConversion(held({ video: 'hevc' }), safari)).toBeNull()
+    expect(needsConversion(held({ video: 'hevc' }), { ...chrome, hevc: true })).toBeNull()
+    // Nothing to decide from: a radio, a stream the server could not read
+    expect(needsConversion(held({ video: null }), chrome)).toBeNull()
+    expect(needsConversion({ video: null, audio: null, interlaced: false, plain: true }, safari)).toBeNull()
+  })
+
+  it('asks for the conversion of what the browser cannot decode', () => {
+    expect(needsConversion(held({ video: 'mpeg2video', audio: 'mp2' }), chrome)).toMatchObject({ unsure: false })
+    expect(needsConversion(held({ video: 'mpeg2video' }), safari)).toMatchObject({ unsure: false })
+    expect(needsConversion(held({ video: 'hevc' }), chrome)).toMatchObject({ unsure: false })
+    expect(needsConversion(held({ plain: false }), safari)?.why).toMatch(/10 bits/)
+  })
+
+  it('Dolby sound: read by Safari, converted where the browser has no decoder for it', () => {
+    expect(needsConversion(held({ audio: 'eac3' }), safari)).toBeNull()
+    expect(needsConversion(held({ audio: 'eac3' }), chrome)?.why).toMatch(/son eac3/)
+    expect(needsConversion(held({ audio: 'ac3' }), { ...chrome, ac3: true })).toBeNull()
+  })
+
+  it('interlaced broadcast video: Safari gets its chance first, the others play it', () => {
+    expect(needsConversion(held({ interlaced: true }), safari)).toMatchObject({ unsure: true })
+    expect(needsConversion(held({ interlaced: true }), chrome)).toBeNull()
+  })
+
+  it('describes a stream for the playback details', () => {
+    expect(describeStream({ ...held({ interlaced: true, audio: 'eac3' }), reason: null })).toBe('h264 entrelacé · son eac3')
+    expect(describeStream({ ...held({ video: null }), reason: 'audio' })).toBe('pas d’image · son aac')
+    expect(describeStream({ video: null, audio: null, interlaced: false, plain: true, reason: 'unreadable' })).toBe('non lu par le serveur')
   })
 })
 

@@ -8,13 +8,15 @@ import { AppError } from '../utils/errors'
 import { FFMPEG, FFPROBE, TRANSCODE_ROOT, hasFfmpeg } from './transcode'
 
 /*
- * The picture of an IPTV stream that plays with sound only.
+ * A stream the browser does not play well, converted by the server.
  *
- * Some channels give sound but no picture in a browser: their video is MPEG-2 (old broadcast
- * encoders), HEVC on a browser without it, 10-bit H.264… The player notices (sound running, no
- * picture) and asks here:
+ * Some channels give sound but no picture, a picture but no sound, or nothing at all in a
+ * browser: MPEG-2 or interlaced broadcast video passed on as it is, HEVC on a browser without
+ * it, AC-3 sound, a bare MPEG-TS stream instead of a playlist… The player asks here:
  * - what the stream holds (ffprobe): no video at all is a radio, there is nothing to convert;
- * - otherwise ffmpeg converts it live to H.264 + AAC, a short sliding HLS window the player reads.
+ * - otherwise ffmpeg converts it live to what every browser reads: progressive H.264 with a
+ *   keyframe at the start of each segment, AAC sound, a short sliding HLS window.
+ *   The video is always re-encoded: a stream that needs this is not helped by a mere repackaging.
  * ffmpeg never fetches a catalogue address itself: it reads the stream through the Nexus relay
  * (same checks and headers as the player), on the loopback address.
  * One conversion per stream, shared by its viewers, stopped when nobody reads it any more.
@@ -38,6 +40,10 @@ export interface PictureAnswer {
   /** Codecs found in the stream (null: none, or not read) */
   video: string | null
   audio: string | null
+  /** The video is interlaced (broadcast video passed on as it is) */
+  interlaced: boolean
+  /** The video is the usual 8-bit 4:2:0 (what browsers decode) */
+  plain: boolean
   /** The converted stream is ready at …/converted/index.m3u8 */
   convert: boolean
   reason: PictureReason | null
@@ -48,7 +54,7 @@ const inputUrl = (id: string, s: number, token: string) =>
   `${self()}/api/iptv/play/${encodeURIComponent(id)}/${s}/index.m3u8?token=${encodeURIComponent(token)}`
 
 // ─── What the stream holds ────────────────────────────────────────────────────
-interface Content { video: string | null; audio: string | null; copy: boolean; flags: string[] }
+interface Content { video: string | null; audio: string | null; interlaced: boolean; plain: boolean; flags: string[] }
 const probes = new Map<string, { at: number; content: Content }>()
 
 let picky: Promise<boolean> | null = null
@@ -60,7 +66,10 @@ function knowsPicky(): Promise<boolean> {
   return picky
 }
 
-interface ProbeOut { streams?: { codec_type?: string; codec_name?: string; pix_fmt?: string; width?: number; height?: number; disposition?: { attached_pic?: number } }[] }
+interface ProbeOut {
+  streams?: { codec_type?: string; codec_name?: string; pix_fmt?: string; width?: number; height?: number; disposition?: { attached_pic?: number } }[]
+  frames?: { media_type?: string; interlaced_frame?: number }[]
+}
 
 async function probe(id: string, s: number, token: string): Promise<Content> {
   const key = `${id}|${s}`
@@ -68,22 +77,25 @@ async function probe(id: string, s: number, token: string): Promise<Content> {
   if (hit && Date.now() - hit.at < PROBE_TTL) return hit.content
   const run = async (flags: string[]) => {
     const { stdout } = await execFileAsync(FFPROBE, [
-      '-v', 'error', ...flags, '-rw_timeout', '15000000',
-      '-show_entries', 'stream=codec_type,codec_name,pix_fmt,width,height:stream_disposition=attached_pic', '-of', 'json',
+      '-v', 'error', ...flags, '-rw_timeout', '25000000',
+      // A few frames are read too: a playlist does not say whether its video is interlaced, its frames do
+      '-read_intervals', '%+#120',
+      '-show_entries', 'stream=codec_type,codec_name,pix_fmt,width,height:stream_disposition=attached_pic:frame=media_type,interlaced_frame', '-of', 'json',
       inputUrl(id, s, token),
-    ], { timeout: 30_000, maxBuffer: 4 * 1024 * 1024 })
-    return (JSON.parse(stdout) as ProbeOut).streams ?? []
+    ], { timeout: 40_000, maxBuffer: 4 * 1024 * 1024 })
+    return JSON.parse(stdout) as ProbeOut
   }
   // The option is for HLS only: a stream that is not a playlist refuses it
   let flags = (await knowsPicky()) ? ['-extension_picky', '0'] : []
-  let streams: Awaited<ReturnType<typeof run>>
+  let out: ProbeOut
   try {
-    streams = await run(flags)
+    out = await run(flags)
   } catch (err) {
     if (!flags.length) throw err
     flags = []
-    streams = await run(flags)
+    out = await run(flags)
   }
+  const streams = out.streams ?? []
   // The largest picture (a playlist lists every quality); a cover image is not a picture
   const videos = streams.filter((st) => st.codec_type === 'video' && !st.disposition?.attached_pic)
     .sort((a, b) => (b.width ?? 0) * (b.height ?? 0) - (a.width ?? 0) * (a.height ?? 0))
@@ -92,8 +104,8 @@ async function probe(id: string, s: number, token: string): Promise<Content> {
   if (!v && !a) throw new Error('nothing readable in the stream')
   const content: Content = {
     video: v?.codec_name ?? null, audio: a?.codec_name ?? null, flags,
-    // H.264 in the usual 8-bit 4:2:0 is what browsers read: only repackaged (next to no CPU)
-    copy: v?.codec_name === 'h264' && (!v.pix_fmt || v.pix_fmt === 'yuv420p' || v.pix_fmt === 'yuvj420p'),
+    interlaced: !!v && (out.frames ?? []).some((f) => f.media_type === 'video' && f.interlaced_frame === 1),
+    plain: !v?.pix_fmt || v.pix_fmt === 'yuv420p' || v.pix_fmt === 'yuvj420p',
   }
   if (probes.size > 300) probes.delete(probes.keys().next().value as string)
   probes.set(key, { at: Date.now(), content })
@@ -114,19 +126,17 @@ interface LiveJob {
 const jobs = new Map<string, LiveJob>()
 const index = (job: { dir: string }) => path.join(job.dir, 'index.m3u8')
 
-export function convertArgs(input: string, dir: string, copy: boolean, flags: string[] = []): string[] {
-  const video = copy ? ['-c:v', 'copy'] : [
+export function convertArgs(input: string, dir: string, flags: string[] = []): string[] {
+  return [
+    '-hide_banner', '-loglevel', 'error', '-nostdin',
+    ...flags, '-rw_timeout', '30000000', '-fflags', '+genpts+discardcorrupt',
+    '-i', input,
+    '-sn', '-dn',
     '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '23', '-maxrate', '4M', '-bufsize', '8M',
     '-pix_fmt', 'yuv420p', '-profile:v', 'high', '-level', '4.1',
     // Broadcast video is often interlaced; never upscale, 720p at most (live: it must keep up)
     '-vf', "yadif=0:-1:1,scale='min(1280,iw)':-2",
     '-force_key_frames', `expr:gte(t,n_forced*${SEGMENT})`, '-sc_threshold', '0',
-  ]
-  return [
-    '-hide_banner', '-loglevel', 'error', '-nostdin',
-    ...flags, '-rw_timeout', '20000000', '-fflags', '+genpts+discardcorrupt',
-    '-i', input,
-    '-sn', '-dn', ...video,
     '-c:a', 'aac', '-b:a', '128k', '-ac', '2', '-ar', '48000', '-af', 'aresample=async=1',
     '-f', 'hls', '-hls_time', String(SEGMENT), '-hls_list_size', String(WINDOW), '-hls_delete_threshold', '6',
     '-hls_flags', 'delete_segments+independent_segments+temp_file+omit_endlist',
@@ -150,7 +160,7 @@ function start(key: string, input: string, content: Content): LiveJob {
   fs.mkdirSync(dir, { recursive: true })
   const job: LiveJob = { key, dir, proc: null, done: false, failed: null, stopped: false, lastAccess: Date.now() }
   jobs.set(key, job)
-  const proc = spawn(FFMPEG, convertArgs(input, dir, content.copy, content.flags), { stdio: ['ignore', 'ignore', 'pipe'] })
+  const proc = spawn(FFMPEG, convertArgs(input, dir, content.flags), { stdio: ['ignore', 'ignore', 'pipe'] })
   job.proc = proc
   let stderr = ''
   proc.stderr?.on('data', (d) => { stderr = (stderr + String(d)).slice(-1500) })
@@ -163,7 +173,7 @@ function start(key: string, input: string, content: Content): LiveJob {
       logger.warn(`IPTV conversion ${key} failed: ${job.failed}`)
     }
   })
-  logger.info(`IPTV conversion ${key}: ${content.video} → ${content.copy ? 'repackaged' : 'H.264'}`)
+  logger.info(`IPTV conversion ${key}: ${content.video}${content.interlaced ? ' interlaced' : ''} + ${content.audio ?? 'no sound'} → H.264 + AAC`)
   return job
 }
 
@@ -182,22 +192,23 @@ async function ready(job: LiveJob, timeoutMs: number): Promise<boolean> {
 }
 
 /**
- * What stream `s` of channel `id` holds, and its conversion started when ffmpeg can give it a
- * picture the browser reads. Answers once the converted stream is ready to play.
+ * What stream `s` of channel `id` holds, and its conversion started. Answers once the converted
+ * stream is ready to play.
  * `token`: a stream token, for ffmpeg to read the stream through the relay.
- * `launch` false: only what the stream holds (a player that reads this format loads it again
- * rather than have it converted).
+ * `launch` false: only what the stream holds (the player decides from it whether this browser
+ * needs the conversion).
  */
 export async function convertStream(id: string, s: number, token: string, launch = true): Promise<PictureAnswer> {
-  if (!(await hasFfmpeg())) return { video: null, audio: null, convert: false, reason: 'ffmpeg' }
+  const unknown = { video: null, audio: null, interlaced: false, plain: true }
+  if (!(await hasFfmpeg())) return { ...unknown, convert: false, reason: 'ffmpeg' }
   let content: Content
   try {
     content = await probe(id, s, token)
   } catch (err) {
     logger.debug(`IPTV conversion ${id}|${s}: stream not read (${(err as Error).message.split('\n')[0]})`)
-    return { video: null, audio: null, convert: false, reason: 'unreadable' }
+    return { ...unknown, convert: false, reason: 'unreadable' }
   }
-  const found = { video: content.video, audio: content.audio }
+  const found = { video: content.video, audio: content.audio, interlaced: content.interlaced, plain: content.plain }
   if (!content.video) return { ...found, convert: false, reason: 'audio' }
   if (!launch) return { ...found, convert: false, reason: null }
   const key = `${id}|${s}`
