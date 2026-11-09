@@ -33,6 +33,8 @@ interface Props {
   onNext?: () => void
   /** Outside full screen the Diffuser / Image dans l’image / lock buttons sit in the page's top bar */
   toolbarSlot?: HTMLElement | null
+  /** Touch, outside full screen: « Épisodes » / « Épisode suivant » go under the video */
+  belowSlot?: HTMLElement | null
 }
 
 type WebkitVideo = HTMLVideoElement & {
@@ -76,7 +78,7 @@ type Source =
   | { kind: 'hls'; jobId: string; offset: number; total: number }
 
 export default function VideoPlayer({
-  filePath, streamToken, onTimeUpdate, onEnded, initialTime, seekTo, title, artwork, episodes, onSelectEpisode, onNext, toolbarSlot,
+  filePath, streamToken, onTimeUpdate, onEnded, initialTime, seekTo, title, artwork, episodes, onSelectEpisode, onNext, toolbarSlot, belowSlot,
 }: Props) {
   const videoRef     = useRef<HTMLVideoElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -697,6 +699,33 @@ export default function VideoPlayer({
   const castPlaying = cast?.status?.state !== 'paused'
   /** Outside full screen the buttons sit in the page's top bar (above the video), else over it */
   const inPlayerActions = fullscreen || !toolbarSlot
+  const hasSeries = !!(episodes?.length || onNext)
+  /** Phone, inline: the series buttons under the video, so the video only holds the transport */
+  const seriesBelow = touch && !fullscreen && !!belowSlot && hasSeries
+  const seriesInBar = hasSeries && !seriesBelow
+  /** Inline the video is small: smaller centre buttons (iOS player), full size in full screen */
+  const big = fullscreen
+  const skipSize = big ? 56 : 46
+  const playSize = big ? 72 : 60
+  const seriesButtons = (glass: 'bar' | 'below') => {
+    const cls = glass === 'below'
+      ? 'h-10 pl-3 pr-4 flex items-center gap-2 rounded-pill glass-clear text-white text-[15px] font-semibold active:scale-95 transition-transform'
+      : 'h-9 pl-2.5 pr-3.5 flex items-center gap-2 rounded-pill hover:bg-white/10 active:bg-white/20 text-[13px] font-semibold'
+    return (
+      <>
+        {episodes?.length ? (
+          <button type="button" className={cls} onClick={() => setPanel('episodes')}>
+            <ListVideo size={18} strokeWidth={1.75} aria-hidden="true" /> Épisodes
+          </button>
+        ) : <span />}
+        {onNext && (
+          <button type="button" className={cls} onClick={onNext}>
+            <SkipForward size={16} fill="white" strokeWidth={1.5} aria-hidden="true" /> Épisode suivant
+          </button>
+        )}
+      </>
+    )
+  }
   const actions = (glass: 'media' | 'bar') => (
     <div className={`flex items-center rounded-pill p-0.5 flex-shrink-0 ${glass === 'media' ? 'glass-media' : 'glass-clear text-white'}`}>
       <button type="button" className={glass === 'media' ? iconBtn : iconBtnBar} onClick={openCast} aria-label={HAS_AIRPLAY ? 'AirPlay' : 'Diffuser sur un écran'} title={HAS_AIRPLAY ? 'AirPlay' : 'Diffuser'}>
@@ -782,17 +811,21 @@ export default function VideoPlayer({
 
       {/* Touch (iOS): big centred transport controls */}
       {touch && !error && !cast && !locked && (
-        <div className="absolute inset-x-0 flex items-center justify-center pointer-events-none" style={{ top: 48, bottom: episodes?.length || onNext ? 96 : 64, gap: 'clamp(28px, 11vw, 120px)' }}>
-          <button type="button" className="pointer-events-auto w-14 h-14 grid place-items-center rounded-full glass-media active:scale-90 transition-transform" style={fade(barsVisible, 0)} onClick={() => seek(-10)} aria-label="Reculer de 10 secondes">
-            <Skip10 />
+        <div
+          className="absolute inset-x-0 flex items-center justify-center pointer-events-none"
+          // Centred in the space left between the top bar (full screen) and the timeline
+          style={{ top: fullscreen ? 64 : 0, bottom: seriesInBar ? 100 : 60, gap: big ? 'clamp(40px, 12vw, 128px)' : 'clamp(32px, 12vw, 72px)' }}
+        >
+          <button type="button" className="pointer-events-auto grid place-items-center rounded-full glass-media active:scale-90 transition-transform" style={{ width: skipSize, height: skipSize, ...fade(barsVisible, 0) }} onClick={() => seek(-10)} aria-label="Reculer de 10 secondes">
+            <Skip10 size={big ? 30 : 26} />
           </button>
-          {loading ? <span className="w-[72px] h-[72px]" aria-hidden="true" /> : (
-            <button type="button" className="pointer-events-auto w-[72px] h-[72px] grid place-items-center rounded-full glass-media active:scale-90 transition-transform" style={fade(barsVisible || !playing, 0)} onClick={() => { togglePlay(); revealControls() }} aria-label={playing ? 'Pause' : 'Lecture'}>
-              {playing ? <Pause size={32} fill="white" strokeWidth={0} /> : <Play size={32} fill="white" strokeWidth={0} style={{ marginLeft: 4 }} />}
+          {loading ? <span style={{ width: playSize, height: playSize }} aria-hidden="true" /> : (
+            <button type="button" className="pointer-events-auto grid place-items-center rounded-full glass-media active:scale-90 transition-transform" style={{ width: playSize, height: playSize, ...fade(barsVisible || !playing, 0) }} onClick={() => { togglePlay(); revealControls() }} aria-label={playing ? 'Pause' : 'Lecture'}>
+              {playing ? <Pause size={big ? 32 : 26} fill="white" strokeWidth={0} /> : <Play size={big ? 32 : 26} fill="white" strokeWidth={0} style={{ marginLeft: 3 }} />}
             </button>
           )}
-          <button type="button" className="pointer-events-auto w-14 h-14 grid place-items-center rounded-full glass-media active:scale-90 transition-transform" style={fade(barsVisible, 0)} onClick={() => seek(10)} aria-label="Avancer de 10 secondes">
-            <Skip10 forward />
+          <button type="button" className="pointer-events-auto grid place-items-center rounded-full glass-media active:scale-90 transition-transform" style={{ width: skipSize, height: skipSize, ...fade(barsVisible, 0) }} onClick={() => seek(10)} aria-label="Avancer de 10 secondes">
+            <Skip10 forward size={big ? 30 : 26} />
           </button>
         </div>
       )}
@@ -860,7 +893,7 @@ export default function VideoPlayer({
       >
       <div
         // Liquid Glass control bar over the video: fades in / out, settles on a spring
-        className={`glass-media rounded-[26px] px-2.5 py-1 ${touch ? '' : 'sm:px-4 sm:pt-2 sm:pb-2.5'}`}
+        className={`glass-media rounded-[26px] ${touch ? 'px-3 py-0.5' : 'px-2.5 py-1 sm:px-4 sm:pt-2 sm:pb-2.5'}`}
         style={fade(barsVisible && !locked)}
       >
         <div className={touch ? 'hidden' : 'hidden sm:flex items-center gap-2'}>
@@ -925,25 +958,17 @@ export default function VideoPlayer({
           </button>
         </div>
 
-        {/* Series: « Épisodes » and « Épisode suivant » */}
-        {(episodes?.length || onNext) && (
+        {/* Series: « Épisodes » and « Épisode suivant » (under the video on a phone, see below) */}
+        {seriesInBar && (
           <div className={`flex items-center justify-between gap-2 -mx-1 pb-0.5 ${touch ? '' : 'sm:mx-0 sm:pb-0 sm:pt-1'}`}>
-            {episodes?.length ? (
-              <button type="button" className="h-9 pl-2.5 pr-3.5 flex items-center gap-2 rounded-pill hover:bg-white/10 active:bg-white/20 text-[13px] font-semibold" onClick={() => setPanel('episodes')}>
-                <ListVideo size={18} strokeWidth={1.75} aria-hidden="true" /> Épisodes
-              </button>
-            ) : <span />}
-            {onNext && (
-              <button type="button" className="h-9 pl-2.5 pr-3.5 flex items-center gap-2 rounded-pill hover:bg-white/10 active:bg-white/20 text-[13px] font-semibold" onClick={onNext}>
-                <SkipForward size={16} fill="white" strokeWidth={1.5} aria-hidden="true" /> Épisode suivant
-              </button>
-            )}
+            {seriesButtons('bar')}
           </div>
         )}
       </div>
       </div>
 
       {!inPlayerActions && !locked && createPortal(actions('bar'), toolbarSlot!)}
+      {seriesBelow && createPortal(<div className="flex items-center justify-between gap-2 px-3 pt-2.5 pb-1">{seriesButtons('below')}</div>, belowSlot!)}
 
       <PlayerPanel open={panel === 'pip'} title="Image dans l’image" onClose={() => setPanel(null)}>
         <div className="px-3 pb-2 flex flex-col gap-3 text-[14px] text-white/80">
