@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef } from 'react'
+import { AnimatePresence, motion, type Variants } from 'framer-motion'
+import { spring } from '@/design/motion'
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -21,6 +23,26 @@ import { chapterVersions, versionName } from '@/components/media/chapterVersions
 import { loadImagePage, prefetchPages } from '@/services/readerCache'
 
 type ReadMode = 'vertical' | 'page' | 'page-rtl'
+
+/*
+ * « Livre » page turn (page modes), transform / opacity only. Going forward, the page
+ * being read turns away on its spine and uncovers the next one; going back, the
+ * previous page turns back over it. The spine is on the left, on the right when the
+ * manga is read right to left.
+ */
+interface Turn { dir: number; rtl: boolean }
+const away = ({ rtl }: Turn) => (rtl ? 1 : -1) * 92
+const PAGE_TURN: Variants = {
+  enter: (t: Turn) => (t.dir > 0 ? { rotateY: 0, zIndex: 1 } : { rotateY: away(t), zIndex: 2 }),
+  center: { rotateY: 0, zIndex: 1, opacity: 1 },
+  // the page staying under the one turning back is kept until that one has landed
+  exit: (t: Turn) => (t.dir > 0 ? { rotateY: away(t), zIndex: 2 } : { rotateY: 0, zIndex: 0, opacity: 0.999 }),
+}
+const PAGE_SHADE: Variants = {
+  enter: (t: Turn) => ({ opacity: t.dir > 0 ? 0 : 0.45 }),
+  center: { opacity: 0 },
+  exit: (t: Turn) => ({ opacity: t.dir > 0 ? 0.45 : 0 }),
+}
 
 interface PageData {
   url:  string
@@ -177,6 +199,21 @@ export default function MangaReaderPage() {
   }
 
   const pageImg = pages[currentPage]
+  // Direction of the last page turn (book effect): forward or back
+  const lastPage = useRef(currentPage)
+  const turnDir = useRef(1)
+  // Proportions of the pages already shown (the spine is the real edge of the drawn page)
+  const [ratios, setRatios] = useState<Record<string, number>>({})
+  const spine = (n: number) => {
+    const ratio = ratios[`${chapterId}-${n}`] ?? (pdfUrl ? pdf.ratio(n) : undefined) ?? 0.68
+    // the page is drawn centred, as wide as the zoom allows and at most as tall as the screen
+    const half = `min(${(isDesktop ? zoom : 100) / 2}%, ${ratio * 50}dvh)`
+    return mode === 'page-rtl' ? `calc(50% + ${half}) 50%` : `calc(50% - ${half}) 50%`
+  }
+  if (currentPage !== lastPage.current) {
+    turnDir.current = currentPage > lastPage.current ? 1 : -1
+    lastPage.current = currentPage
+  }
 
   /** Page image: device cache first; PDF pages drawn by PDF.js, image pages downloaded once */
   const loadPage = (n: number, url: string) => () =>
@@ -304,18 +341,42 @@ export default function MangaReaderPage() {
         </div>
       ) : (
         <div className="flex-1 flex items-center justify-center relative" style={{ minHeight: '100dvh', touchAction: 'pan-y pinch-zoom' }} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
-          {pageImg && (
-            <ReaderPage
-              key={`${chapterId}-${currentPage}`}
-              n={currentPage + 1}
-              load={loadPage(currentPage + 1, pageImg.url)}
-              ratio={pdfUrl ? pdf.ratio(currentPage + 1) : undefined}
-              revoke={!pdfUrl}
-              eager
-              className="object-contain"
-              style={{ maxHeight: '100dvh', maxWidth: '100%', width: isDesktop ? `${zoom}%` : '100%' }}
-            />
-          )}
+          {/* Book effect: the page turns on its spine (left, or right when read right to left) */}
+          <div className="absolute inset-0" style={{ perspective: 2000 }}>
+            <AnimatePresence key={chapterId} initial={false} custom={{ dir: turnDir.current, rtl: mode === 'page-rtl' }}>
+              {pageImg && (
+                <motion.div
+                  key={currentPage}
+                  custom={{ dir: turnDir.current, rtl: mode === 'page-rtl' }}
+                  variants={PAGE_TURN}
+                  initial="enter"
+                  animate="center"
+                  exit="exit"
+                  transition={spring.sheet}
+                  className="absolute inset-0 flex items-center justify-center"
+                  style={{ transformOrigin: spine(currentPage + 1), backfaceVisibility: 'hidden', willChange: 'transform' }}
+                  onLoadCapture={(e) => {
+                    const img = e.target as HTMLImageElement
+                    const k = `${chapterId}-${currentPage + 1}`
+                    if (img.naturalWidth && img.naturalHeight) setRatios((r) => (r[k] ? r : { ...r, [k]: img.naturalWidth / img.naturalHeight }))
+                  }}
+                >
+                  <ReaderPage
+                    n={currentPage + 1}
+                    load={loadPage(currentPage + 1, pageImg.url)}
+                    ratio={pdfUrl ? pdf.ratio(currentPage + 1) : undefined}
+                    revoke={!pdfUrl}
+                    eager
+                    className="object-contain"
+                    style={{ maxHeight: '100dvh', maxWidth: '100%', width: isDesktop ? `${zoom}%` : '100%' }}
+                  />
+                  {/* The page darkens as it turns away from the light */}
+                  <motion.div variants={PAGE_SHADE} custom={{ dir: turnDir.current, rtl: mode === 'page-rtl' }} transition={spring.sheet}
+                    className="absolute inset-0 pointer-events-none bg-black" aria-hidden="true" />
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
           {isDesktop && (() => {
             // Right to left (manga): the next page is on the left
             const rtl = mode === 'page-rtl'
@@ -324,7 +385,7 @@ export default function MangaReaderPage() {
             const side = (which: 'left' | 'right') => {
               const isNext = (which === 'left') === rtl
               return (
-                <button type="button" className={`absolute ${which === 'left' ? 'left-3' : 'right-3'} top-1/2 -translate-y-1/2 w-10 h-10 grid place-items-center rounded-full glass-media disabled:opacity-0 transition-opacity`} style={{ opacity: showUI ? 1 : 0 }}
+                <button type="button" className={`absolute z-10 ${which === 'left' ? 'left-3' : 'right-3'} top-1/2 -translate-y-1/2 w-10 h-10 grid place-items-center rounded-full glass-media disabled:opacity-0 transition-opacity`} style={{ opacity: showUI ? 1 : 0 }}
                   onClick={(e) => { e.stopPropagation(); if (isNext) next(); else prev() }}
                   disabled={isNext ? currentPage >= pages.length - 1 : currentPage === 0}
                   aria-label={isNext ? 'Page suivante' : 'Page précédente'}>
