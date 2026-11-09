@@ -351,6 +351,9 @@ async function launch(row: DownloadRow) {
   const state: Running = { handle: null as unknown as RunHandle, stopAs: null, progress }
   const handle = runScript(row.source_script, argsFor(row), (e) => {
     applyEvent(progress, e)
+    // Each finished episode / chapter shows up in the library a few seconds later,
+    // without waiting for the rest of the job (it can be read right away)
+    if (e.type === 'item_done') rescanSoon(row.kind, () => writeHints({ ...row, progress }))
     emit('download:progress', { id: row.id, progress })
     if (Date.now() - lastSave > 2000 || e.type !== 'progress') {
       lastSave = Date.now()
@@ -380,6 +383,14 @@ async function launch(row: DownloadRow) {
   }
   if (status === 'failed' || error) logger.warn(`Download ${row.id} (${row.title}) ${status}: ${error} — ${log.slice(-5).join(' | ')}`)
   const finished = await setStatus(row.id, status, { progress, error: error?.slice(0, 1000) ?? null })
+  const someDone = Number(progress.items_done || 0) > 0
+  // The full rescan below replaces the one waiting (it also covers the other jobs of this kind)
+  if (finished && (status === 'done' || someDone)) cancelRescanSoon(row.kind)
+  // Paused, cancelled or failed after some items: what is finished stays readable
+  if (finished && status !== 'done' && someDone) {
+    await writeHints(finished).catch(() => {})
+    void rescanLibrary(row.kind)
+  }
   if (finished && (status === 'done' || status === 'failed')) {
     let libraryUpdated = Promise.resolve()
     if (status === 'done') {
@@ -552,7 +563,30 @@ const SCANS: Partial<Record<Kind, [string, () => Promise<number>]>> = {
   youtube: ['youtube', () => MediaScanner.scanYoutube()],
 }
 
-/** The finished file appears in the library at once (retries while another scan runs). */
+/** Delay that groups the episodes / chapters finished close together into one rescan. */
+const RESCAN_SOON_MS = () => Number(process.env.DOWNLOADS_RESCAN_DELAY_MS) || 15_000
+const rescanTimers = new Map<Kind, NodeJS.Timeout>()
+
+/**
+ * During a job: rescan this library soon (at most once per RESCAN_SOON_MS). While
+ * another scan runs, waits for it instead of piling up rescans. `before` runs first
+ * (hints next to the files, so the scan finds the exact title).
+ */
+function rescanSoon(kind: Kind, before?: () => Promise<void>) {
+  if (!SCANS[kind] || rescanTimers.has(kind)) return
+  const fire = () => {
+    if (MediaScanner.isRunning()) { rescanTimers.set(kind, setTimeout(fire, RESCAN_SOON_MS()).unref()); return }
+    rescanTimers.delete(kind)
+    void (before ? before().catch(() => {}) : Promise.resolve()).then(() => rescanLibrary(kind))
+  }
+  rescanTimers.set(kind, setTimeout(fire, RESCAN_SOON_MS()).unref())
+}
+
+function cancelRescanSoon(kind: Kind) {
+  const t = rescanTimers.get(kind)
+  if (t) { clearTimeout(t); rescanTimers.delete(kind) }
+}
+
 /** Rescans the library of this kind; resolves when done (or given up), never rejects. */
 function rescanLibrary(kind: Kind, attempt = 0): Promise<void> {
   const scan = SCANS[kind]
