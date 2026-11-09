@@ -150,6 +150,17 @@ export default function PlayerPage() {
   }
 
   const episodes: Episode[] = media?.episodes || []
+  const epIndex = episodeId ? episodes.findIndex((e) => e.id === episodeId) : -1
+  const nextEpisode = epIndex >= 0 ? episodes[epIndex + 1] : undefined
+  const playerTitle = media
+    ? currentEpisode ? `${media.title} · S${currentEpisode.season ?? 1}, É${currentEpisode.episodeNumber}` : media.title
+    : undefined
+  const playerEpisodes = episodes.length > 1 ? episodes.map((e) => ({
+    id: e.id,
+    title: `${e.season ? `S${e.season}, ` : ''}É${e.episodeNumber}${e.title ? ` · ${e.title}` : ''}`,
+    subtitle: e.duration ? formatDuration(e.duration) : undefined,
+    current: e.id === episodeId,
+  })) : undefined
   const seasons = [...new Set(episodes.map((e) => e.season || 1))].sort()
 
   const frame = 'flex flex-col items-center justify-center gap-2 text-center px-6 w-full'
@@ -198,6 +209,11 @@ export default function PlayerPage() {
               seekTo={seekTo}
               onTimeUpdate={handleTimeUpdate}
               onEnded={handleEnded}
+              title={playerTitle}
+              artwork={media?.posterPath}
+              episodes={playerEpisodes}
+              onSelectEpisode={(epId) => navigate(`/player/${id}?ep=${epId}`, { replace: true })}
+              onNext={nextEpisode ? () => navigate(`/player/${id}?ep=${nextEpisode.id}`, { replace: true }) : undefined}
             />
           )}
 

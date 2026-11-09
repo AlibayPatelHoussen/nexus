@@ -2,8 +2,12 @@ import { useEffect, useRef, useState, useCallback } from 'react'
 import {
   Play, Pause, Volume2, VolumeX,
   Maximize, Minimize, RotateCcw, RotateCw, AlertTriangle,
+  Airplay, Cast, PictureInPicture2, Lock, LockOpen, ListVideo, SkipForward, X, Tv, RefreshCw, Square,
 } from 'lucide-react'
+import toast from 'react-hot-toast'
 import Spinner from '@/components/ui/Spinner'
+import { castService, type CastDevice, type CastStatus } from '@/services/castService'
+import PlayerPanel, { PanelRow } from './PlayerPanel'
 import type Hls from 'hls.js'
 import { filesService } from '@/services/filesService'
 import { getPlayInfo, getTranscodeStatus, startTranscode, stopTranscode } from '@/services/playbackService'
@@ -18,6 +22,37 @@ interface Props {
   initialTime?: number
   /** Imperative seek (e.g. "Recommencer"): a new key triggers the seek */
   seekTo?: { time: number; key: number }
+  /** Shown in full screen, on the lock screen / in Picture in Picture, and sent to the TV */
+  title?: string
+  artwork?: string | null
+  /** Series: « Épisodes » panel and « Épisode suivant » */
+  episodes?: { id: string; title: string; subtitle?: string; current?: boolean }[]
+  onSelectEpisode?: (id: string) => void
+  onNext?: () => void
+}
+
+type WebkitVideo = HTMLVideoElement & {
+  webkitShowPlaybackTargetPicker?: () => void
+  webkitCurrentPlaybackTargetIsWireless?: boolean
+  webkitSupportsPresentationMode?: (mode: string) => boolean
+  webkitSetPresentationMode?: (mode: string) => void
+  webkitPresentationMode?: string
+  remote?: { prompt: () => Promise<void>; state: string }
+}
+
+/** Safari (Mac, iPhone, iPad): AirPlay. Elsewhere: Chromecast through the browser (Remote Playback). */
+const HAS_AIRPLAY = typeof window !== 'undefined' && 'WebKitPlaybackTargetAvailabilityEvent' in window
+const HAS_REMOTE  = typeof HTMLMediaElement !== 'undefined' && 'remote' in HTMLMediaElement.prototype && !HAS_AIRPLAY
+
+/** « 10 s » skip glyph (like SF Symbols gobackward.10 / goforward.10) */
+function Skip10({ forward, size = 30 }: { forward?: boolean; size?: number }) {
+  const Icon = forward ? RotateCw : RotateCcw
+  return (
+    <span className="relative grid place-items-center" aria-hidden="true">
+      <Icon size={size} strokeWidth={1.6} />
+      <span className="absolute text-[10px] font-bold tabular" style={{ fontSize: size * 0.32, paddingTop: 1 }}>10</span>
+    </span>
+  )
 }
 
 /**
@@ -32,7 +67,9 @@ type Source =
   | { kind: 'direct' }
   | { kind: 'hls'; jobId: string; offset: number; total: number }
 
-export default function VideoPlayer({ filePath, streamToken, onTimeUpdate, onEnded, initialTime, seekTo }: Props) {
+export default function VideoPlayer({
+  filePath, streamToken, onTimeUpdate, onEnded, initialTime, seekTo, title, artwork, episodes, onSelectEpisode, onNext,
+}: Props) {
   const videoRef     = useRef<HTMLVideoElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const scrubberRef  = useRef<HTMLDivElement>(null)
@@ -40,6 +77,9 @@ export default function VideoPlayer({ filePath, streamToken, onTimeUpdate, onEnd
   const lastPointer  = useRef<string>('mouse')
   const hlsRef       = useRef<Hls | null>(null)
   const sourceRef    = useRef<Source | null>(null)
+  /** Playlist of the converted stream (native HLS takes over from hls.js for AirPlay) */
+  const hlsUrlRef    = useRef<string | null>(null)
+  const panelRef     = useRef<'episodes' | 'cast' | null>(null)
   /**
    * Resume position (local time) not reached yet. The iPhone ignores a position set too
    * early: it is set again on every media event until the video really is there, and
@@ -72,6 +112,23 @@ export default function VideoPlayer({ filePath, streamToken, onTimeUpdate, onEnd
   /** Remux being prepared before playback: percent done */
   const [prepared,     setPrepared]     = useState<number | null>(null)
   const generation   = useRef(0)
+  /** Touch screen: big centred transport controls (iOS); mouse: the floating bar (macOS) */
+  const [touch,   setTouch]   = useState(() => typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches)
+  const [locked,  setLocked]  = useState(false)
+  const [panel,   setPanelState] = useState<'episodes' | 'cast' | null>(null)
+  const [pip,     setPip]     = useState(false)
+  const [wireless, setWireless] = useState(false)
+  const [devices, setDevices] = useState<CastDevice[] | null>(null)
+  const [searching, setSearching] = useState(false)
+  const [cast,    setCast]    = useState<{ device: CastDevice; status: CastStatus | null } | null>(null)
+  const pipSupported = typeof document !== 'undefined' && (!!document.pictureInPictureEnabled
+    || !!(videoRef.current as WebkitVideo | null)?.webkitSupportsPresentationMode?.('picture-in-picture')
+    || /iP(hone|ad|od)/.test(navigator.userAgent))
+  function setPanel(p: 'episodes' | 'cast' | null) {
+    panelRef.current = p
+    setPanelState(p)
+    if (p) { setShowControls(true); if (hideTimer.current) clearTimeout(hideTimer.current) } else scheduleHide()
+  }
 
   // ── Virtual timeline (identity for direct playback) ─
   const offset = () => (sourceRef.current?.kind === 'hls' ? sourceRef.current.offset : 0)
@@ -87,7 +144,7 @@ export default function VideoPlayer({ filePath, streamToken, onTimeUpdate, onEnd
   const scheduleHide = useCallback(() => {
     if (hideTimer.current) clearTimeout(hideTimer.current)
     hideTimer.current = setTimeout(() => {
-      if (!videoRef.current?.paused) setShowControls(false)
+      if (!videoRef.current?.paused && !panelRef.current) setShowControls(false)
     }, 3000)
   }, [])
 
@@ -207,6 +264,7 @@ export default function VideoPlayer({ filePath, streamToken, onTimeUpdate, onEnd
       resumePlay.current = autoplay
       const seekLocal = Math.max(0, at - session.start)
       const url = `${session.playlist}?token=${encodeURIComponent(streamToken)}`
+      hlsUrlRef.current = url
 
       const { default: HlsJs } = await import('hls.js')
       if (gen !== generation.current) return
@@ -275,6 +333,7 @@ export default function VideoPlayer({ filePath, streamToken, onTimeUpdate, onEnd
   // (the server also stops it by itself after a short idle time)
   useEffect(() => {
     const onHide = () => {
+      if (document.pictureInPictureElement) return     // still playing in Picture in Picture
       const s = sourceRef.current
       if (s?.kind === 'hls') stopTranscode(s.jobId)
     }
@@ -328,7 +387,7 @@ export default function VideoPlayer({ filePath, streamToken, onTimeUpdate, onEnd
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       const v = videoRef.current
-      if (!v || (e.target as HTMLElement).tagName === 'INPUT') return
+      if (!v || (e.target as HTMLElement).tagName === 'INPUT' || panelRef.current) return
       switch (e.code) {
         case 'Space': case 'KeyK':  e.preventDefault(); togglePlay(); break
         case 'ArrowRight': case 'KeyL': e.preventDefault(); seek(10); break
@@ -389,7 +448,14 @@ export default function VideoPlayer({ filePath, streamToken, onTimeUpdate, onEnd
 
   // Tap on touch screens: first tap shows the controls, next tap toggles play
   function onVideoTap() {
-    if (lastPointer.current !== 'mouse' && !showControls) { revealControls(); return }
+    if (panelRef.current) { setPanel(null); return }
+    if (locked) { revealControls(); return }
+    // Touch (iOS): a tap shows / hides the controls, the centre button plays
+    if (lastPointer.current !== 'mouse') {
+      if (showControls && !videoRef.current?.paused) { setShowControls(false); if (hideTimer.current) clearTimeout(hideTimer.current) }
+      else revealControls()
+      return
+    }
     togglePlay()
     revealControls()
   }
@@ -430,6 +496,152 @@ export default function VideoPlayer({ filePath, streamToken, onTimeUpdate, onEnd
     window.addEventListener('pointercancel', onUp)
   }
 
+  // ── Picture in Picture ─────────────────────────────
+  useEffect(() => {
+    const v = videoRef.current as WebkitVideo | null
+    if (!v) return
+    // Safari: the video goes on in Picture in Picture by itself when the app is left
+    v.setAttribute('autopictureinpicture', '')
+    const onEnter = () => setPip(true)
+    const onLeave = () => setPip(false)
+    const onMode  = () => setPip(v.webkitPresentationMode === 'picture-in-picture')
+    const onWireless = () => setWireless(!!v.webkitCurrentPlaybackTargetIsWireless)
+    v.addEventListener('enterpictureinpicture', onEnter)
+    v.addEventListener('leavepictureinpicture', onLeave)
+    v.addEventListener('webkitpresentationmodechanged', onMode)
+    v.addEventListener('webkitcurrentplaybacktargetiswirelesschanged', onWireless)
+    return () => {
+      v.removeEventListener('enterpictureinpicture', onEnter)
+      v.removeEventListener('leavepictureinpicture', onLeave)
+      v.removeEventListener('webkitpresentationmodechanged', onMode)
+      v.removeEventListener('webkitcurrentplaybacktargetiswirelesschanged', onWireless)
+    }
+  }, [])
+
+  async function togglePip() {
+    const v = videoRef.current as WebkitVideo | null
+    if (!v) return
+    try {
+      if (document.pictureInPictureElement) await document.exitPictureInPicture()
+      else if (v.requestPictureInPicture && document.pictureInPictureEnabled) await v.requestPictureInPicture()
+      else if (v.webkitSetPresentationMode) v.webkitSetPresentationMode(v.webkitPresentationMode === 'picture-in-picture' ? 'inline' : 'picture-in-picture')
+    } catch {
+      toast.error('Image dans l’image indisponible pour le moment')
+    }
+  }
+
+  // ── Lock screen / Control Center / Picture in Picture buttons (Media Session) ──
+  useEffect(() => {
+    const ms = typeof navigator !== 'undefined' ? navigator.mediaSession : undefined
+    if (!ms || typeof MediaMetadata === 'undefined') return
+    ms.metadata = new MediaMetadata({
+      title: title || 'Nexus',
+      artist: 'Nexus',
+      artwork: artwork ? [{ src: new URL(artwork, location.href).toString(), sizes: '500x750' }] : [],
+    })
+    const set = (a: MediaSessionAction, h: MediaSessionActionHandler | null) => { try { ms.setActionHandler(a, h) } catch { /* unsupported */ } }
+    set('play', () => { void videoRef.current?.play() })
+    set('pause', () => videoRef.current?.pause())
+    set('seekbackward', () => seek(-10))
+    set('seekforward', () => seek(10))
+    set('seekto', (d) => { if (d.seekTime != null) seekAbs(d.seekTime) })
+    set('nexttrack', onNext ? () => onNext() : null)
+    return () => {
+      for (const a of ['play', 'pause', 'seekbackward', 'seekforward', 'seekto', 'nexttrack'] as MediaSessionAction[]) set(a, null)
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [title, artwork, onNext])
+
+  const posBucket = Math.floor(current / 5)
+  useEffect(() => {
+    const ms = navigator.mediaSession
+    if (!ms?.setPositionState || !duration || current > duration) return
+    try { ms.setPositionState({ duration, position: current, playbackRate: 1 }) } catch { /* ignored */ }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [posBucket, duration])
+
+  // ── Diffuser : AirPlay, Chromecast, TVs on the server's network ──
+  async function loadDevices(refresh: boolean) {
+    setSearching(true)
+    try { setDevices(await castService.devices(refresh)) } catch { setDevices([]) } finally { setSearching(false) }
+  }
+  function openCast() {
+    setPanel('cast')
+    if (!devices) void loadDevices(false)
+  }
+
+  function airplay() {
+    const v = videoRef.current as WebkitVideo | null
+    if (!v?.webkitShowPlaybackTargetPicker) return
+    // AirPlay cannot send a hls.js stream (Managed Media Source): Safari's own HLS takes over
+    if (hlsRef.current && hlsUrlRef.current && v.canPlayType('application/vnd.apple.mpegurl')) {
+      const at = v.currentTime
+      resumePlay.current = !v.paused
+      hlsRef.current.destroy()
+      hlsRef.current = null
+      pendingSeek.current = at > 1 ? at : null
+      pendingSince.current = 0
+      v.src = hlsUrlRef.current
+      v.load()
+    }
+    v.disableRemotePlayback = false
+    v.webkitShowPlaybackTargetPicker()
+    setPanel(null)
+  }
+
+  function chromecast() {
+    const v = videoRef.current as WebkitVideo | null
+    v?.remote?.prompt().catch(() => toast.error('Aucun Chromecast trouvé'))
+    setPanel(null)
+  }
+
+  async function castTo(d: CastDevice) {
+    const at = now()
+    setPanel(null)
+    const id = toast.loading(`Envoi vers ${d.name}…`)
+    try {
+      await castService.play(d.id, filePath, title || '', at)
+      videoRef.current?.pause()
+      setCast({ device: d, status: null })
+      toast.success(`Lecture sur ${d.name}`, { id })
+    } catch {
+      toast.error(`${d.name} n’a pas accepté la vidéo`, { id })
+    }
+  }
+
+  // While the TV plays: its position, saved like local playback (« Reprendre »)
+  useEffect(() => {
+    if (!cast) return
+    let alive = true
+    const tick = async () => {
+      try {
+        const st = await castService.status(cast.device.id)
+        if (!alive) return
+        setCast((c) => (c ? { ...c, status: st } : c))
+        if (st.position != null && st.duration) { setCurrent(st.position); setDuration(st.duration); onTimeRef.current?.(st.position, st.duration) }
+      } catch { /* the TV may not answer while loading */ }
+    }
+    void tick()
+    const t = setInterval(tick, 2000)
+    return () => { alive = false; clearInterval(t) }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [cast?.device.id])
+
+  function castCommand(action: 'play' | 'pause' | 'seek', position?: number) {
+    if (!cast) return
+    castService.control(cast.device.id, action, position).catch(() => toast.error('La TV ne répond pas'))
+    setCast((c) => (c?.status ? { ...c, status: { ...c.status, state: action === 'pause' ? 'paused' : 'playing', position: position ?? c.status.position } } : c))
+  }
+
+  async function stopCast() {
+    if (!cast) return
+    const pos = cast.status?.position
+    setCast(null)
+    await castService.control(cast.device.id, 'stop').catch(() => {})
+    // Back on this device, where the TV stopped
+    if (pos != null && pos > 0) seekAbs(pos)
+  }
+
   // ── Helpers ────────────────────────────────────────
   function fmt(s: number) {
     if (!s || isNaN(s)) return '0:00'
@@ -443,22 +655,33 @@ export default function VideoPlayer({ filePath, streamToken, onTimeUpdate, onEnd
   const pct    = duration ? (current  / duration) * 100 : 0
   const bufPct = duration ? (buffered / duration) * 100 : 0
   const thumbVisible = scrubbing || scrubHover
+  const barsVisible = showControls && !cast
+  const fade = (on: boolean, y = 8): React.CSSProperties => ({
+    opacity: on ? 1 : 0,
+    transform: on ? 'none' : `translateY(${y}px) scale(0.98)`,
+    transition: 'opacity 250ms var(--ease-out), transform 500ms var(--ease-spring)',
+    pointerEvents: on ? 'auto' : 'none',
+  })
+  const iconBtn = 'w-11 h-11 grid place-items-center rounded-full hover:bg-white/10 active:bg-white/20 active:scale-95 transition-transform'
+  const CastIcon = HAS_AIRPLAY ? Airplay : Cast
+  const castPlaying = cast?.status?.state !== 'paused'
 
   return (
     <div
       ref={containerRef}
-      className="relative w-full select-none"
-      style={{ background: '#000', aspectRatio: '16/9', maxHeight: '75vh' }}
+      className="relative w-full select-none overflow-hidden"
+      style={{ background: '#000', aspectRatio: '16/9', maxHeight: fullscreen ? '100vh' : '75vh' }}
       onMouseMove={revealControls}
-      onMouseLeave={() => { if (playing) setShowControls(false) }}
-      onPointerDown={(e) => { lastPointer.current = e.pointerType }}
+      onMouseLeave={() => { if (playing && !panelRef.current) setShowControls(false) }}
+      onPointerDown={(e) => { lastPointer.current = e.pointerType; setTouch(e.pointerType !== 'mouse') }}
     >
       {/* Video element */}
       <video
         ref={videoRef}
         className="w-full h-full"
-        style={{ display: 'block' }}
+        style={{ display: 'block', opacity: cast ? 0.25 : 1 }}
         playsInline
+        x-webkit-airplay="allow"
       />
 
       {/* Click-to-play zone (covers video area, stops above controls bar) */}
@@ -469,7 +692,7 @@ export default function VideoPlayer({ filePath, streamToken, onTimeUpdate, onEnd
       />
 
       {/* Error */}
-      {error && (
+      {error && !cast && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none px-6" role="alert">
           <div className="text-center text-white/90 max-w-[340px]">
             <AlertTriangle size={28} strokeWidth={1.5} className="mx-auto mb-2 text-white/70" aria-hidden="true" />
@@ -480,7 +703,7 @@ export default function VideoPlayer({ filePath, streamToken, onTimeUpdate, onEnd
       )}
 
       {/* Loading (initial load, buffering, conversion starting) */}
-      {loading && !error && (
+      {loading && !error && !cast && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 pointer-events-none" style={{ bottom: 96 }} role="status" aria-live="polite">
           <span className="text-white"><Spinner size={36} label="Chargement de la vidéo" color="rgba(255,255,255,.9)" /></span>
           {converting && (
@@ -491,8 +714,16 @@ export default function VideoPlayer({ filePath, streamToken, onTimeUpdate, onEnd
         </div>
       )}
 
-      {/* Centre play button (paused) */}
-      {!playing && !error && !loading && (
+      {/* Playing on another screen (AirPlay by Safari, Picture in Picture) */}
+      {(wireless || pip) && !cast && (
+        <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 pointer-events-none text-white/85" style={{ bottom: 96 }}>
+          {pip ? <PictureInPicture2 size={40} strokeWidth={1.4} aria-hidden="true" /> : <Airplay size={40} strokeWidth={1.4} aria-hidden="true" />}
+          <p className="text-[15px] font-semibold">{pip ? 'Lecture en image dans l’image' : 'Lecture via AirPlay'}</p>
+        </div>
+      )}
+
+      {/* Centre play button (paused, mouse) */}
+      {!touch && !playing && !error && !loading && !cast && !locked && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none" style={{ bottom: 96 }}>
           <div className="grid place-items-center rounded-full glass-media" style={{ width: 'clamp(60px, 12vw, 80px)', height: 'clamp(60px, 12vw, 80px)', animation: 'nx-pop 380ms var(--ease-spring) both' }}>
             <Play size={30} fill="white" strokeWidth={0} style={{ marginLeft: 4 }} />
@@ -500,22 +731,104 @@ export default function VideoPlayer({ filePath, streamToken, onTimeUpdate, onEnd
         </div>
       )}
 
+      {/* Touch (iOS): big centred transport controls */}
+      {touch && !error && !cast && !locked && (
+        <div className="absolute inset-x-0 flex items-center justify-center pointer-events-none" style={{ top: 48, bottom: episodes?.length || onNext ? 96 : 64, gap: 'clamp(28px, 11vw, 120px)' }}>
+          <button type="button" className="pointer-events-auto w-14 h-14 grid place-items-center rounded-full glass-media active:scale-90 transition-transform" style={fade(barsVisible, 0)} onClick={() => seek(-10)} aria-label="Reculer de 10 secondes">
+            <Skip10 />
+          </button>
+          {loading ? <span className="w-[72px] h-[72px]" aria-hidden="true" /> : (
+            <button type="button" className="pointer-events-auto w-[72px] h-[72px] grid place-items-center rounded-full glass-media active:scale-90 transition-transform" style={fade(barsVisible || !playing, 0)} onClick={() => { togglePlay(); revealControls() }} aria-label={playing ? 'Pause' : 'Lecture'}>
+              {playing ? <Pause size={32} fill="white" strokeWidth={0} /> : <Play size={32} fill="white" strokeWidth={0} style={{ marginLeft: 4 }} />}
+            </button>
+          )}
+          <button type="button" className="pointer-events-auto w-14 h-14 grid place-items-center rounded-full glass-media active:scale-90 transition-transform" style={fade(barsVisible, 0)} onClick={() => seek(10)} aria-label="Avancer de 10 secondes">
+            <Skip10 forward />
+          </button>
+        </div>
+      )}
+
+      {/* Top bar: close + title (full screen), Diffuser / Picture in Picture / lock */}
+      <div
+        className="absolute inset-x-0 top-0 z-20 flex items-start justify-between gap-2 px-3"
+        style={{ paddingTop: 'max(10px, env(safe-area-inset-top, 0px))', ...fade(barsVisible || (locked && showControls), -8) }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-center gap-2.5 min-w-0">
+          {fullscreen && !locked && (
+            <button type="button" className="w-11 h-11 grid place-items-center rounded-full glass-media flex-shrink-0 active:scale-95 transition-transform" onClick={toggleFullscreen} aria-label="Quitter le plein écran">
+              <X size={20} strokeWidth={2} />
+            </button>
+          )}
+          {fullscreen && title && !locked && <span className="text-[15px] font-semibold text-white truncate" style={{ textShadow: '0 1px 6px rgba(0,0,0,.5)' }}>{title}</span>}
+        </div>
+        {locked ? (
+          <button type="button" className="h-11 pl-3.5 pr-4 flex items-center gap-2 rounded-pill glass-media text-[15px] font-semibold active:scale-95 transition-transform" onClick={() => { setLocked(false); revealControls() }}>
+            <LockOpen size={18} strokeWidth={2} aria-hidden="true" /> Déverrouiller
+          </button>
+        ) : (
+          <div className="flex items-center rounded-pill glass-media p-0.5 flex-shrink-0">
+            <button type="button" className={iconBtn} onClick={openCast} aria-label="Diffuser sur un écran" title="Diffuser">
+              <CastIcon size={20} strokeWidth={1.75} />
+            </button>
+            {pipSupported && (
+              <button type="button" className={iconBtn} onClick={togglePip} aria-label={pip ? 'Quitter l’image dans l’image' : 'Image dans l’image'} aria-pressed={pip} title="Image dans l’image">
+                <PictureInPicture2 size={20} strokeWidth={1.75} />
+              </button>
+            )}
+            {touch && (
+              <button type="button" className={iconBtn} onClick={() => { setLocked(true); setShowControls(false) }} aria-label="Verrouiller l’écran" title="Verrouiller">
+                <Lock size={19} strokeWidth={1.75} />
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Playing on a TV: the remote */}
+      {cast && (
+        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-4 px-6 text-white" role="region" aria-label={`Lecture sur ${cast.device.name}`}>
+          <div className="flex flex-col items-center gap-1 text-center">
+            <Tv size={36} strokeWidth={1.4} aria-hidden="true" className="text-white/85" />
+            <p className="text-[17px] font-semibold">Lecture sur {cast.device.name}</p>
+            <p className="text-[13px] text-white/65 tabular">
+              {cast.status?.state === 'loading' || !cast.status ? 'Chargement sur la TV…'
+                : `${fmt(cast.status.position ?? 0)} / ${fmt(cast.status.duration ?? duration)}`}
+            </p>
+          </div>
+          <div className="flex items-center gap-5">
+            {cast.device.kind === 'dlna' && (
+              <button type="button" className="w-14 h-14 grid place-items-center rounded-full glass-media active:scale-90 transition-transform" onClick={() => castCommand('seek', Math.max(0, (cast.status?.position ?? 0) - 10))} aria-label="Reculer de 10 secondes">
+                <Skip10 />
+              </button>
+            )}
+            <button type="button" className="w-[72px] h-[72px] grid place-items-center rounded-full glass-media active:scale-90 transition-transform" onClick={() => castCommand(castPlaying ? 'pause' : 'play')} aria-label={castPlaying ? 'Pause' : 'Lecture'}>
+              {castPlaying ? <Pause size={32} fill="white" strokeWidth={0} /> : <Play size={32} fill="white" strokeWidth={0} style={{ marginLeft: 4 }} />}
+            </button>
+            {cast.device.kind === 'dlna' && (
+              <button type="button" className="w-14 h-14 grid place-items-center rounded-full glass-media active:scale-90 transition-transform" onClick={() => castCommand('seek', (cast.status?.position ?? 0) + 10)} aria-label="Avancer de 10 secondes">
+                <Skip10 forward />
+              </button>
+            )}
+          </div>
+          <button type="button" className="h-11 px-5 flex items-center gap-2 rounded-pill glass-media text-[15px] font-semibold active:scale-95 transition-transform" onClick={stopCast}>
+            <Square size={14} fill="white" strokeWidth={0} aria-hidden="true" /> Arrêter la diffusion
+          </button>
+        </div>
+      )}
+
       {/* Floating control bar (AVKit / QuickTime): appears on move / tap, fades out while playing */}
       <div
-        className="absolute left-3 right-3 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 sm:w-[min(680px,calc(100%-32px))]"
-        style={{ bottom: 'max(8px, env(safe-area-inset-bottom, 0px))', pointerEvents: showControls ? 'auto' : 'none' }}
+        className="absolute z-20 left-3 right-3 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 sm:w-[min(680px,calc(100%-32px))]"
+        style={{ bottom: 'max(8px, env(safe-area-inset-bottom, 0px))', pointerEvents: barsVisible && !locked ? 'auto' : 'none' }}
         onClick={(e) => e.stopPropagation()}
       >
       <div
         // Liquid Glass control bar over the video: fades in / out, settles on a spring
-        className="glass-media rounded-[26px] px-2.5 sm:px-4 py-1 sm:pt-2 sm:pb-2.5"
-        style={{
-          opacity: showControls ? 1 : 0,
-          transform: showControls ? 'none' : 'translateY(8px) scale(0.98)',
-          transition: 'opacity 250ms var(--ease-out), transform 500ms var(--ease-spring)',
-        }}
+        className={`glass-media rounded-[26px] px-2.5 py-1 ${touch ? '' : 'sm:px-4 sm:pt-2 sm:pb-2.5'}`}
+        style={fade(barsVisible && !locked)}
       >
-        <div className="hidden sm:flex items-center gap-2">
+        <div className={touch ? 'hidden' : 'hidden sm:flex items-center gap-2'}>
           <button type="button" className="w-9 h-9 grid place-items-center rounded-full hover:bg-white/10 active:bg-white/20" onClick={() => seek(-10)} aria-label="Reculer de 10 secondes" title="Reculer de 10 s">
             <RotateCcw size={18} strokeWidth={1.75} />
           </button>
@@ -544,9 +857,11 @@ export default function VideoPlayer({ filePath, streamToken, onTimeUpdate, onEnd
 
         {/* Scrubber with elapsed / remaining time */}
         <div className="flex items-center gap-2 sm:gap-2.5 text-[11px] text-white/80 tabular">
-          <button type="button" className="sm:hidden w-9 h-9 -ml-1 grid place-items-center rounded-full active:bg-white/20 text-white" onClick={togglePlay} aria-label={playing ? 'Pause' : 'Lecture'}>
-            {playing ? <Pause size={20} fill="white" strokeWidth={0} /> : <Play size={20} fill="white" strokeWidth={0} style={{ marginLeft: 2 }} />}
-          </button>
+          {!touch && (
+            <button type="button" className="sm:hidden w-9 h-9 -ml-1 grid place-items-center rounded-full active:bg-white/20 text-white" onClick={togglePlay} aria-label={playing ? 'Pause' : 'Lecture'}>
+              {playing ? <Pause size={20} fill="white" strokeWidth={0} /> : <Play size={20} fill="white" strokeWidth={0} style={{ marginLeft: 2 }} />}
+            </button>
+          )}
           <span className="w-[40px] sm:w-[44px] text-right">{fmt(current)}</span>
           <div
             ref={scrubberRef}
@@ -570,12 +885,63 @@ export default function VideoPlayer({ filePath, streamToken, onTimeUpdate, onEnd
             <div className="absolute rounded-full bg-white pointer-events-none" style={{ left: `${pct}%`, transform: 'translateX(-50%)', width: thumbVisible ? 12 : 0, height: thumbVisible ? 12 : 0, boxShadow: '0 1px 4px rgba(0,0,0,.4)', transition: 'width 150ms, height 150ms' }} />
           </div>
           <span className="w-[40px] sm:w-[44px]">-{fmt(Math.max(0, duration - current))}</span>
-          <button type="button" className="sm:hidden w-9 h-9 -mr-1 grid place-items-center rounded-full active:bg-white/20 text-white" onClick={toggleFullscreen} aria-label={fullscreen ? 'Quitter le plein écran' : 'Plein écran'}>
+          <button type="button" className={`${touch ? '' : 'sm:hidden '}w-9 h-9 -mr-1 grid place-items-center rounded-full active:bg-white/20 text-white`} onClick={toggleFullscreen} aria-label={fullscreen ? 'Quitter le plein écran' : 'Plein écran'}>
             {fullscreen ? <Minimize size={17} strokeWidth={1.75} /> : <Maximize size={17} strokeWidth={1.75} />}
           </button>
         </div>
+
+        {/* Series: « Épisodes » and « Épisode suivant » */}
+        {(episodes?.length || onNext) && (
+          <div className={`flex items-center justify-between gap-2 -mx-1 pb-0.5 ${touch ? '' : 'sm:mx-0 sm:pb-0 sm:pt-1'}`}>
+            {episodes?.length ? (
+              <button type="button" className="h-9 pl-2.5 pr-3.5 flex items-center gap-2 rounded-pill hover:bg-white/10 active:bg-white/20 text-[13px] font-semibold" onClick={() => setPanel('episodes')}>
+                <ListVideo size={18} strokeWidth={1.75} aria-hidden="true" /> Épisodes
+              </button>
+            ) : <span />}
+            {onNext && (
+              <button type="button" className="h-9 pl-2.5 pr-3.5 flex items-center gap-2 rounded-pill hover:bg-white/10 active:bg-white/20 text-[13px] font-semibold" onClick={onNext}>
+                <SkipForward size={16} fill="white" strokeWidth={1.5} aria-hidden="true" /> Épisode suivant
+              </button>
+            )}
+          </div>
+        )}
       </div>
       </div>
+
+      <PlayerPanel open={panel === 'episodes'} title="Épisodes" onClose={() => setPanel(null)}>
+        {episodes?.map((ep) => (
+          <PanelRow key={ep.id} title={ep.title} subtitle={ep.current ? 'En lecture' : ep.subtitle} selected={ep.current}
+            onClick={() => { setPanel(null); if (!ep.current) onSelectEpisode?.(ep.id) }} />
+        ))}
+      </PlayerPanel>
+
+      <PlayerPanel open={panel === 'cast'} title="Diffuser" onClose={() => setPanel(null)}>
+        {HAS_AIRPLAY && (
+          <PanelRow icon={<Airplay size={22} strokeWidth={1.6} />} title="AirPlay" subtitle="Apple TV et TV compatibles AirPlay" onClick={airplay} />
+        )}
+        {HAS_REMOTE && (
+          <PanelRow icon={<Cast size={22} strokeWidth={1.6} />} title="Chromecast"
+            subtitle={sourceRef.current?.kind === 'direct' ? 'Chromecast et Google TV' : 'Indisponible pour cette vidéo (convertie par le serveur)'}
+            disabled={sourceRef.current?.kind !== 'direct'} onClick={chromecast} />
+        )}
+        <div className="flex items-center justify-between gap-2 pl-3 pr-1 pt-3 pb-1">
+          <p className="text-[12px] font-semibold uppercase tracking-wide text-white/55">TV sur le réseau du serveur</p>
+          <button type="button" className="w-11 h-11 grid place-items-center rounded-full hover:bg-white/10 active:bg-white/20 disabled:opacity-40" onClick={() => loadDevices(true)} disabled={searching} aria-label="Rechercher à nouveau">
+            <RefreshCw size={17} strokeWidth={1.75} className={searching ? 'animate-spin motion-reduce:animate-none' : ''} />
+          </button>
+        </div>
+        {devices?.map((d) => (
+          <PanelRow key={d.id} icon={<Tv size={22} strokeWidth={1.6} />} title={d.name}
+            subtitle={[d.kind === 'roku' ? 'Roku' : 'DLNA', d.model].filter(Boolean).join(' · ')}
+            selected={cast?.device.id === d.id} onClick={() => castTo(d)} />
+        ))}
+        {devices && !devices.length && !searching && (
+          <p className="px-3 py-2 text-[13px] text-white/60">
+            Aucune TV trouvée. Les TV Samsung, LG, Sony, Philips, Roku, Android TV ou Fire TV (DLNA) doivent être allumées et sur le même réseau que le serveur.
+          </p>
+        )}
+        {searching && !devices?.length && <p className="px-3 py-2 text-[13px] text-white/60" role="status">Recherche des TV…</p>}
+      </PlayerPanel>
     </div>
   )
 }
