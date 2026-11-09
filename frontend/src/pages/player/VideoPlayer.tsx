@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, useCallback } from 'react'
+import { createPortal } from 'react-dom'
 import {
   Play, Pause, Volume2, VolumeX,
   Maximize, Minimize, RotateCcw, RotateCw, AlertTriangle,
@@ -7,6 +8,7 @@ import {
 import toast from 'react-hot-toast'
 import Spinner from '@/components/ui/Spinner'
 import { castService, type CastDevice, type CastStatus } from '@/services/castService'
+import { serverError, showError } from '@/utils/errorToast'
 import PlayerPanel, { PanelRow } from './PlayerPanel'
 import type Hls from 'hls.js'
 import { filesService } from '@/services/filesService'
@@ -29,6 +31,8 @@ interface Props {
   episodes?: { id: string; title: string; subtitle?: string; current?: boolean }[]
   onSelectEpisode?: (id: string) => void
   onNext?: () => void
+  /** Outside full screen the Diffuser / Image dans l’image / lock buttons sit in the page's top bar */
+  toolbarSlot?: HTMLElement | null
 }
 
 type WebkitVideo = HTMLVideoElement & {
@@ -43,6 +47,10 @@ type WebkitVideo = HTMLVideoElement & {
 /** Safari (Mac, iPhone, iPad): AirPlay. Elsewhere: Chromecast through the browser (Remote Playback). */
 const HAS_AIRPLAY = typeof window !== 'undefined' && 'WebKitPlaybackTargetAvailabilityEvent' in window
 const HAS_REMOTE  = typeof HTMLMediaElement !== 'undefined' && 'remote' in HTMLMediaElement.prototype && !HAS_AIRPLAY
+const IS_IOS = typeof navigator !== 'undefined' && (/iP(hone|ad|od)/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1))
+/** Nexus opened from its Home Screen icon: iOS gives such apps no Picture in Picture (WebKit bug 303885) */
+const STANDALONE = typeof window !== 'undefined' && ((navigator as Navigator & { standalone?: boolean }).standalone === true
+  || !!window.matchMedia?.('(display-mode: standalone)').matches)
 
 /** « 10 s » skip glyph (like SF Symbols gobackward.10 / goforward.10) */
 function Skip10({ forward, size = 30 }: { forward?: boolean; size?: number }) {
@@ -68,7 +76,7 @@ type Source =
   | { kind: 'hls'; jobId: string; offset: number; total: number }
 
 export default function VideoPlayer({
-  filePath, streamToken, onTimeUpdate, onEnded, initialTime, seekTo, title, artwork, episodes, onSelectEpisode, onNext,
+  filePath, streamToken, onTimeUpdate, onEnded, initialTime, seekTo, title, artwork, episodes, onSelectEpisode, onNext, toolbarSlot,
 }: Props) {
   const videoRef     = useRef<HTMLVideoElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
@@ -79,7 +87,7 @@ export default function VideoPlayer({
   const sourceRef    = useRef<Source | null>(null)
   /** Playlist of the converted stream (native HLS takes over from hls.js for AirPlay) */
   const hlsUrlRef    = useRef<string | null>(null)
-  const panelRef     = useRef<'episodes' | 'cast' | null>(null)
+  const panelRef     = useRef<'episodes' | 'cast' | 'pip' | null>(null)
   /**
    * Resume position (local time) not reached yet. The iPhone ignores a position set too
    * early: it is set again on every media event until the video really is there, and
@@ -115,7 +123,7 @@ export default function VideoPlayer({
   /** Touch screen: big centred transport controls (iOS); mouse: the floating bar (macOS) */
   const [touch,   setTouch]   = useState(() => typeof window !== 'undefined' && !!window.matchMedia?.('(pointer: coarse)').matches)
   const [locked,  setLocked]  = useState(false)
-  const [panel,   setPanelState] = useState<'episodes' | 'cast' | null>(null)
+  const [panel,   setPanelState] = useState<'episodes' | 'cast' | 'pip' | null>(null)
   const [pip,     setPip]     = useState(false)
   const [wireless, setWireless] = useState(false)
   const [devices, setDevices] = useState<CastDevice[] | null>(null)
@@ -124,7 +132,7 @@ export default function VideoPlayer({
   const pipSupported = typeof document !== 'undefined' && (!!document.pictureInPictureEnabled
     || !!(videoRef.current as WebkitVideo | null)?.webkitSupportsPresentationMode?.('picture-in-picture')
     || /iP(hone|ad|od)/.test(navigator.userAgent))
-  function setPanel(p: 'episodes' | 'cast' | null) {
+  function setPanel(p: 'episodes' | 'cast' | 'pip' | null) {
     panelRef.current = p
     setPanelState(p)
     if (p) { setShowControls(true); if (hideTimer.current) clearTimeout(hideTimer.current) } else scheduleHide()
@@ -268,8 +276,9 @@ export default function VideoPlayer({
 
       const { default: HlsJs } = await import('hls.js')
       if (gen !== generation.current) return
-      if (HlsJs.isSupported()) {
-        // startPosition, and the resume check too (iPhone: hls.js on ManagedMediaSource)
+      // Safari (iPhone, iPad, Mac): its own HLS player, the only one AirPlay and Picture in Picture accept
+      if (!(HAS_AIRPLAY && v.canPlayType('application/vnd.apple.mpegurl')) && HlsJs.isSupported()) {
+        // startPosition, and the resume check too
         pendingSeek.current = seekLocal > 1 ? seekLocal : null
         pendingSince.current = 0
         const hls = new HlsJs({ startPosition: seekLocal > 1 ? seekLocal : 0, maxBufferLength: 30 })
@@ -521,13 +530,30 @@ export default function VideoPlayer({
   async function togglePip() {
     const v = videoRef.current as WebkitVideo | null
     if (!v) return
-    try {
-      if (document.pictureInPictureElement) await document.exitPictureInPicture()
-      else if (v.requestPictureInPicture && document.pictureInPictureEnabled) await v.requestPictureInPicture()
-      else if (v.webkitSetPresentationMode) v.webkitSetPresentationMode(v.webkitPresentationMode === 'picture-in-picture' ? 'inline' : 'picture-in-picture')
-    } catch {
-      toast.error('Image dans l’image indisponible pour le moment')
+    const unavailable = () => {
+      if (IS_IOS && STANDALONE) setPanel('pip')
+      else toast.error(v.readyState < 1 ? 'Lance d’abord la lecture' : 'Image dans l’image indisponible sur ce navigateur')
     }
+    try {
+      if (document.pictureInPictureElement) { await document.exitPictureInPicture(); return }
+      if (v.webkitPresentationMode === 'picture-in-picture') { v.webkitSetPresentationMode?.('inline'); return }
+      if (v.webkitSupportsPresentationMode?.('picture-in-picture') && v.webkitSetPresentationMode) {
+        v.webkitSetPresentationMode('picture-in-picture')
+        // iOS can accept the call and do nothing (Home Screen apps)
+        setTimeout(() => { if (v.webkitPresentationMode !== 'picture-in-picture' && !document.pictureInPictureElement) unavailable() }, 800)
+        return
+      }
+      if (document.pictureInPictureEnabled && v.requestPictureInPicture) { await v.requestPictureInPicture(); return }
+      unavailable()
+    } catch {
+      unavailable()
+    }
+  }
+
+  /** iOS: the same page in Safari, where Picture in Picture works (x-safari-https opens Safari from an app) */
+  function openInSafari() {
+    videoRef.current?.pause()
+    window.location.href = `x-safari-${location.protocol.replace(':', '')}://${location.host}${location.pathname}${location.search}`
   }
 
   // ── Lock screen / Control Center / Picture in Picture buttons (Media Session) ──
@@ -566,6 +592,8 @@ export default function VideoPlayer({
     try { setDevices(await castService.devices(refresh)) } catch { setDevices([]) } finally { setSearching(false) }
   }
   function openCast() {
+    // iPhone / iPad / Mac: the system AirPlay list (every AirPlay TV on this device's network)
+    if (HAS_AIRPLAY) { airplay(); return }
     setPanel('cast')
     if (!devices) void loadDevices(false)
   }
@@ -604,8 +632,9 @@ export default function VideoPlayer({
       videoRef.current?.pause()
       setCast({ device: d, status: null })
       toast.success(`Lecture sur ${d.name}`, { id })
-    } catch {
-      toast.error(`${d.name} n’a pas accepté la vidéo`, { id })
+    } catch (err) {
+      toast.dismiss(id)
+      showError(`${d.name} n’a pas accepté la vidéo`, serverError(err))
     }
   }
 
@@ -663,8 +692,28 @@ export default function VideoPlayer({
     pointerEvents: on ? 'auto' : 'none',
   })
   const iconBtn = 'w-11 h-11 grid place-items-center rounded-full hover:bg-white/10 active:bg-white/20 active:scale-95 transition-transform'
+  const iconBtnBar = 'w-11 h-9 grid place-items-center rounded-full hover:bg-white/10 active:bg-white/20 active:scale-95 transition-transform'
   const CastIcon = HAS_AIRPLAY ? Airplay : Cast
   const castPlaying = cast?.status?.state !== 'paused'
+  /** Outside full screen the buttons sit in the page's top bar (above the video), else over it */
+  const inPlayerActions = fullscreen || !toolbarSlot
+  const actions = (glass: 'media' | 'bar') => (
+    <div className={`flex items-center rounded-pill p-0.5 flex-shrink-0 ${glass === 'media' ? 'glass-media' : 'glass-clear text-white'}`}>
+      <button type="button" className={glass === 'media' ? iconBtn : iconBtnBar} onClick={openCast} aria-label={HAS_AIRPLAY ? 'AirPlay' : 'Diffuser sur un écran'} title={HAS_AIRPLAY ? 'AirPlay' : 'Diffuser'}>
+        <CastIcon size={glass === 'media' ? 20 : 19} strokeWidth={1.75} />
+      </button>
+      {pipSupported && (
+        <button type="button" className={glass === 'media' ? iconBtn : iconBtnBar} onClick={togglePip} aria-label={pip ? 'Quitter l’image dans l’image' : 'Image dans l’image'} aria-pressed={pip} title="Image dans l’image">
+          <PictureInPicture2 size={glass === 'media' ? 20 : 19} strokeWidth={1.75} />
+        </button>
+      )}
+      {touch && (
+        <button type="button" className={glass === 'media' ? iconBtn : iconBtnBar} onClick={() => { setLocked(true); setShowControls(false); setPanel(null) }} aria-label="Verrouiller l’écran" title="Verrouiller">
+          <Lock size={glass === 'media' ? 19 : 18} strokeWidth={1.75} />
+        </button>
+      )}
+    </div>
+  )
 
   return (
     <div
@@ -767,21 +816,7 @@ export default function VideoPlayer({
             <LockOpen size={18} strokeWidth={2} aria-hidden="true" /> Déverrouiller
           </button>
         ) : (
-          <div className="flex items-center rounded-pill glass-media p-0.5 flex-shrink-0">
-            <button type="button" className={iconBtn} onClick={openCast} aria-label="Diffuser sur un écran" title="Diffuser">
-              <CastIcon size={20} strokeWidth={1.75} />
-            </button>
-            {pipSupported && (
-              <button type="button" className={iconBtn} onClick={togglePip} aria-label={pip ? 'Quitter l’image dans l’image' : 'Image dans l’image'} aria-pressed={pip} title="Image dans l’image">
-                <PictureInPicture2 size={20} strokeWidth={1.75} />
-              </button>
-            )}
-            {touch && (
-              <button type="button" className={iconBtn} onClick={() => { setLocked(true); setShowControls(false) }} aria-label="Verrouiller l’écran" title="Verrouiller">
-                <Lock size={19} strokeWidth={1.75} />
-              </button>
-            )}
-          </div>
+          inPlayerActions && actions('media')
         )}
       </div>
 
@@ -907,6 +942,18 @@ export default function VideoPlayer({
         )}
       </div>
       </div>
+
+      {!inPlayerActions && !locked && createPortal(actions('bar'), toolbarSlot!)}
+
+      <PlayerPanel open={panel === 'pip'} title="Image dans l’image" onClose={() => setPanel(null)}>
+        <div className="px-3 pb-2 flex flex-col gap-3 text-[14px] text-white/80">
+          <p>iOS ne permet pas l’image dans l’image dans les apps ajoutées à l’écran d’accueil (limite d’Apple).</p>
+          <p>Ouvre ce film dans Safari : l’image dans l’image y marche, et la vidéo continue toute seule en petit quand tu quittes Safari. La lecture reprend au même endroit (connecte-toi dans Safari la première fois).</p>
+          <button type="button" className="self-start h-11 px-5 rounded-pill bg-white text-black text-[15px] font-semibold active:scale-95 transition-transform" onClick={openInSafari}>
+            Ouvrir dans Safari
+          </button>
+        </div>
+      </PlayerPanel>
 
       <PlayerPanel open={panel === 'episodes'} title="Épisodes" onClose={() => setPanel(null)}>
         {episodes?.map((ep) => (

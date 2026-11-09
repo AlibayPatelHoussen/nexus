@@ -80,10 +80,20 @@ export function parseDescription(xml: string, location: string): CastDevice | nu
   return null
 }
 
-async function fetchText(url: string, init: RequestInit = {}): Promise<string> {
-  const res = await fetch(url, { ...init, signal: AbortSignal.timeout(HTTP_TIMEOUT) })
+const ROKU_REFUSED = 'La Roku refuse les commandes du réseau. Sur la TV : Paramètres › Système › Paramètres système avancés › ' +
+  'Contrôle par les applications mobiles › Accès réseau › « Permissif ». Les Roku récentes ont aussi retiré la lecture d’une vidéo ' +
+  'envoyée ainsi : utilise plutôt AirPlay depuis l’iPhone (les TV Roku le gèrent).'
+
+async function fetchText(url: string, init: RequestInit = {}, roku = false): Promise<string> {
+  let res: Response
+  try {
+    res = await fetch(url, { ...init, signal: AbortSignal.timeout(HTTP_TIMEOUT) })
+  } catch {
+    throw new AppError('La TV ne répond pas (éteinte, ou plus sur le réseau du serveur)', 502, true, 'CAST_UNREACHABLE')
+  }
   const text = await res.text()
-  if (!res.ok) throw new AppError(`La TV a répondu ${res.status}`, 502, true, 'CAST_DEVICE_ERROR')
+  if (roku && (res.status === 401 || res.status === 403)) throw new AppError(ROKU_REFUSED, 502, true, 'CAST_ROKU_REFUSED')
+  if (!res.ok) throw new AppError(`La TV a refusé la commande (erreur ${res.status})`, 502, true, 'CAST_DEVICE_ERROR')
   return text
 }
 
@@ -198,7 +208,7 @@ export async function castPlay(d: CastDevice, url: string, title: string, file: 
   if (d.kind === 'roku') {
     const ext = path.extname(file).slice(1).toLowerCase() || 'mp4'
     const q = new URLSearchParams({ t: 'v', u: url, k: '(null)', videoName: title, videoFormat: ext === 'm4v' ? 'mp4' : ext })
-    await fetchText(new URL(`input/15985?${q}`, d.url).toString(), { method: 'POST' })
+    await fetchText(new URL(`input/15985?${q}`, d.url).toString(), { method: 'POST' }, true)
     return
   }
   // Some renderers refuse a new media while playing: stopped first (errors ignored)
@@ -218,7 +228,7 @@ export async function castPlay(d: CastDevice, url: string, title: string, file: 
 
 export async function castStatus(d: CastDevice): Promise<CastStatus> {
   if (d.kind === 'roku') {
-    const xml = await fetchText(new URL('query/media-player', d.url).toString())
+    const xml = await fetchText(new URL('query/media-player', d.url).toString(), {}, true)
     const state = /<player[^>]*\sstate="([^"]+)"/i.exec(xml)?.[1] ?? 'none'
     const ms = (n: string) => { const v = tag(xml, n); return v ? parseInt(v, 10) / 1000 : null }
     return {
@@ -240,10 +250,10 @@ export async function castStatus(d: CastDevice): Promise<CastStatus> {
 export async function castControl(d: CastDevice, action: 'play' | 'pause' | 'stop' | 'seek', position = 0): Promise<void> {
   if (d.kind === 'roku') {
     if (action === 'seek') throw new AppError('Une Roku ne permet pas de choisir la position à distance', 422, true, 'CAST_UNSUPPORTED')
-    if (action === 'stop') { await fetchText(new URL('keypress/Back', d.url).toString(), { method: 'POST' }); return }
+    if (action === 'stop') { await fetchText(new URL('keypress/Back', d.url).toString(), { method: 'POST' }, true); return }
     // Play is a toggle on Roku: only sent when it changes something
     const { state } = await castStatus(d)
-    if ((action === 'play') !== (state === 'playing')) await fetchText(new URL('keypress/Play', d.url).toString(), { method: 'POST' })
+    if ((action === 'play') !== (state === 'playing')) await fetchText(new URL('keypress/Play', d.url).toString(), { method: 'POST' }, true)
     return
   }
   if (action === 'play') await soap(d, 'Play', { Speed: 1 })

@@ -102,6 +102,21 @@ describe('Cast to a TV (DLNA / Roku)', () => {
     } finally { tv.close() }
   })
 
+  it('Roku refusing network commands (« Contrôle par les applications mobiles »): says how to allow it', async () => {
+    const refusing = http.createServer((req, res) => {
+      if (req.url === '/') { res.end('<root><device><deviceType>urn:roku-com:device:player:1-0</deviceType><serialNumber>X3</serialNumber></device></root>'); return }
+      res.statusCode = 403; res.end()
+    })
+    await new Promise<void>((r) => refusing.listen(0, '127.0.0.1', r))
+    try {
+      const d = await probeLocation(`http://127.0.0.1:${(refusing.address() as AddressInfo).port}/`)
+      const res = await request(app).post('/api/cast/play').set(user).send({ deviceId: d!.id, path: FILE })
+      expect(res.status).toBe(502)
+      expect(res.body.error).toMatch(/Contrôle par les applications mobiles/)
+      expect(res.body.error).toMatch(/AirPlay/)
+    } finally { refusing.close() }
+  })
+
   it('only discovered TVs, only library files, signed in', async () => {
     expect((await request(app).post('/api/cast/play').set(user).send({ deviceId: 'dlna:http://169.254.169.254/', path: FILE })).status).toBe(404)
     const tv = await fakeTv(DLNA)
