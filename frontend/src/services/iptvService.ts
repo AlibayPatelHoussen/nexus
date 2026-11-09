@@ -46,6 +46,15 @@ export interface IptvSummary extends IptvFacets {
   /** The owner's priority countries, in their order; `count: 0` when no source has a channel for it */
   priority: { code: string; name: string | null; flag: string | null; count: number; items: IptvChannel[] }[]
 }
+/** Why a stream is left with its sound only: a radio, no ffmpeg on the server, too many
+ *  conversions running, a stream the server could not read, a conversion that failed */
+export type PictureReason = 'audio' | 'ffmpeg' | 'busy' | 'unreadable' | 'failed'
+export interface PictureAnswer {
+  video: string | null; audio: string | null
+  /** The server converts the picture: play `convertedUrl` */
+  convert: boolean
+  reason: PictureReason | null
+}
 export interface IptvSettings { autoRefresh: boolean; hideOffline: boolean; epgUrl: string | null; priorityCountries: string[] }
 /** 'top': priority countries, verified channels and the Free-TV selection first */
 export type ChannelSort = 'top' | 'name' | '-name'
@@ -74,4 +83,8 @@ export const iptvService = {
   refresh: () => data<IptvRefresh>(api.post('/iptv/refresh')),
   /** Playlist relayed by the server (stream token in the URL: media elements send no header) */
   playUrl: (id: string, stream: number, token: string) => `/api/iptv/play/${enc(id)}/${stream}/index.m3u8?token=${enc(token)}`,
+  /** A stream that plays with sound only: what it holds; its picture converted by the server when
+   *  it can be (answers once the converted stream is ready: up to a minute) */
+  convert: (id: string, stream: number) => data<PictureAnswer>(api.post(`/iptv/play/${enc(id)}/${stream}/convert`, undefined, { timeout: 90_000 })),
+  convertedUrl: (id: string, stream: number, token: string) => `/api/iptv/play/${enc(id)}/${stream}/converted/index.m3u8?token=${enc(token)}`,
 }

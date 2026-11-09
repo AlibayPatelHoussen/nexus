@@ -10,8 +10,8 @@ import { buildIndex, indexProgress, readIndex, segmentCuts } from './keyframes'
 const execFileAsync = promisify(execFile)
 
 // ─── Configuration ────────────────────────────────────
-const FFMPEG  = process.env.FFMPEG_PATH  || 'ffmpeg'
-const FFPROBE = process.env.FFPROBE_PATH || 'ffprobe'
+export const FFMPEG  = process.env.FFMPEG_PATH  || 'ffmpeg'
+export const FFPROBE = process.env.FFPROBE_PATH || 'ffprobe'
 /** HLS segment length in seconds */
 export const SEGMENT_SECONDS = 6
 /** Kill a transcode when the player stopped asking for it (no playlist/segment request) */
@@ -21,6 +21,8 @@ const MAX_JOBS = parseInt(process.env.TRANSCODE_MAX_JOBS || '3', 10)
 const BASE = process.env.TRANSCODE_DIR || path.join(os.tmpdir(), 'nexus-hls')
 /** One directory per backend process, so a restart never deletes a running conversion of another process */
 const ROOT = path.join(BASE, String(process.pid))
+/** Where conversions write (cleaned when the process that made them is gone) */
+export const TRANSCODE_ROOT = ROOT
 
 // ─── Probing ──────────────────────────────────────────
 export interface ProbeStream {

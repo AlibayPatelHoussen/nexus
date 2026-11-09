@@ -48,7 +48,9 @@ npm workspaces (`frontend`, `backend`); run from the repo root unless noted.
   Free-TV playlist (`freetv.py`), checks streams, and looks up the stream behind a YouTube / Twitch /
   Dailymotion live page with yt-dlp (`resolver.py`). `services/iptv.ts` keeps it in the `iptv_*` tables
   (priority countries first, background checks a few at a time); `services/iptvProxy.ts` relays streams
-  through signed addresses (a stream address never reaches the browser). Pages in `pages/iptv/`.
+  through signed addresses (a stream address never reaches the browser). A stream that plays with sound
+  only (MPEG-2, HEVC…) is converted live by ffmpeg, which reads it through the relay
+  (`services/iptvConvert.ts`; the player's side is `pages/iptv/picture.ts`). Pages in `pages/iptv/`.
 - **Deploy**: GitHub webhook `routes/deploy.ts` only writes a request file; `scripts/auto-deploy.sh`
   (systemd path unit) runs `scripts/deploy.sh` outside the app (build, `scripts/migrate-db.sh`, restart).
   Settings › Version compares interface and server commits.

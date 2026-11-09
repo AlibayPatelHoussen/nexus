@@ -4,6 +4,13 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Fixed — IPTV: channels with sound but no picture
+- A playlist that lists a sound-only variant first (for slow networks) made the player start on it and never show the picture: those variants are now left out, the picture shows at once
+- Video in a format the browser does not read (MPEG-2 from old broadcast encoders, HEVC on a browser without it, 10-bit H.264): the player notices (sound running, no picture), tries the channel's other streams, then asks the server, which converts the picture live to H.264 with ffmpeg (720p at most, two conversions at a time, stopped 30 s after the last viewer). Shown as « image convertie par le serveur »; the browser remembers the stream and asks for the conversion at once the next time
+- A channel that sends no picture at all (a radio) says « Son uniquement » with its logo instead of a black screen; the sound goes on
+- ffmpeg reads the stream through the Nexus relay (same safety checks and headers as the player), never a catalogue address itself
+- Tests: backend (MPEG-2 converted to H.264, radio, errors), frontend (variants left out), E2E (the three cases in a real browser)
+
 ### Added — IPTV: Free-TV as a second source, Canada / France / Madagascar / US first
 - The hand-picked playlist of Free-TV/IPTV (about 2 000 free channels) is merged into the iptv-org catalogue: same channel → one entry with the streams of both (Free-TV's tried first), otherwise a new channel. About 770 more channels; nothing is invented (what Free-TV does not say stays empty). iptv-org down: the catalogue is built from Free-TV alone
 - Priority countries (Canada, France, Madagascar, United States by default, editable in Paramètres IPTV › Pays en priorité): a shelf per country on the IPTV home, first in every list (new « Priorité » order, the default; A→Z / Z→A still there), checked first in the background. Inside a country, the Free-TV order (the channels people expect) comes first

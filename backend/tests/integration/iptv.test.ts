@@ -3,12 +3,14 @@ import http from 'http'
 import os from 'os'
 import path from 'path'
 import { AddressInfo } from 'net'
+import { execFileSync } from 'child_process'
 import request from 'supertest'
 import { app } from '../../src/index'
 import { query } from '../../src/config/database'
 import { makeToken } from '../helpers'
 import { checkChannel, checkDueChannels, importCatalogue, refreshCatalogue } from '../../src/services/iptv'
 import { rewritePlaylist } from '../../src/services/iptvProxy'
+import { convertJobs, stopConversions } from '../../src/services/iptvConvert'
 
 /*
  * IPTV: catalogue queries and filters, favourites / history per user, settings, the stream
@@ -16,6 +18,8 @@ import { rewritePlaylist } from '../../src/services/iptvProxy'
  * Then the second source (Free-TV): its selection and the priority countries first, the stream
  * a check found working, and the lives given as a web page (YouTube…), looked up by a stand-in
  * for yt-dlp.
+ * Last: a stream that plays with sound only (MPEG-2 video, a radio), its picture converted by
+ * ffmpeg through the relay.
  */
 
 let alice = { Authorization: '' }, bob = { Authorization: '' }
@@ -25,6 +29,8 @@ const admin = { Authorization: `Bearer ${makeToken('admin')}` }
 // ─── A local fake IPTV server ────────────────────────────────────────────────
 const hits: { path: string; ua?: string; referer?: string }[] = []
 let base = ''
+/** Streams generated with ffmpeg for the conversion tests, served under /gen/ */
+const genDir = fs.mkdtempSync(path.join(os.tmpdir(), 'nexus-iptv-gen-'))
 const server = http.createServer((req, res) => {
   hits.push({ path: req.url!, ua: req.headers['user-agent'], referer: req.headers.referer })
   const u = req.url!.split('?')[0]
@@ -57,6 +63,9 @@ const server = http.createServer((req, res) => {
   }
   if (u in api) return send(200, JSON.stringify(api[u]), 'application/json')
   if (u === '/index.m3u') return send(200, '#EXTM3U\n')
+  if (u.startsWith('/gen/') && !u.includes('..') && fs.existsSync(path.join(genDir, u.slice(5)))) {
+    return send(200, fs.readFileSync(path.join(genDir, u.slice(5))), u.endsWith('.m3u8') ? 'application/vnd.apple.mpegurl' : 'video/mp2t')
+  }
   send(404, 'missing', 'text/plain')
 })
 
@@ -462,4 +471,82 @@ describe('IPTV second source (Free-TV), priority countries, web pages', () => {
     await query(`UPDATE iptv_channels SET status = 'offline' WHERE id = 'Zed.fr'`)
     expect(ids((await list('country=FR')).items)).toEqual(['Alpha.fr', 'Beta.fr', 'Zed.fr'])
   }, 120_000)
+})
+
+// Real ffmpeg is required: skipped (with a notice) on machines without it
+let hasFfmpeg = true
+try { execFileSync('ffmpeg', ['-version'], { stdio: 'ignore' }) } catch { hasFfmpeg = false }
+if (!hasFfmpeg) console.warn('ffmpeg not installed: IPTV conversion tests skipped')
+
+;(hasFfmpeg ? describe : describe.skip)('IPTV stream with sound only: its picture converted by the server', () => {
+  const token = () => makeToken('user', 'stream')
+  let listener: http.Server
+
+  beforeAll(async () => {
+    const hls = (name: string, args: string[]) => {
+      fs.mkdirSync(path.join(genDir, name), { recursive: true })
+      execFileSync('ffmpeg', ['-loglevel', 'error', '-y', ...args, '-f', 'hls', '-hls_time', '2', '-hls_list_size', '0', '-hls_playlist_type', 'vod', path.join(genDir, name, 'index.m3u8')])
+    }
+    const tone = ['-f', 'lavfi', '-i', 'sine=frequency=440']
+    // What an old broadcast encoder sends (a browser plays its sound, not its picture), and a radio
+    hls('old', ['-f', 'lavfi', '-i', 'testsrc=size=320x180:rate=25', ...tone, '-t', '12', '-c:v', 'mpeg2video', '-b:v', '600k', '-g', '12', '-c:a', 'mp2', '-b:a', '96k'])
+    hls('radio', [...tone, '-t', '8', '-c:a', 'aac', '-b:a', '64k'])
+    // ffmpeg reads the stream through the relay: the server must be listening
+    listener = app.listen(0, '127.0.0.1')
+    await new Promise<void>((r) => listener.once('listening', () => r()))
+    process.env.NEXUS_INTERNAL_URL = `http://127.0.0.1:${(listener.address() as AddressInfo).port}`
+    await importCatalogue({
+      generated_at: new Date().toISOString(), source: 'api',
+      channels: [
+        channel('Old.fr', 'Vieux Format', { streams: [{ url: `${base}/gen/old/index.m3u8` }] }),
+        channel('Radio.fr', 'Radio Test', { streams: [{ url: `${base}/gen/radio/index.m3u8` }] }),
+        channel('Gone.fr', 'Parti', { streams: [{ url: `${base}/gen/missing/index.m3u8` }] }),
+      ],
+      countries: [], categories: [], languages: [],
+    })
+  }, 120_000)
+  afterAll(() => {
+    stopConversions()
+    listener?.close()
+    delete process.env.NEXUS_INTERNAL_URL
+    fs.rmSync(genDir, { recursive: true, force: true })
+  })
+
+  it('MPEG-2 video is converted to H.264: a playlist and segments the browser reads', async () => {
+    const res = await request(app).post('/api/iptv/play/Old.fr/0/convert').set(alice)
+    expect(res.status).toBe(200)
+    expect(res.body.data).toEqual({ video: 'mpeg2video', audio: 'mp2', convert: true, reason: null })
+    const list = await request(app).get(`/api/iptv/play/Old.fr/0/converted/index.m3u8?token=${token()}`)
+    expect(list.status).toBe(200)
+    expect(list.headers['content-type']).toMatch(/mpegurl/)
+    const line = list.text.split('\n').find((l) => /^seg\d+\.ts\?token=/.test(l))!
+    expect(line).toBeTruthy()
+    const seg = await request(app).get(`/api/iptv/play/Old.fr/0/converted/${line}`).buffer(true)
+    expect(seg.status).toBe(200)
+    expect(seg.headers['content-type']).toBe('video/mp2t')
+    const file = path.join(genDir, 'converted.ts')
+    fs.writeFileSync(file, seg.body)
+    const codecs = execFileSync('ffprobe', ['-v', 'error', '-show_entries', 'stream=codec_name', '-of', 'csv=p=0', file]).toString().trim().split(/\s+/)
+    expect([...new Set(codecs)].sort()).toEqual(['aac', 'h264'])
+    // One conversion per stream, shared by its viewers
+    expect((await request(app).post('/api/iptv/play/Old.fr/0/convert').set(bob)).body.data.convert).toBe(true)
+    expect(convertJobs()).toEqual(['Old.fr|0'])
+  }, 120_000)
+
+  it('a stream without any picture is a radio: nothing to convert', async () => {
+    const res = await request(app).post('/api/iptv/play/Radio.fr/0/convert').set(alice)
+    expect(res.body.data).toEqual({ video: null, audio: 'aac', convert: false, reason: 'audio' })
+    expect(convertJobs()).toEqual(['Old.fr|0'])
+  }, 60_000)
+
+  it('says when the stream cannot be read; needs a session; a stopped conversion says so', async () => {
+    expect((await request(app).post('/api/iptv/play/Gone.fr/0/convert').set(alice)).body.data).toMatchObject({ convert: false, reason: 'unreadable' })
+    expect((await request(app).post('/api/iptv/play/Old.fr/0/convert')).status).toBe(401)
+    expect((await request(app).post('/api/iptv/play/Old.fr/7/convert').set(alice)).status).toBe(404)
+    expect((await request(app).get('/api/iptv/play/Old.fr/0/converted/index.m3u8')).status).toBe(401)
+    expect((await request(app).get(`/api/iptv/play/Old.fr/0/converted/..%2Findex.m3u8?token=${token()}`)).status).toBe(404)
+    stopConversions()
+    expect((await request(app).get(`/api/iptv/play/Old.fr/0/converted/index.m3u8?token=${token()}`)).status).toBe(410)
+    expect((await request(app).get(`/api/iptv/play/Old.fr/0/converted/seg000000.ts?token=${token()}`)).status).toBe(410)
+  }, 60_000)
 })
