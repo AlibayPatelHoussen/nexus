@@ -18,7 +18,7 @@ const SETTLE = { type: 'spring', stiffness: 300, damping: 28 } as const
 const GLIDE_MS = 170
 /** …and shrinks back into the pill of that tab (CSS transition: run by the compositor,
  * so the page rendering meanwhile cannot make it stutter) */
-const SHRINK_MS = 400
+const SHRINK_MS = 260
 // iOS-like curves: a springy grow (slight overshoot), a soft settle back
 const GROW = 'cubic-bezier(0.2, 0.9, 0.25, 1.18)'
 const SHRINK = 'cubic-bezier(0.3, 0.7, 0.2, 1)'
@@ -162,6 +162,17 @@ export default function TabBar() {
     if (wait) releaseTimer.current = setTimeout(shrink, wait)
     else shrink()
   }
+  // A touch whose end never reaches the bar (iOS took the gesture: edge swipe, app sent to the
+  // background, page changed…) must not leave the lens stuck: it is ended as cancelled
+  const endRef = useRef<(select: boolean) => void>(() => {})
+  useEffect(() => {
+    const cancel = () => { if (down.current) endRef.current(false) }
+    const onVisibility = () => { if (document.hidden) cancel() }
+    window.addEventListener('blur', cancel)
+    document.addEventListener('visibilitychange', onVisibility)
+    return () => { window.removeEventListener('blur', cancel); document.removeEventListener('visibilitychange', onVisibility) }
+  }, [])
+  useEffect(() => { if (down.current) endRef.current(false) }, [pathname])
   const onPointerMove = (e: React.PointerEvent) => {
     if (!down.current) return
     const x = relX(e.clientX)
@@ -197,6 +208,7 @@ export default function TabBar() {
       else if (again) window.scrollTo({ top: 0, behavior: reduced ? 'auto' : 'smooth' })
     }, reduced ? 0 : GLIDE_MS)
   }
+  endRef.current = (select) => end(select)
   const pill = under ?? active
   // The pill moves instantly when the finger chose the tab (it is hidden under the lens);
   // it slides on a spring only when the tab changes some other way (back, keyboard…)
@@ -230,6 +242,7 @@ export default function TabBar() {
         onPointerMove={onPointerMove}
         onPointerUp={(e) => end(true, e.clientX)}
         onPointerCancel={() => end(false)}
+        onLostPointerCapture={() => { if (down.current) end(false) }}
         // The pointer already chose the tab; the links' own clicks are for the keyboard
         onClickCapture={(e) => { if (handled.current) { e.preventDefault(); handled.current = false } }}
       >
@@ -251,7 +264,7 @@ export default function TabBar() {
                 initial={false}
                 // Hidden under the lens while touching; comes back as the lens shrinks into it
                 animate={{ x: PAD + pill * tabW, opacity: pressing ? 0 : 1 }}
-                transition={{ x: pillMove, opacity: pressing ? { duration: 0.08 } : { duration: 0.2, delay: reduced ? 0 : 0.12, ease: 'easeOut' } }}
+                transition={{ x: pillMove, opacity: pressing ? { duration: 0.08 } : { duration: 0.16, delay: reduced ? 0 : 0.06, ease: 'easeOut' } }}
               />
             )}
             {/* The glass lens: grows out of the pill when touched, follows the finger, glides to the
@@ -269,7 +282,7 @@ export default function TabBar() {
                   opacity: pressing && !reduced ? 1 : 0,
                   transition: reduced ? 'none' : pressing
                     ? `transform 420ms ${GROW}, opacity 90ms ease-out`
-                    : `transform ${SHRINK_MS}ms ${SHRINK}, opacity ${SHRINK_MS - 120}ms ease-in 120ms`,
+                    : `transform ${SHRINK_MS}ms ${SHRINK}, opacity ${SHRINK_MS - 70}ms ease-in 70ms`,
                 }}
               />
             </motion.span>
