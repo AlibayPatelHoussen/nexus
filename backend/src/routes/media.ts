@@ -25,6 +25,16 @@ router.get('/', asyncHandler(async (req: Request, res: Response) => {
   res.json({ success: true, data: result })
 }))
 
+// « À la une »: a new random draw among every title of this type at each visit
+router.get('/featured', asyncHandler(async (req: Request, res: Response) => {
+  const type = String(req.query.type ?? '')
+  if (!['film', 'serie', 'anime', 'manga', 'webtoon', 'youtube'].includes(type)) {
+    res.status(400).json({ success: false, error: 'Unknown type' }); return
+  }
+  res.set('Cache-Control', 'no-store')
+  res.json({ success: true, data: await MediaService.getFeatured(type, Number(req.query.count) || 8) })
+}))
+
 router.get('/recent',   asyncHandler(async (req: Request, res: Response) => {
   const items = await MediaService.getRecentlyAdded(req.query.type as string, parseInt(req.query.limit as string || '12'))
   res.json({ success: true, data: items })
