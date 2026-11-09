@@ -104,6 +104,7 @@ export default function SettingsPage() {
         )}
 
         {user?.role === 'admin' && <NotificationsGroup />}
+        <UsernameGroup />
         <PasswordGroup />
         <VersionGroup />
 
@@ -112,6 +113,73 @@ export default function SettingsPage() {
         </Group>
       </div>
     </Page>
+  )
+}
+
+const USERNAME_RE = /^[a-zA-Z0-9_-]{3,50}$/
+
+function UsernameGroup() {
+  const user = useAuthStore((s) => s.user)
+  const setAuth = useAuthStore((s) => s.setAuth)
+  const [name, setName] = useState(user?.username ?? '')
+  const [password, setPassword] = useState('')
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const trimmed = name.trim()
+  const changed = !!trimmed && trimmed !== user?.username
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault()
+    if (!USERNAME_RE.test(trimmed)) { setError('3 à 50 caractères : lettres, chiffres, _ et - (sans espace ni accent).'); return }
+    setSaving(true); setError(null)
+    try {
+      const res = await authService.changeUsername(trimmed, password)
+      setAuth(res.user, res.accessToken)
+      toast.success('Nom d’utilisateur modifié')
+      setName(res.user.username); setPassword('')
+    } catch (err) {
+      const status = (err as { response?: { status?: number } })?.response?.status
+      setError(status === 409 ? 'Ce nom d’utilisateur est déjà pris.'
+        : status === 401 ? 'Le mot de passe est incorrect.'
+        : status === 422 ? '3 à 50 caractères : lettres, chiffres, _ et - (sans espace ni accent).'
+        : 'Impossible de modifier le nom d’utilisateur.')
+    } finally { setSaving(false) }
+  }
+
+  const row = 'nx-row relative flex items-center gap-3 px-4 min-h-row'
+  const input = 'flex-1 min-w-0 bg-transparent outline-none text-label placeholder:text-label3 py-2'
+  const described = error ? 'username-error' : undefined
+  return (
+    <form onSubmit={submit} aria-labelledby="username-h">
+      <Group id="username" header="Nom d’utilisateur" footer="Sert à te connecter. Ton mot de passe est demandé pour le changer.">
+        <div role="listitem" className={row}>
+          <label htmlFor="user-name" className="w-[120px] max-md:w-[110px] flex-shrink-0 text-label">Nom</label>
+          <input
+            id="user-name" type="text" autoComplete="username" autoCapitalize="none" autoCorrect="off" spellCheck={false}
+            value={name} onChange={(e) => { setName(e.target.value); setError(null) }} required maxLength={50}
+            className={input} aria-invalid={!!error || undefined} aria-describedby={described}
+          />
+        </div>
+        {changed && (
+          <div role="listitem" className={row}>
+            <label htmlFor="user-pwd" className="w-[120px] max-md:w-[110px] flex-shrink-0 text-label">Mot de passe</label>
+            <input
+              id="user-pwd" type="password" autoComplete="current-password"
+              value={password} onChange={(e) => { setPassword(e.target.value); setError(null) }} required
+              className={input} placeholder="Requis" aria-invalid={!!error || undefined} aria-describedby={described}
+            />
+          </div>
+        )}
+      </Group>
+      {error && <p id="username-error" role="alert" className="text-subhead text-danger-text px-4 pt-2">{error}</p>}
+      {changed && (
+        <div className="flex justify-end px-1 pt-3">
+          <Button type="submit" variant="primary" loading={saving} disabled={!password} className="max-md:w-full max-md:min-h-[44px]">
+            Modifier le nom d’utilisateur
+          </Button>
+        </div>
+      )}
+    </form>
   )
 }
 

@@ -25,6 +25,12 @@ export const authService = {
     return data.data
   },
 
+  async changeUsername(username: string, currentPassword: string): Promise<{ user: User; accessToken: string }> {
+    const { data } = await api.patch<{ success: boolean; data: { user: User; accessToken: string } }>(
+      '/auth/username', { username, currentPassword })
+    return data.data
+  },
+
   async changePassword(currentPassword: string, newPassword: string): Promise<void> {
     await api.patch('/auth/password', { currentPassword, newPassword })
   },
