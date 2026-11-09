@@ -13,6 +13,7 @@ router.post('/register', authenticate, requireAdmin, controller.registerValidato
 router.get('/me',        authenticate, asyncHandler(controller.me))
 router.get('/stream-token', authenticate, controller.streamToken)
 router.patch('/password', authenticate, controller.changePasswordValidators, asyncHandler(controller.changePassword))
+router.patch('/username', authLimiter, authenticate, controller.changeUsernameValidators, asyncHandler(controller.changeUsername))
 router.patch('/theme',    authenticate, asyncHandler(controller.updateTheme))
 
 export default router

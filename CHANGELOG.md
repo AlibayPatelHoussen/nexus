@@ -4,6 +4,9 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Added — change your user name in Réglages
+- Réglages › Nom d’utilisateur: type the new name, confirm with your password. 3 to 50 letters, digits, _ or -; a name (or e-mail) already used, whatever the case, is refused. The new name is shown at once and is the one to log in with (`PATCH /api/auth/username`)
+
 ### Changed — anime synopses and genres in French
 - An anime's synopsis is now taken in French: TMDB's French synopsis first, else anime-sama's, AniList's English one only as a last resort; a French synopsis replaces the English one stored by earlier scans
 - AniList genres are translated into French and refreshed. Existing animes are updated by « Analyser la bibliothèque »

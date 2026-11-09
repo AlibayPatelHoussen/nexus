@@ -16,13 +16,20 @@ export const loginValidators = [
   body('password').notEmpty().withMessage('Password is required'),
 ]
 
+const usernameRule = () => body('username')
+  .trim()
+  .isLength({ min: 3, max: 50 })
+  .withMessage('Username must be 3–50 characters')
+  .matches(/^[a-zA-Z0-9_-]+$/)
+  .withMessage('Username can only contain letters, numbers, _ and -')
+
+export const changeUsernameValidators = [
+  usernameRule(),
+  body('currentPassword').notEmpty().withMessage('Current password is required'),
+]
+
 export const registerValidators = [
-  body('username')
-    .trim()
-    .isLength({ min: 3, max: 50 })
-    .withMessage('Username must be 3–50 characters')
-    .matches(/^[a-zA-Z0-9_-]+$/)
-    .withMessage('Username can only contain letters, numbers, _ and -'),
+  usernameRule(),
   body('email').isEmail().withMessage('Valid email required').normalizeEmail(),
   body('password')
     .isLength({ min: 8 })
@@ -80,6 +87,13 @@ export async function changePassword(req: Request, res: Response): Promise<void>
   const { currentPassword, newPassword } = req.body
   await AuthService.changePassword(req.user!.userId, currentPassword, newPassword)
   res.json({ success: true, message: 'Password updated' })
+}
+
+export async function changeUsername(req: Request, res: Response): Promise<void> {
+  validate(req)
+  const { username, currentPassword } = req.body
+  const data = await AuthService.changeUsername(req.user!.userId, username, currentPassword)
+  res.json({ success: true, data })
 }
 
 export async function updateTheme(req: Request, res: Response): Promise<void> {

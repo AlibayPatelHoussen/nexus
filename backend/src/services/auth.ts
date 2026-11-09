@@ -183,6 +183,26 @@ export class AuthService {
     await query('DELETE FROM refresh_tokens WHERE user_id = $1', [userId])
   }
 
+  // ─── Change Username ──────────────────────────────
+  /** Rename the account (password asked again); returns the user and an access token with the new name. */
+  static async changeUsername(userId: string, username: string, currentPassword: string) {
+    const result = await query<User>('SELECT * FROM users WHERE id = $1', [userId])
+    if (result.rows.length === 0) throw new NotFoundError('User')
+    const user = result.rows[0]
+    if (!await bcrypt.compare(currentPassword, user.password)) throw new UnauthorizedError('Current password is incorrect')
+
+    // Unique without regard to case, and never someone else's e-mail (login takes both)
+    const taken = await query(
+      'SELECT 1 FROM users WHERE id <> $1 AND (LOWER(username) = LOWER($2) OR LOWER(email) = LOWER($2))', [userId, username])
+    if (taken.rows.length) throw new ConflictError('Username already taken')
+
+    await query('UPDATE users SET username = $1 WHERE id = $2', [username, userId])
+    return {
+      accessToken: this.generateAccessToken({ userId, username, role: user.role }),
+      user: { id: user.id, username, email: user.email, role: user.role, theme: user.theme },
+    }
+  }
+
   // ─── Update Theme ────────────────────────────────
   static async updateTheme(userId: string, theme: 'dark' | 'light'): Promise<void> {
     await query('UPDATE users SET theme = $1 WHERE id = $2', [theme, userId])
