@@ -3,8 +3,8 @@ import asyncHandler from 'express-async-handler'
 import { authenticate, authenticateStream, requireAdmin } from '../middleware/auth'
 import { NotFoundError, ValidationError } from '../utils/errors'
 import {
-  addFavorite, assertChannelId, checkChannel, facets, favorites, getChannel, getSettings, listChannels, recentChannels,
-  recordWatch, refreshCatalogue, refreshState, removeFavorite, reorderFavorites, saveSettings, streamOf, summary,
+  addFavorite, assertChannelId, checkChannel, facets, favorites, forgetPage, getChannel, getSettings, listChannels, playable,
+  recentChannels, recordWatch, refreshCatalogue, refreshState, removeFavorite, reorderFavorites, saveSettings, streamOf, summary,
   type ChannelFilters,
 } from '../services/iptv'
 import { relay, signUrl, validUrlSignature } from '../services/iptvProxy'
@@ -28,7 +28,10 @@ router.get('/play/:id/:s/index.m3u8', authenticateStream, asyncHandler(async (re
   const { id, s } = playParams(req)
   const stream = await streamOf(id, s)
   if (!stream) throw new NotFoundError('Flux')
-  await relay(req, res, { id, s, url: stream.url, stream, relayPath: relayPath(req, id, s) })
+  // A web page (a YouTube, Twitch or Dailymotion live): the stream behind it, found now or a moment ago
+  const target = await playable(stream, true)
+  const sent = await relay(req, res, { id, s, url: target.url, stream: target, relayPath: relayPath(req, id, s), entry: true })
+  if (!sent) forgetPage(stream)
 }))
 
 router.get('/play/:id/:s/seg', authenticateStream, asyncHandler(async (req: Request, res: Response) => {
@@ -37,7 +40,8 @@ router.get('/play/:id/:s/seg', authenticateStream, asyncHandler(async (req: Requ
   if (!url || url.length > 4000 || !validUrlSignature(id, s, url, req.query.k)) { res.status(403).end(); return }
   const stream = await streamOf(id, s)
   if (!stream) throw new NotFoundError('Flux')
-  await relay(req, res, { id, s, url, stream, relayPath: relayPath(req, id, s) })
+  // The headers of the stream (for a page: those found with it; a segment never starts a look-up)
+  await relay(req, res, { id, s, url, stream: await playable(stream, false), relayPath: relayPath(req, id, s) })
 }))
 
 // ─── Catalogue ───────────────────────────────────────────────────────────────
@@ -55,7 +59,7 @@ router.get('/channels', asyncHandler(async (req: Request, res: Response) => {
   const q = req.query
   const filters: ChannelFilters = {
     q: str(q.q), country: str(q.country), category: str(q.category), language: str(q.language),
-    status: q.status === 'online' ? 'online' : 'all', sort: q.sort === '-name' ? '-name' : 'name',
+    status: q.status === 'online' ? 'online' : 'all', sort: q.sort === '-name' ? '-name' : q.sort === 'name' ? 'name' : 'top',
     page: Number(q.page) || 1, limit: Number(q.limit) || 60,
   }
   res.json({ success: true, data: await listChannels(req.user!.userId, filters) })

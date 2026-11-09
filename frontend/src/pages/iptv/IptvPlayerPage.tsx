@@ -1,9 +1,9 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  AlertTriangle, ChevronLeft, Heart, Maximize, Minimize, Pause, PictureInPicture2, Play, RefreshCw, SkipBack, SkipForward,
-  Volume2, VolumeX,
+  AlertTriangle, ChevronLeft, ExternalLink, Heart, Maximize, Minimize, Pause, PictureInPicture2, Play, RefreshCw, SkipBack,
+  SkipForward, Volume2, VolumeX,
 } from 'lucide-react'
 import type Hls from 'hls.js'
 import Spinner from '@/components/ui/Spinner'
@@ -19,11 +19,25 @@ const fmtTime = (iso: string) => new Date(iso).toLocaleTimeString('fr-FR', { hou
 
 type Phase = 'loading' | 'playing' | 'paused' | 'error'
 
+/** The site of a « page » stream (the live of a YouTube / Twitch / Dailymotion page) */
+function siteName(page: string | null | undefined): string | null {
+  if (!page) return null
+  try {
+    const host = new URL(page).hostname.replace(/^www\./, '')
+    if (/(^|\.)(youtube\.com|youtu\.be)$/.test(host)) return 'YouTube'
+    if (/(^|\.)twitch\.tv$/.test(host)) return 'Twitch'
+    if (/(^|\.)(dailymotion\.com|dai\.ly)$/.test(host)) return 'Dailymotion'
+    return host
+  } catch { return null }
+}
+
 /**
  * Live player of an IPTV channel. The stream comes through the Nexus server (CORS, http
  * streams on an https page, Referer / User-Agent of the catalogue), nothing is stored.
- * A stream that fails falls back to the channel's next stream; when all fail the channel is
- * checked for real and the reason is shown.
+ * The stream the last check found working is tried first; a stream that fails falls back to
+ * the channel's next one; when all fail the channel is checked for real and the reason is shown.
+ * A « page » stream (YouTube, Twitch, Dailymotion) is looked up by the server when it is played,
+ * which takes a few seconds: the player says so while it waits.
  */
 export default function IptvPlayerPage() {
   const { id = '' } = useParams<{ id: string }>()
@@ -35,9 +49,14 @@ export default function IptvPlayerPage() {
   const hideTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
   const recorded = useRef('')
 
-  const [stream, setStream] = useState(0)
   /** « Réessayer » starts the streams again from the first one */
   const [attempt, setAttempt] = useState(0)
+  /** How many streams of this channel failed in this attempt (a new channel or attempt starts at 0) */
+  const run = `${id}#${attempt}`
+  const [failed, setFailed] = useState({ run, n: 0 })
+  const step = failed.run === run ? failed.n : 0
+  /** False until the stream being loaded shows its first picture */
+  const [started, setStarted] = useState(false)
   const [phase, setPhase] = useState<Phase>('loading')
   const [error, setError] = useState<string | null>(null)
   const [muted, setMuted] = useState(false)
@@ -67,7 +86,18 @@ export default function IptvPlayerPage() {
     if (next) navigate(`/iptv/watch/${encodeURIComponent(next)}`, { replace: true })
   }
 
-  useEffect(() => { setStream(0); setError(null); setPhase('loading'); setDvr(null) }, [id])
+  useEffect(() => { setError(null); setPhase('loading'); setDvr(null) }, [id])
+
+  // The order the streams are tried in: the one the last check found working, then the others
+  // in the catalogue's order. Kept for the whole attempt (a check in between does not reorder it).
+  const order = useMemo(() => {
+    const all = (channel?.streams ?? []).map((_, i) => i)
+    const best = channel?.bestStream
+    return best != null && best > 0 && best < all.length ? [best, ...all.filter((i) => i !== best)] : all
+  }, [channel?.id, attempt]) // eslint-disable-line react-hooks/exhaustive-deps
+  const index = order[Math.min(step, order.length - 1)] ?? 0
+  const current = channel?.streams[index]
+  const site = current?.kind === 'page' ? siteName(current.page) : null
 
   const reveal = useCallback(() => {
     setControls(true)
@@ -75,14 +105,15 @@ export default function IptvPlayerPage() {
     hideTimer.current = setTimeout(() => { if (!videoRef.current?.paused) setControls(false) }, 3500)
   }, [])
 
-  /** Every stream failed: check the channel for real and say why */
-  const giveUp = useCallback(async (fallback: string) => {
+  /** Every stream failed: check the channel for real and say why (`gone`: the viewer moved on meanwhile) */
+  const giveUp = useCallback(async (fallback: string, gone: () => boolean) => {
     setPhase('error')
     setError(fallback)
     try {
       const checked = await iptvService.check(id)
       qc.setQueryData(['iptv', 'channel', id], checked)
-      if (checked.status === 'offline' && checked.statusReason) setError(`Chaîne indisponible : ${checked.statusReason}.`)
+      // « unknown » has a reason too (yt-dlp missing on the server, for instance)
+      if (!gone() && checked.status !== 'online' && checked.statusReason) setError(`Chaîne indisponible : ${checked.statusReason}.`)
     } catch { /* keep the first message */ }
   }, [id, qc])
 
@@ -90,12 +121,17 @@ export default function IptvPlayerPage() {
   useEffect(() => {
     const v = videoRef.current
     if (!v || !channel || !token) return
-    if (stream >= channel.streams.length) { void giveUp('Aucun des flux de cette chaîne ne répond.'); return }
     let cancelled = false
+    if (step >= order.length) {
+      void giveUp('Aucun des flux de cette chaîne ne répond.', () => cancelled)
+      return () => { cancelled = true }
+    }
     setPhase('loading')
     setError(null)
-    const url = iptvService.playUrl(channel.id, stream, token)
-    const nextStream = () => { if (!cancelled) setStream((s) => s + 1) }
+    setStarted(false)
+    const page = channel.streams[index]?.kind === 'page'
+    const url = iptvService.playUrl(channel.id, index, token)
+    const nextStream = () => { if (!cancelled) setFailed((f) => ({ run, n: (f.run === run ? f.n : 0) + 1 })) }
 
     if (NATIVE_HLS && v.canPlayType('application/vnd.apple.mpegurl')) {
       v.src = url
@@ -105,7 +141,11 @@ export default function IptvPlayerPage() {
       void import('hls.js').then(({ default: HlsJs }) => {
         if (cancelled) return
         if (!HlsJs.isSupported()) { setPhase('error'); setError('Ce navigateur ne sait pas lire les flux en direct.'); return }
-        const hls = new HlsJs({ liveSyncDurationCount: 3, maxBufferLength: 30, backBufferLength: 60, manifestLoadingMaxRetry: 1, levelLoadingMaxRetry: 2 })
+        const hls = new HlsJs({
+          liveSyncDurationCount: 3, maxBufferLength: 30, backBufferLength: 60, levelLoadingMaxRetry: 2,
+          // The server looks a page stream up before it answers (up to 45 s): wait for it, once
+          ...(page ? { manifestLoadingTimeOut: 50_000, manifestLoadingMaxRetry: 0 } : { manifestLoadingMaxRetry: 1 }),
+        })
         hlsRef.current = hls
         let recoveries = 0
         hls.on(HlsJs.Events.ERROR, (_e, data) => {
@@ -128,7 +168,7 @@ export default function IptvPlayerPage() {
       v.removeAttribute('src')
       v.load()
     }
-  }, [channel?.id, stream, token, attempt]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [channel?.id, step, token, attempt]) // eslint-disable-line react-hooks/exhaustive-deps
 
   // ── Media events ──────────────────────────────────────────────────────────
   useEffect(() => {
@@ -136,6 +176,7 @@ export default function IptvPlayerPage() {
     if (!v) return
     const onPlaying = () => {
       setPhase('playing')
+      setStarted(true)
       reveal()
       if (recorded.current !== id) { recorded.current = id; void iptvService.watched(id).then(() => qc.invalidateQueries({ queryKey: ['iptv', 'summary'] })) }
     }
@@ -203,7 +244,7 @@ export default function IptvPlayerPage() {
       else v.webkitSetPresentationMode?.('picture-in-picture')
     } catch { /* not available here */ }
   }
-  const retry = () => { setError(null); setPhase('loading'); setStream(0); setAttempt((a) => a + 1) }
+  const retry = () => { setError(null); setPhase('loading'); setAttempt((a) => a + 1) }
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -230,6 +271,11 @@ export default function IptvPlayerPage() {
   const btn = 'w-11 h-11 grid place-items-center rounded-full hover:bg-white/10 active:bg-white/20 active:scale-95 transition-transform'
   const now = channel?.guide?.find((g) => new Date(g.start) <= new Date() && new Date(g.end) > new Date())
   const next = channel?.guide?.find((g) => new Date(g.start) > new Date())
+  // When nothing plays here: the channel's own page (its live on YouTube…), else its website
+  const pageStream = channel?.streams.find((st) => st.kind === 'page' && st.page)
+  const outside = pageStream?.page
+    ? { href: pageStream.page, label: `Ouvrir sur ${siteName(pageStream.page)}` }
+    : channel?.website ? { href: channel.website, label: 'Site officiel' } : null
 
   return (
     <div
@@ -243,7 +289,10 @@ export default function IptvPlayerPage() {
       {/* Loading / error */}
       {(phase === 'loading' || isError) && !error && (
         <div className="absolute inset-0 grid place-items-center pointer-events-none" role="status" aria-live="polite">
-          <Spinner size={36} label="Chargement de la chaîne" color="rgba(255,255,255,.9)" />
+          <div className="flex flex-col items-center gap-3 px-6 text-center">
+            <Spinner size={36} label="Chargement de la chaîne" color="rgba(255,255,255,.9)" />
+            {site && !started && <p className="text-[14px] text-white/75">Recherche du direct sur {site}…</p>}
+          </div>
         </div>
       )}
       {(error || isError) && (
@@ -253,11 +302,16 @@ export default function IptvPlayerPage() {
             <p className="text-[17px] font-semibold">{isError ? 'Chaîne introuvable' : 'Lecture impossible'}</p>
             <p className="text-[14px] text-white/70">{isError ? 'Elle n’est plus dans le catalogue.' : error}</p>
             {!isError && (
-              <div className="flex gap-2 mt-1">
+              <div className="flex flex-wrap justify-center gap-2 mt-1">
                 <button type="button" className="h-11 px-4 rounded-pill glass-media text-[15px] font-semibold inline-flex items-center gap-2" onClick={retry}>
                   <RefreshCw size={16} aria-hidden="true" /> Réessayer
                 </button>
                 {neighbour(1) && <button type="button" className="h-11 px-4 rounded-pill bg-white text-black text-[15px] font-semibold" onClick={() => zap(1)}>Chaîne suivante</button>}
+                {outside && (
+                  <a href={outside.href} target="_blank" rel="noreferrer" className="h-11 px-4 rounded-pill glass-media text-[15px] font-semibold inline-flex items-center gap-2">
+                    <ExternalLink size={16} aria-hidden="true" /> {outside.label}
+                  </a>
+                )}
               </div>
             )}
           </div>
@@ -317,8 +371,7 @@ export default function IptvPlayerPage() {
             <button type="button" className={btn} onClick={() => zap(1)} disabled={!neighbour(1)} aria-label="Chaîne suivante"><SkipForward size={20} fill="white" strokeWidth={1.5} /></button>
             <p className="flex-1 min-w-0 px-2 text-[13px] text-white/75 truncate">
               <span className="hidden sm:inline">
-                {channel?.streams[stream]?.quality ? `${channel.streams[stream].quality}` : ''}
-                {channel && channel.streams.length > 1 ? ` · flux ${Math.min(stream + 1, channel.streams.length)}/${channel.streams.length}` : ''}
+                {[current?.quality, site, channel && channel.streams.length > 1 && `flux ${index + 1}/${channel.streams.length}`].filter(Boolean).join(' · ')}
               </span>
             </p>
             <button type="button" className={btn} onClick={() => { if (videoRef.current) videoRef.current.muted = !videoRef.current.muted }} aria-label={muted ? 'Activer le son' : 'Couper le son'}>
@@ -334,7 +387,7 @@ export default function IptvPlayerPage() {
         </div>
       </div>
       {error && channel?.labels.includes('Geo-blocked') && (
-        <p className="absolute inset-x-0 bottom-28 text-center text-[12px] text-white/60 px-6">iptv-org signale cette chaîne comme réservée à son pays.</p>
+        <p className="absolute inset-x-0 bottom-28 text-center text-[12px] text-white/60 px-6">Cette chaîne est signalée comme réservée à son pays.</p>
       )}
     </div>
   )

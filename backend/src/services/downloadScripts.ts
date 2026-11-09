@@ -93,7 +93,7 @@ export function selectionArg(list: unknown): string | null {
 /** Variables the scripts may see (no DB password, no JWT secret…). */
 function scriptEnv(): NodeJS.ProcessEnv {
   const keep = ['PATH', 'HOME', 'LANG', 'LC_ALL', 'TZ', 'USER', 'TMDB_API_KEY', 'PLAYWRIGHT_BROWSERS_PATH', 'OXTORRENT_URL',
-    'IPTV_API_BASE', 'IPTV_PLAYLIST_URL', 'IPTV_DATA_DIR', 'IPTV_ALLOW_PRIVATE',
+    'IPTV_API_BASE', 'IPTV_PLAYLIST_URL', 'IPTV_FREETV_URL', 'IPTV_YTDLP', 'IPTV_DATA_DIR', 'IPTV_ALLOW_PRIVATE',
     'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY', 'http_proxy', 'https_proxy', 'no_proxy']
   const env: NodeJS.ProcessEnv = { PYTHONUNBUFFERED: '1', PYTHONIOENCODING: 'utf-8' }
   for (const k of keep) if (process.env[k]) env[k] = process.env[k]

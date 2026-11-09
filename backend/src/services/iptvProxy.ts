@@ -101,10 +101,13 @@ export function rewritePlaylist(text: string, base: string, toRelay: (absolute: 
 /**
  * Sends the stream at `url` to the player: playlists rewritten, anything else passed on as it
  * comes (segments, keys; Range kept for players that ask for parts).
+ * `entry`: the address of the channel itself (not a segment of it), which must be a video stream —
+ * a web page, an XML or JSON answer is refused with its reason instead of being handed to the player.
+ * -> false when nothing could be sent (the answer already says why).
  */
 export async function relay(req: Request, res: Response, opts: {
-  id: string; s: number; url: string; stream: IptvStream; relayPath: (abs: string) => string
-}) {
+  id: string; s: number; url: string; stream: IptvStream; relayPath: (abs: string) => string; entry?: boolean
+}): Promise<boolean> {
   const ctrl = new AbortController()
   const abort = () => ctrl.abort()
   req.on('close', abort)
@@ -116,14 +119,14 @@ export async function relay(req: Request, res: Response, opts: {
     clearTimeout(timer)
     const msg = (err as Error).name === 'AbortError' ? 'délai dépassé' : (err as Error).message
     if (!res.headersSent) res.status(502).json({ success: false, error: `Flux injoignable (${msg})` })
-    return
+    return false
   }
   clearTimeout(timer)
   if (!up.ok && up.status !== 206) {
     await up.body?.cancel().catch(() => {})
     const why = up.status === 403 || up.status === 401 || up.status === 451 ? 'accès refusé, souvent géo-bloqué' : `HTTP ${up.status}`
     res.status(502).json({ success: false, error: `Flux indisponible (${why})`, upstream: up.status })
-    return
+    return false
   }
   const finalUrl = (up as unknown as { finalUrl: string }).finalUrl || opts.url
   const type = up.headers.get('content-type')
@@ -132,7 +135,7 @@ export async function relay(req: Request, res: Response, opts: {
   // A playlist: read it whole (small), rewrite, send. Some servers send them as text/plain or
   // octet-stream from a .php address: the first bytes tell (#EXTM3U).
   const body = up.body
-  if (!body) { res.status(502).json({ success: false, error: 'Flux vide' }); return }
+  if (!body) { res.status(502).json({ success: false, error: 'Flux vide' }); return false }
   const reader = body.getReader()
   const first = await reader.read().catch(() => ({ done: true, value: undefined }))
   const head = first.value ? Buffer.from(first.value) : Buffer.alloc(0)
@@ -148,19 +151,29 @@ export async function relay(req: Request, res: Response, opts: {
       done = next.done
       if (next.value) {
         size += next.value.length
-        if (size > MAX_PLAYLIST) { await reader.cancel().catch(() => {}); res.status(502).json({ success: false, error: 'Playlist trop grande' }); return }
+        if (size > MAX_PLAYLIST) { await reader.cancel().catch(() => {}); res.status(502).json({ success: false, error: 'Playlist trop grande' }); return false }
         chunks.push(Buffer.from(next.value))
       }
     }
     const text = Buffer.concat(chunks).toString('utf8')
     if (!text.trimStart().replace(/^\uFEFF/, '').startsWith('#EXTM3U')) {
       res.status(502).json({ success: false, error: 'Le flux ne renvoie pas une playlist HLS' })
-      return
+      return false
     }
     res.setHeader('Content-Type', 'application/vnd.apple.mpegurl')
     res.setHeader('Cache-Control', 'no-store')
     res.send(rewritePlaylist(text, finalUrl, opts.relayPath))
-    return
+    return true
+  }
+
+  if (opts.entry) {
+    const start = head.subarray(0, 512).toString('utf8').replace(/^\uFEFF/, '').trimStart()
+    if (/html|xml|json/i.test(type ?? '') || /^[<{[]/.test(start)) {
+      await reader.cancel().catch(() => {})
+      const dash = /dash\+xml/i.test(type ?? '') || path.endsWith('.mpd') || /<mpd[\s>]/i.test(start)
+      res.status(502).json({ success: false, error: dash ? 'Flux au format DASH, non pris en charge par le lecteur' : 'Le flux renvoie une page web, pas une vidéo' })
+      return false
+    }
   }
 
   // Segments, keys, direct streams: passed on as they come
@@ -171,7 +184,7 @@ export async function relay(req: Request, res: Response, opts: {
   }
   res.setHeader('Cache-Control', 'no-store')
   if (head.length) res.write(head)
-  if (first.done) { res.end(); return }
+  if (first.done) { res.end(); return true }
   const rest = new ReadableStream<Uint8Array>({
     async pull(controller) {
       try {
@@ -188,4 +201,5 @@ export async function relay(req: Request, res: Response, opts: {
     res.destroy()
   })
   node.pipe(res)
+  return true
 }

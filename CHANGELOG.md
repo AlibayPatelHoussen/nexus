@@ -4,6 +4,15 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Added — IPTV: Free-TV as a second source, Canada / France / Madagascar / US first
+- The hand-picked playlist of Free-TV/IPTV (about 2 000 free channels) is merged into the iptv-org catalogue: same channel → one entry with the streams of both (Free-TV's tried first), otherwise a new channel. About 770 more channels; nothing is invented (what Free-TV does not say stays empty). iptv-org down: the catalogue is built from Free-TV alone
+- Priority countries (Canada, France, Madagascar, United States by default, editable in Paramètres IPTV › Pays en priorité): a shelf per country on the IPTV home, first in every list (new « Priorité » order, the default; A→Z / Z→A still there), checked first in the background. Inside a country, the Free-TV order (the channels people expect) comes first
+- A priority country without any free channel in the sources (Madagascar today) stays listed, saying so; its channels appear as soon as a source publishes one
+- Channels listed as a YouTube / Twitch / Dailymotion live are played inside Nexus: the stream is looked up on the server with yt-dlp when the channel starts (« Recherche du direct sur YouTube… »), with an « Ouvrir sur YouTube » / « Site officiel » link when it cannot be played
+- A stream the browser cannot play (web page, DASH, bare MPEG-TS) is no longer marked available: the channel says why. The player tries the stream that answered at the last check first, and shows the real reason when none starts
+- Channel names sort without their accents (« Équidia » with the E)
+- Tests: Python (Free-TV merge, marks, page look-up with a fake yt-dlp, unreadable formats), backend (priority order, sources, page streams), E2E (both sources, the four priority countries, a page stream plays)
+
 ### Added — IPTV: public TV channels (iptv-org)
 - New « IPTV » section (sidebar Médias, and the Médias tab menu on iPhone): Accueil, Toutes les chaînes, Favoris, Pays, Catégories, Langues, Récemment regardées, Paramètres IPTV
 - Catalogue from the public lists of iptv-org (about 12 000 channels): search, country / category / language filters, A→Z / Z→A, « Disponibles » (verified streams), loaded page by page, logos loaded lazily through the image cache

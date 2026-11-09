@@ -4,9 +4,17 @@
 const regions = typeof Intl !== 'undefined' && 'DisplayNames' in Intl ? new Intl.DisplayNames(['fr'], { type: 'region' }) : null
 const languages = typeof Intl !== 'undefined' && 'DisplayNames' in Intl ? new Intl.DisplayNames(['fr'], { type: 'language' }) : null
 
-export function countryName(code: string | null | undefined, fallback?: string): string {
+/** iptv-org writes UK where ISO 3166 says GB */
+const ISO: Record<string, string> = { UK: 'GB' }
+const iso = (code: string) => { const c = code.toUpperCase(); return ISO[c] ?? c }
+
+export function countryName(code: string | null | undefined, fallback?: string | null): string {
   if (!code) return ''
-  try { return regions?.of(code.toUpperCase()) ?? fallback ?? code } catch { return fallback ?? code }
+  try {
+    const n = regions?.of(iso(code))
+    // Intl gives the code back when it does not know it
+    return n && n !== iso(code) ? n : fallback || code
+  } catch { return fallback || code }
 }
 
 export function languageName(code: string, fallback?: string): string {
@@ -21,7 +29,7 @@ export function languageName(code: string, fallback?: string): string {
 /** Flag emoji of an ISO 3166 code (regional indicators) */
 export function flag(code: string | null | undefined): string {
   if (!code || !/^[A-Za-z]{2}$/.test(code)) return ''
-  return String.fromCodePoint(...[...code.toUpperCase()].map((c) => 0x1f1e6 + c.charCodeAt(0) - 65))
+  return String.fromCodePoint(...[...iso(code)].map((c) => 0x1f1e6 + c.charCodeAt(0) - 65))
 }
 
 /** iptv-org categories (https://iptv-org.github.io/api/categories.json) */

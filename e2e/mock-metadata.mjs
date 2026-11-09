@@ -65,11 +65,23 @@ export const IPTV_API = {
   })),
   logos: IPTV_CHANNELS.filter(([id]) => id !== 'Cine.es').map(([channel]) => ({ channel, feed: null, in_use: true, format: 'PNG', width: 400, url: `${IMG}/iptv/logo_${channel}.png` })),
   categories: [['news', 'News'], ['kids', 'Kids'], ['sports', 'Sports'], ['general', 'General'], ['music', 'Music'], ['movies', 'Movies']].map(([id, name]) => ({ id, name })),
-  countries: [['FR', 'France'], ['US', 'United States'], ['IT', 'Italy'], ['ES', 'Spain']].map(([code, name]) => ({ code, name })),
+  countries: [['FR', 'France'], ['US', 'United States'], ['IT', 'Italy'], ['ES', 'Spain'], ['CA', 'Canada'], ['MG', 'Madagascar']].map(([code, name]) => ({ code, name })),
   languages: [['fra', 'French'], ['eng', 'English'], ['ita', 'Italian'], ['spa', 'Spanish']].map(([code, name]) => ({ code, name })),
   blocklist: [],
 }
 const IPTV_M3U = ['#EXTM3U', ...IPTV_API.streams.map((s) => `#EXTINF:-1 tvg-id="${s.channel}@SD",${s.title}\n${s.url}`)].join('\n')
+// ── Free-TV, the second source: a channel iptv-org has too (one more stream for it), a Canadian
+// channel only Free-TV lists, and a channel given by the page of its YouTube live ──
+const FREETV_PAGE = 'https://www.youtube.com/@nexus-info-direct/live'
+const FREETV_M3U = [
+  '#EXTM3U',
+  '#EXTINF:-1 tvg-name="Nexus Démo" tvg-id="Demo.fr" tvg-country="FR" group-title="France",Nexus Démo',
+  `${LIVE}?c=Demo.fr&via=freetv`,
+  `#EXTINF:-1 tvg-name="Érable TV" tvg-logo="${IMG}/iptv/logo_Erable.ca.png" tvg-id="Erable.ca" tvg-country="CA" group-title="Canada",Érable TV Ⓢ`,
+  `${LIVE}?c=Erable.ca`,
+  '#EXTINF:-1 tvg-name="Info Direct" tvg-id="" tvg-country="FR" group-title="France",Info Direct Ⓨ',
+  FREETV_PAGE,
+].join('\n')
 
 function json(res, body, status = 200) {
   res.writeHead(status, { 'Content-Type': 'application/json' })
@@ -93,6 +105,7 @@ http.createServer((req, res) => {
       return json(res, { error: 'not found' }, 404)
     }
     if (p === '/iptv/index.m3u') { res.writeHead(200, { 'Content-Type': 'audio/x-mpegurl' }); return res.end(IPTV_M3U) }
+    if (p === '/freetv/playlist.m3u8') { res.writeHead(200, { 'Content-Type': 'audio/x-mpegurl' }); return res.end(FREETV_M3U) }
     if (p.startsWith('/iptv-geo/')) { res.writeHead(403, { 'Content-Type': 'text/plain' }); return res.end('geo blocked') }
     if (p.startsWith('/iptv-hls/') && HLS_DIR) {
       const file = p.slice('/iptv-hls/'.length)

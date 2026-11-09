@@ -1,4 +1,5 @@
-"""Tests of the IPTV module (no internet: a local HTTP server plays iptv-org).
+"""Tests of the IPTV module (no internet: a local HTTP server plays iptv-org and Free-TV,
+a small script plays yt-dlp).
 Run: python3 -m unittest discover downloaders"""
 import datetime as dt
 import gzip
@@ -16,7 +17,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 
-from iptv import catalogue, epg, sources, stream_checker  # noqa: E402
+from iptv import catalogue, epg, freetv, resolver, sources, stream_checker  # noqa: E402
 from iptv.playlist_parser import channel_id, group_titles, parse_m3u  # noqa: E402
 
 M3U = '''﻿#EXTM3U
@@ -147,6 +148,107 @@ class Catalogue(unittest.TestCase):
         self.assertEqual(chans['TF1.fr'].streams[0].quality, '1080p')
 
 
+FREETV = '''#EXTM3U
+#EXTINF:-1 tvg-name="TF1" tvg-logo="https://img.example/freetv-tf1.png" tvg-id="TF1.fr" tvg-country="FR" group-title="France",TF1 ⒼⓈ
+https://free.example/tf1.m3u8
+#EXTINF:-1 tvg-name="TF1" tvg-id="TF1.fr" tvg-country="FR" group-title="France",TF1 Ⓨ
+https://www.youtube.com/@tf1/live
+#EXTINF:-1 tvg-name="Kids" tvg-country="FR" group-title="France",Kids
+https://tv.example/kids.m3u8
+#EXTINF:-1 tvg-name="Plain HD" tvg-logo="https://img.example/plain.png" tvg-country="IT" group-title="Italy",PLAIN HD
+https://free.example/plain.m3u8
+#EXTINF:-1 tvg-name="Silent" tvg-id="Silent.fr" tvg-country="FR" group-title="France",Silent
+https://free.example/silent.m3u8
+#EXTINF:-1 tvg-name="Pirate" tvg-id="Pirate.us" tvg-country="US" group-title="USA",Pirate
+https://free.example/pirate.m3u8
+#EXTINF:-1 tvg-name="Pirate" tvg-country="US" group-title="USA",Pirate HD
+https://free.example/pirate2.m3u8
+#EXTINF:-1 tvg-name="Dash" tvg-id="Dash.ca" tvg-country="CA" group-title="Canada",Dash
+https://free.example/live/manifest.mpd?token=1
+#EXTINF:-1 tvg-name="BBC One" tvg-id="BBCOne.uk" tvg-country="GB" group-title="UK",BBC One Ⓖ
+https://free.example/bbc1.m3u8
+#EXTINF:-1 tvg-name="Rai Storia" group-title="Italy",Rai Storia
+https://free.example/storia.m3u8
+#EXTINF:-1 tvg-name="World News" tvg-logo="https://img.example/wn.png" group-title="News (AR)",World News Ⓨ
+https://www.youtube.com/c/worldnews/live
+#EXTINF:-1 tvg-name="Radio" group-title="France",Radio
+rtmp://free.example/radio
+'''
+
+
+class FreeTv(unittest.TestCase):
+    def setUp(self):
+        self.api = {**API,
+                    'channels': API['channels'] + [{'id': 'Silent.fr', 'name': 'Silent TV', 'country': 'FR', 'categories': ['culture'],
+                                                    'is_nsfw': False, 'closed': None, 'website': 'https://silent.example'}],
+                    'feeds': API['feeds'] + [{'channel': 'Silent.fr', 'id': 'SD', 'is_main': True, 'languages': ['fra']}],
+                    'countries': API['countries'] + [{'code': 'UK', 'name': 'United Kingdom', 'flag': '🇬🇧'},
+                                                     {'code': 'US', 'name': 'United States', 'flag': '🇺🇸'}]}
+        merged, self.stats = freetv.merge(catalogue.build_from_api(self.api, parse_m3u(M3U)), parse_m3u(FREETV), self.api)
+        self.channels = {c.id: c for c in merged}
+
+    def test_marks_and_names(self):
+        self.assertEqual(freetv.split_name('TF1 ⒼⓈ'), ('TF1', ['Geo-blocked'], 'SD'))
+        self.assertEqual(freetv.split_name('franceinfo: Ⓨ'), ('franceinfo:', [], None))
+        self.assertEqual(freetv.norm('France 2 HD'), freetv.norm('FRANCE 2'))
+        self.assertEqual(freetv.norm('Télé Québec'), 'tele quebec')
+        self.assertNotEqual(freetv.norm('Canal+'), freetv.norm('Canal'))
+        self.assertEqual([freetv.url_kind(u) for u in ('https://youtu.be/x', 'https://www.dailymotion.com/video/x', 'https://a.example/x.mpd?t=1',
+                                                       'https://a.example/x.m3u8', 'https://notyoutube.com.example/live')],
+                         ['page', 'page', 'dash', 'hls', 'hls'])
+
+    def test_same_id_adds_the_stream_first_and_keeps_the_database_data(self):
+        tf1 = self.channels['TF1.fr']
+        self.assertEqual([s.url for s in tf1.streams], [
+            'https://free.example/tf1.m3u8',                                    # Free-TV first
+            'http://tv.example/tf1-sd.m3u8', 'https://tv.example/tf1-hd.m3u8', 'https://tv.example/tf1-alsace.m3u8',
+            'https://www.youtube.com/@tf1/live',                                 # the web page last
+        ])
+        first, page = tf1.streams[0], tf1.streams[-1]
+        self.assertEqual((first.source, first.kind, first.quality, first.labels), ('free-tv', 'hls', 'SD', ['Geo-blocked']))
+        self.assertEqual((page.source, page.kind), ('free-tv', 'page'))
+        self.assertEqual((tf1.curated, tf1.logo, tf1.categories), (1, 'https://img.example/tf1.png', ['general']))
+        as_json = tf1.to_json()
+        self.assertEqual(as_json['streams'][-1]['kind'], 'page')
+        self.assertNotIn('kind', as_json['streams'][0])                          # « hls » is the default: not written
+        self.assertNotIn('source', as_json['streams'][1])                        # iptv-org streams are written as before
+
+    def test_same_address_or_same_name_in_the_country(self):
+        kids = self.channels['Kids.fr']                                          # same stream address
+        self.assertEqual([(s.url, s.source, s.user_agent) for s in kids.streams], [('https://tv.example/kids.m3u8', 'free-tv', 'UA/2')])
+        self.assertEqual(kids.curated, 3)
+        plain = self.channels['Plain.it']                                        # « PLAIN HD » in Italy = « Plain »
+        self.assertEqual([s.url for s in plain.streams], ['https://free.example/plain.m3u8', 'https://tv.example/plain.m3u8'])
+        self.assertEqual(plain.logo, 'https://img.example/plain.png')            # it had none
+
+    def test_channel_known_without_stream_and_new_channels(self):
+        silent = self.channels['Silent.fr']                                      # in the database, no stream there
+        self.assertEqual((silent.name, silent.country, silent.categories, silent.languages, silent.website),
+                         ('Silent TV', 'FR', ['culture'], ['fra'], 'https://silent.example'))
+        bbc = self.channels['BBCOne.uk']                                         # unknown: only what Free-TV says
+        self.assertEqual((bbc.name, bbc.country, bbc.categories, bbc.languages, bbc.streams[0].labels), ('BBC One', 'UK', [], [], ['Geo-blocked']))
+        storia = next(c for c in self.channels.values() if c.name == 'Rai Storia')
+        self.assertTrue(storia.id.startswith('freetv-'))
+        self.assertEqual(storia.country, 'IT')                                   # the group title is a country name
+        news = next(c for c in self.channels.values() if c.name == 'World News')
+        self.assertEqual((news.country, news.categories, news.languages, news.logo), (None, ['news'], ['ara'], 'https://img.example/wn.png'))
+        self.assertEqual(news.streams[0].kind, 'page')
+
+    def test_blocked_dash_and_other_protocols_are_left_out(self):
+        urls = {s.url for c in self.channels.values() for s in c.streams}
+        self.assertFalse({u for u in urls if 'pirate' in u or u.endswith('.mpd?token=1') or u.startswith('rtmp')})
+        self.assertNotIn('Pirate.us', self.channels)
+        self.assertNotIn('Dash.ca', self.channels)
+        self.assertEqual(self.stats, {'entries': 8, 'matched': 3, 'added': 4, 'blocked': 2, 'dash': 1, 'pages': 2})
+
+    def test_merge_is_stable_and_works_alone(self):
+        again, _ = freetv.merge(catalogue.build_from_api(self.api, parse_m3u(M3U)), parse_m3u(FREETV), self.api)
+        self.assertEqual([c.to_json() for c in again], [c.to_json() for c in sorted(self.channels.values(), key=lambda c: c.name.casefold())])
+        alone, stats = freetv.merge([], parse_m3u(FREETV), {})                   # iptv-org down: nothing is filtered or enriched
+        self.assertEqual(stats['added'], len(alone))
+        self.assertEqual({c.id: c.country for c in alone if c.id in ('TF1.fr', 'BBCOne.uk')}, {'TF1.fr': 'FR', 'BBCOne.uk': 'UK'})
+
+
 class _Handler(http.server.BaseHTTPRequestHandler):
     routes = {}
     hits = []
@@ -169,6 +271,26 @@ class _Handler(http.server.BaseHTTPRequestHandler):
         pass
 
 
+FAKE_YTDLP = '''import json, sys
+url = sys.argv[-1]
+assert sys.argv[-2] == '--' and '-J' in sys.argv, sys.argv
+if 'offline' in url:
+    sys.stderr.write('WARNING: something\\nERROR: [youtube] x: The channel is not currently live\\n'); sys.exit(1)
+if 'robot' in url:
+    sys.stderr.write('ERROR: [youtube] x: Sign in to confirm you\\u2019re not a bot\\n'); sys.exit(1)
+if 'garbage' in url:
+    print('not json'); sys.exit(0)
+formats = [{'protocol': 'https', 'url': 'BASE/video.mp4', 'height': 1080}]
+if 'novideo' not in url:
+    formats += [
+        {'protocol': 'm3u8_native', 'url': 'BASE/live/low/index.m3u8', 'height': 360},
+        {'protocol': 'm3u8_native', 'url': 'BASE/live/hd/index.m3u8', 'manifest_url': 'BASE/live/master.m3u8?expire=1900000000&x=1',
+         'height': 1080, 'http_headers': {'User-Agent': 'YT/1', 'Referer': 'https://www.youtube.com/'}},
+    ]
+print(json.dumps({'title': 'France 24 en direct', 'formats': formats}))
+'''
+
+
 class LocalServer(unittest.TestCase):
     @classmethod
     def setUpClass(cls):
@@ -182,7 +304,7 @@ class LocalServer(unittest.TestCase):
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
-        self.env = {'IPTV_DATA_DIR': self.tmp.name, 'IPTV_ALLOW_PRIVATE': '1'}
+        self.env = {'IPTV_DATA_DIR': self.tmp.name, 'IPTV_ALLOW_PRIVATE': '1', 'IPTV_FREETV_URL': 'off', 'IPTV_YTDLP': ''}
         self.old = {k: os.environ.get(k) for k in self.env}
         os.environ.update(self.env)
         _Handler.routes, _Handler.hits = {}, []
@@ -194,6 +316,12 @@ class LocalServer(unittest.TestCase):
             else:
                 os.environ[k] = v
         self.tmp.cleanup()
+
+    def fake_ytdlp(self) -> None:
+        """A stand-in for yt-dlp: answers like `yt-dlp -J <page>` for a few made-up pages."""
+        script = Path(self.tmp.name) / 'fake_ytdlp.py'
+        script.write_text(FAKE_YTDLP.replace('BASE', self.base))
+        os.environ['IPTV_YTDLP'] = f'{sys.executable} {script}'
 
 
 class Sources(LocalServer):
@@ -228,7 +356,8 @@ class Checker(LocalServer):
             '/dead/master.m3u8': (200, b'#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\nmissing.m3u8\n', {}),
             '/geo.m3u8': (403, b'no', {}),
             '/html.m3u8': (200, b'<html>blocked</html>', {}),
-            '/video.ts': (200, b'\x47' * 188, {'Content-Type': 'video/mp2t'}),
+            '/video.mp4': (200, b'\x00\x00\x00\x18ftypmp42', {'Content-Type': 'video/mp4'}),
+            '/radio': (200, b'\xff\xfb\x90\x00' * 64, {'Content-Type': 'audio/mpeg'}),
             '/empty.ts': (200, b'', {}),
         })
         ok = stream_checker.check(f'{self.base}/live/master.m3u8', 'UA/9', 'https://r.example/')
@@ -239,10 +368,45 @@ class Checker(LocalServer):
         self.assertEqual((geo['status'], geo['code']), ('offline', 403))
         self.assertIn('géo', geo['reason'])
         self.assertEqual(stream_checker.check(f'{self.base}/html.m3u8')['reason'], 'pas une playlist HLS')
-        self.assertEqual(stream_checker.check(f'{self.base}/video.ts')['status'], 'online')
+        self.assertEqual(stream_checker.check(f'{self.base}/video.mp4')['status'], 'online')
+        self.assertEqual(stream_checker.check(f'{self.base}/radio')['status'], 'online')
         self.assertEqual(stream_checker.check(f'{self.base}/empty.ts')['status'], 'offline')
         self.assertEqual(stream_checker.check('ftp://x.example/a')['status'], 'offline')
         self.assertEqual(stream_checker.check('http://127.0.0.1:9/x.m3u8', timeout=2)['status'], 'offline')
+
+    def test_answers_a_browser_cannot_play_are_offline_with_their_reason(self):
+        ts = (b'\x47' + b'\x00' * 187) * 4
+        _Handler.routes.update({
+            '/direct.ts': (200, ts, {'Content-Type': 'video/mp2t'}),
+            '/direct': (200, ts, {'Content-Type': 'application/octet-stream'}),       # MPEG-TS without saying so
+            '/direct-page': (200, b'\n<!DOCTYPE html><html><body>Le direct</body></html>', {'Content-Type': 'text/html; charset=utf-8'}),
+            '/live.mpd': (200, b'<?xml version="1.0"?><MPD xmlns="urn:mpeg:dash:schema:mpd:2011"></MPD>', {'Content-Type': 'application/dash+xml'}),
+            '/error': (200, b'{"error": "geo"}', {'Content-Type': 'application/json'}),
+        })
+        reasons = {path: stream_checker.check(f'{self.base}{path}') for path in ('/direct.ts', '/direct', '/direct-page', '/live.mpd', '/error')}
+        self.assertEqual({r['status'] for r in reasons.values()}, {'offline'})
+        self.assertIn('MPEG-TS', reasons['/direct.ts']['reason'])
+        self.assertIn('MPEG-TS', reasons['/direct']['reason'])
+        self.assertIn('page web', reasons['/direct-page']['reason'])
+        self.assertIn('DASH', reasons['/live.mpd']['reason'])
+        self.assertIn('inattendue', reasons['/error']['reason'])
+
+    def test_page_streams_are_looked_up_then_checked(self):
+        _Handler.routes.update({
+            '/live/master.m3u8': (200, b'#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=1\nlow/index.m3u8\n', {}),
+            '/live/low/index.m3u8': (200, b'#EXTM3U\n#EXTINF:6,\nseg1.ts\n', {}),
+        })
+        page = {'id': 'p', 'url': 'https://www.youtube.com/c/FRANCE24/live', 'kind': 'page'}
+        os.environ['IPTV_YTDLP'] = str(Path(self.tmp.name) / 'no-such-yt-dlp')
+        missing = stream_checker.check_item(page)                 # yt-dlp not installed: nothing known, not « offline »
+        self.assertEqual((missing['status'], 'yt-dlp' in missing['reason']), ('unknown', True))
+        self.fake_ytdlp()
+        self.assertEqual(stream_checker.check_item(page)['status'], 'online')
+        self.assertEqual(_Handler.hits[0][:2], ('/live/master.m3u8?expire=1900000000&x=1', 'YT/1'))   # the stream found, with its headers
+        off = stream_checker.check_item({**page, 'url': 'https://www.youtube.com/c/offline/live'})
+        self.assertEqual((off['status'], off['reason']), ('offline', 'pas de direct en cours'))
+        res = {r['id']: r['status'] for r in stream_checker.check_many([page, {'id': 'h', 'url': f'{self.base}/live/master.m3u8'}])}
+        self.assertEqual(res, {'p': 'online', 'h': 'online'})
 
     def test_local_addresses_refused_outside_tests(self):
         os.environ.pop('IPTV_ALLOW_PRIVATE')
@@ -253,6 +417,32 @@ class Checker(LocalServer):
         _Handler.routes['/video.ts'] = (200, b'x', {})
         res = list(stream_checker.check_many([{'id': 'a', 'url': f'{self.base}/video.ts'}, {'id': 'b', 'url': f'{self.base}/nope'}]))
         self.assertEqual(sorted((r['id'], r['status']) for r in res), [('a', 'online'), ('b', 'offline')])
+
+
+class Resolver(LocalServer):
+    def test_only_known_video_sites(self):
+        self.assertTrue(resolver.is_page('https://www.youtube.com/c/FRANCE24/live'))
+        self.assertTrue(resolver.is_page('https://www.twitch.tv/somebody'))
+        self.assertTrue(resolver.is_page('http://dai.ly/x3b68jn'))
+        for url in ('https://lcp.fr/le-live-lcp-tnt-5433', 'https://youtube.com.evil.example/live', 'ftp://youtube.com/x', '', 'youtube.com'):
+            self.assertFalse(resolver.is_page(url), url)
+        self.fake_ytdlp()
+        self.assertEqual(resolver.resolve('https://lcp.fr/le-live-lcp-tnt-5433'), {'ok': False, 'reason': 'failed', 'message': 'page non prise en charge'})
+
+    def test_finds_the_hls_stream_with_its_headers_and_expiry(self):
+        self.fake_ytdlp()
+        found = resolver.resolve('https://www.youtube.com/c/FRANCE24/live')
+        self.assertEqual(found, {'ok': True, 'url': f'{self.base}/live/master.m3u8?expire=1900000000&x=1', 'user_agent': 'YT/1',
+                                 'referrer': 'https://www.youtube.com/', 'expires': 1900000000, 'title': 'France 24 en direct'})
+
+    def test_failures_say_why(self):
+        self.fake_ytdlp()
+        for page, message in (('offline', 'pas de direct en cours'), ('robot', 'le site demande une connexion depuis ce serveur'),
+                              ('novideo', 'pas de direct en cours'), ('garbage', 'réponse de yt-dlp illisible')):
+            res = resolver.resolve(f'https://www.youtube.com/c/{page}/live')
+            self.assertEqual((res['ok'], res['reason'], res['message']), (False, 'failed', message))
+        os.environ['IPTV_YTDLP'] = str(Path(self.tmp.name) / 'no-such-yt-dlp')
+        self.assertEqual(resolver.resolve('https://youtu.be/abc')['reason'], 'missing')
 
 
 class Guide(unittest.TestCase):
@@ -305,6 +495,45 @@ class CommandLine(LocalServer):
         res = subprocess.run([sys.executable, str(HERE.parent / 'iptv_cli.py'), '--json', 'refresh'], capture_output=True, text=True, env=env, timeout=60)
         last = json.loads(res.stdout.strip().splitlines()[-1])
         self.assertEqual((last['type'], res.returncode), ('error', 1))
+
+    def test_refresh_merges_free_tv_and_works_with_free_tv_alone(self):
+        for name, data in API.items():
+            _Handler.routes[f'/api/{name}.json'] = (200, json.dumps(data).encode(), {})
+        _Handler.routes['/index.m3u'] = (200, M3U.encode(), {})
+        _Handler.routes['/freetv.m3u8'] = (200, FREETV.encode(), {})
+        env = {**os.environ, 'IPTV_API_BASE': f'{self.base}/api', 'IPTV_PLAYLIST_URL': f'{self.base}/index.m3u',
+               'IPTV_FREETV_URL': f'{self.base}/freetv.m3u8'}
+        out = Path(self.tmp.name) / 'cat.json'
+        cmd = [sys.executable, str(HERE.parent / 'iptv_cli.py'), '--json', 'refresh', '--out', str(out)]
+        res = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=60)
+        last = json.loads(res.stdout.strip().splitlines()[-1])
+        self.assertEqual((last['type'], last['source'], last['sources']), ('done', 'api', ['iptv-org', 'free-tv']), res.stderr)
+        self.assertEqual((last['stats']['freetv_matched'], last['stats']['freetv_blocked'], last['stats']['freetv_dash'], last['stats']['freetv_pages']), (3, 1, 1, 2))
+        tf1 = next(c for c in json.loads(out.read_text())['channels'] if c['id'] == 'TF1.fr')
+        self.assertEqual((tf1['curated'], tf1['streams'][0]['url'], tf1['streams'][0]['source']), (1, 'https://free.example/tf1.m3u8', 'free-tv'))
+        # iptv-org down, nothing cached: the catalogue is Free-TV alone, and says so
+        env.update({'IPTV_API_BASE': f'{self.base}/nothing', 'IPTV_PLAYLIST_URL': f'{self.base}/none.m3u', 'IPTV_DATA_DIR': tempfile.mkdtemp()})
+        res = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=60)
+        last = json.loads(res.stdout.strip().splitlines()[-1])
+        self.assertEqual((last['type'], last['source'], last['sources']), ('done', 'free-tv', ['free-tv']), res.stderr)
+        self.assertTrue(any('Free-TV seul' in n for n in last['notes']))
+        # Free-TV down: the iptv-org catalogue is kept, with a note
+        env.update({'IPTV_API_BASE': f'{self.base}/api', 'IPTV_PLAYLIST_URL': f'{self.base}/index.m3u', 'IPTV_FREETV_URL': f'{self.base}/gone.m3u8'})
+        res = subprocess.run(cmd, capture_output=True, text=True, env=env, timeout=60)
+        last = json.loads(res.stdout.strip().splitlines()[-1])
+        self.assertEqual((last['type'], last['sources']), ('done', ['iptv-org']), res.stderr)
+        self.assertTrue(any(n.startswith('Free-TV : liste indisponible') for n in last['notes']))
+
+    def test_resolve_command(self):
+        self.fake_ytdlp()
+        cmd = [sys.executable, str(HERE.parent / 'iptv_cli.py'), '--json', 'resolve', '--url']
+        res = subprocess.run([*cmd, 'https://www.youtube.com/c/FRANCE24/live'], capture_output=True, text=True, env=os.environ.copy(), timeout=60)
+        lines = [json.loads(line) for line in res.stdout.splitlines()]
+        self.assertEqual((lines[0]['type'], lines[0]['url'], lines[0]['expires'], lines[-1]['type']),
+                         ('resolved', f'{self.base}/live/master.m3u8?expire=1900000000&x=1', 1900000000, 'done'))
+        res = subprocess.run([*cmd, 'https://www.youtube.com/c/offline/live'], capture_output=True, text=True, env=os.environ.copy(), timeout=60)
+        last = json.loads(res.stdout.strip().splitlines()[-1])
+        self.assertEqual((res.returncode, last['type'], last['reason'], last['message']), (1, 'error', 'failed', 'pas de direct en cours'))
 
     def test_check_command(self):
         _Handler.routes['/video.ts'] = (200, b'x', {})

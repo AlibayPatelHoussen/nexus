@@ -4,7 +4,11 @@ A check is one GET of the stream (with its Referer / User-Agent when the catalog
 them), reading at most a few KB:
 - an HLS playlist (.m3u8) must answer #EXTM3U; a master playlist is followed one level, to
   its first variant, which must list segments (#EXTINF);
-- any other stream must answer 200/206 with some bytes.
+- any other stream must answer 200/206 with bytes the player can read: a web page, a DASH
+  manifest or a bare MPEG-TS stream answer, but a browser cannot play them — they are reported
+  offline with the reason, instead of « available » on a channel that never starts;
+- a « page » stream (YouTube, Twitch, Dailymotion live) is first looked up with yt-dlp, then
+  the stream found is checked like the others. Without yt-dlp the answer is « unknown ».
 Few checks run at a time (4 by default) with short timeouts: the iptv-org servers are not
 hammered and the Nexus server stays responsive. Local / private addresses are refused (a
 catalogue entry must never make the server probe its own network), except for tests.
@@ -18,10 +22,14 @@ import time
 import urllib.error
 import urllib.parse
 import urllib.request
+import threading
 from concurrent.futures import ThreadPoolExecutor, as_completed
-from typing import Iterable, Iterator, Optional
+from typing import Iterable, Iterator, Optional, Tuple
+
+from . import resolver
 
 READ_BYTES = 64 * 1024
+_PAGES = threading.Semaphore(2)      # yt-dlp is heavy: two look-ups at a time, whatever the workers
 UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36'
 
 
@@ -48,6 +56,21 @@ def _get(url: str, ua: Optional[str], referrer: Optional[str], timeout: float):
         return res.status, res.geturl(), res.headers.get('Content-Type', ''), res.read(READ_BYTES)
 
 
+def _readable(ctype: str, body: bytes, path: str) -> Tuple[str, str]:
+    """A stream that is not an HLS playlist: can the browser player read these bytes?"""
+    ctype = ctype.lower()
+    head = body[:2048].lstrip(b'\xef\xbb\xbf \t\r\n').lower()
+    if 'dash+xml' in ctype or path.endswith('.mpd') or head.startswith(b'<mpd') or (head.startswith(b'<?xml') and b'<mpd' in head):
+        return 'offline', 'format DASH, non pris en charge par le lecteur'
+    if 'text/html' in ctype or head.startswith((b'<!doctype html', b'<html')) or (head.startswith(b'<') and b'<html' in head):
+        return 'offline', 'page web, pas un flux vidéo'
+    if head.startswith((b'<', b'{', b'[')):
+        return 'offline', 'réponse inattendue, pas un flux vidéo'
+    if 'mp2t' in ctype or (len(body) > 188 and body[0] == 0x47 and body[188] == 0x47):
+        return 'offline', 'flux MPEG-TS direct, illisible dans un navigateur'
+    return 'online', ''
+
+
 def check(url: str, user_agent: Optional[str] = None, referrer: Optional[str] = None, timeout: float = 8) -> dict:
     started = time.monotonic()
 
@@ -65,7 +88,7 @@ def check(url: str, user_agent: Optional[str] = None, referrer: Optional[str] = 
             return result('offline', 'réponse vide', code)
         playlist = '.m3u8' in parts.path.lower() or 'mpegurl' in ctype.lower() or body.lstrip().startswith(b'#EXTM3U')
         if not playlist:
-            return result('online', '', code)
+            return result(*_readable(ctype, body, urllib.parse.urlsplit(final).path.lower()), code)
         if not body.lstrip().startswith(b'#EXTM3U'):
             return result('offline', 'pas une playlist HLS', code)
         if b'#EXTINF' in body:
@@ -90,10 +113,26 @@ def check(url: str, user_agent: Optional[str] = None, referrer: Optional[str] = 
         return result('offline', 'délai dépassé' if 'timed out' in str(why) else f'injoignable ({why})')
 
 
+def check_item(item: dict, timeout: float = 8) -> dict:
+    """One catalogue stream: {url, kind?, user_agent?, referrer?}."""
+    if item.get('kind') != 'page':
+        return check(item['url'], item.get('user_agent'), item.get('referrer'), timeout)
+    started = time.monotonic()
+    with _PAGES:
+        found = resolver.resolve(item['url'])
+    if not found['ok']:
+        # yt-dlp missing: nothing is known about the channel, it is not reported offline
+        return {'status': 'unknown' if found['reason'] == 'missing' else 'offline', 'reason': found['message'],
+                'code': None, 'ms': int((time.monotonic() - started) * 1000)}
+    res = check(found['url'], found.get('user_agent'), found.get('referrer'), timeout)
+    res['ms'] = int((time.monotonic() - started) * 1000)
+    return res
+
+
 def check_many(items: Iterable[dict], workers: int = 4, timeout: float = 8) -> Iterator[dict]:
-    """items: {id, url, user_agent?, referrer?}. Yields {id, url, status, …} as they finish."""
+    """items: {id, url, kind?, user_agent?, referrer?}. Yields {id, url, status, …} as they finish."""
     with ThreadPoolExecutor(max_workers=max(1, min(workers, 8))) as pool:
-        futures = {pool.submit(check, it['url'], it.get('user_agent'), it.get('referrer'), timeout): it for it in items}
+        futures = {pool.submit(check_item, it, timeout): it for it in items}
         for fut in as_completed(futures):
             it = futures[fut]
             try:

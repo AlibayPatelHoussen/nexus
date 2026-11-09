@@ -46,6 +46,16 @@ def playlist_urls() -> List[str]:
     ])
 
 
+FREETV_URL = 'https://raw.githubusercontent.com/Free-TV/IPTV/master/playlist.m3u8'
+
+
+def freetv_urls() -> List[str]:
+    """The Free-TV/IPTV playlist (second source). IPTV_FREETV_URL=off leaves it out."""
+    if os.environ.get('IPTV_FREETV_URL', '').strip().lower() in ('off', 'none', '0', 'false'):
+        return []
+    return _env_list('IPTV_FREETV_URL', [FREETV_URL])
+
+
 def data_dir() -> Path:
     base = os.environ.get('IPTV_DATA_DIR') or str(Path(__file__).resolve().parent.parent / 'data' / 'iptv')
     path = Path(base)

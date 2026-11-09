@@ -1,15 +1,21 @@
+import fs from 'fs'
 import http from 'http'
+import os from 'os'
+import path from 'path'
 import { AddressInfo } from 'net'
 import request from 'supertest'
 import { app } from '../../src/index'
 import { query } from '../../src/config/database'
 import { makeToken } from '../helpers'
-import { checkChannel, importCatalogue, refreshCatalogue } from '../../src/services/iptv'
+import { checkChannel, checkDueChannels, importCatalogue, refreshCatalogue } from '../../src/services/iptv'
 import { rewritePlaylist } from '../../src/services/iptvProxy'
 
 /*
  * IPTV: catalogue queries and filters, favourites / history per user, settings, the stream
  * relay (against a local fake IPTV server), and the Python module driven by the server.
+ * Then the second source (Free-TV): its selection and the priority countries first, the stream
+ * a check found working, and the lives given as a web page (YouTube…), looked up by a stand-in
+ * for yt-dlp.
  */
 
 let alice = { Authorization: '' }, bob = { Authorization: '' }
@@ -30,6 +36,17 @@ const server = http.createServer((req, res) => {
   if (u === '/php/stream.php') return send(200, '#EXTM3U\n#EXTINF:6,\nseg.ts\n', 'text/plain')
   if (u === '/geo.m3u8') return send(403, 'no')
   if (u === '/html.m3u8') return send(200, '<html>nope</html>', 'text/html')
+  if (u === '/portal') return send(200, '<!doctype html><html><body>Regardez le direct</body></html>', 'text/html; charset=utf-8')
+  if (u === '/manifest') return send(200, '<?xml version="1.0"?><MPD xmlns="urn:mpeg:dash:schema:mpd:2011"></MPD>', 'application/dash+xml')
+  if (u === '/freetv.m3u8') return send(200, [
+    '#EXTM3U',
+    '#EXTINF:-1 tvg-name="Remote TV" tvg-id="Remote.fr" tvg-country="FR" group-title="France",Remote TV Ⓖ',
+    `${base}/redirect.m3u8`,
+    '#EXTINF:-1 tvg-name="Tele Libre" tvg-country="FR" group-title="France",Télé Libre Ⓨ',
+    'https://www.youtube.com/c/TeleLibre/live',
+    '#EXTINF:-1 tvg-name="Dash TV" tvg-country="FR" group-title="France",Dash TV',
+    `${base}/dash/manifest.mpd`,
+  ].join('\n'))
   // iptv-org API / playlist for the refresh test
   const api: Record<string, unknown> = {
     '/api/channels.json': [{ id: 'Remote.fr', name: 'Remote TV', country: 'FR', categories: ['news'], is_nsfw: false, closed: null }],
@@ -93,7 +110,8 @@ describe('IPTV catalogue', () => {
     const tf1 = all.items.find((c: { id: string }) => c.id === 'TF1.fr')
     expect(tf1).toMatchObject({ name: 'TF1', country: 'FR', categories: ['general'], status: 'unknown', favorite: false })
     expect(tf1.logo).toMatch(/^\/api\/images\/remote\?u=/)
-    expect(tf1.streams).toEqual([{ quality: '720p', labels: [], title: 'TF1' }])
+    expect(tf1.streams).toEqual([{ quality: '720p', labels: [], title: 'TF1', kind: 'hls', source: 'iptv-org', page: null }])
+    expect(tf1).toMatchObject({ curated: false, bestStream: null })
     expect(JSON.stringify(all)).not.toContain('/live/master.m3u8')        // stream addresses stay on the server
     expect(all.items.find((c: { id: string }) => c.id === 'stream-abc123').logo).toBeNull()
   })
@@ -101,7 +119,9 @@ describe('IPTV catalogue', () => {
   it('filters by country, category, language, search (name, other names, network); sorts and pages', async () => {
     expect((await list('country=fr')).items.map((c: { id: string }) => c.id)).toEqual(['France24.fr', 'TF1.fr'])
     expect((await list('category=news')).total).toBe(2)
-    expect((await list('language=eng')).items.map((c: { id: string }) => c.id)).toEqual(['BBCNews.uk', 'Cartoon.us', 'France24.fr'])
+    // Default order: the priority countries (CA, FR, MG, US) first; by name on request
+    expect((await list('language=eng')).items.map((c: { id: string }) => c.id)).toEqual(['France24.fr', 'Cartoon.us', 'BBCNews.uk'])
+    expect((await list('language=eng&sort=name')).items.map((c: { id: string }) => c.id)).toEqual(['BBCNews.uk', 'Cartoon.us', 'France24.fr'])
     expect((await list('category=news&language=fra')).items.map((c: { id: string }) => c.id)).toEqual(['France24.fr'])
     expect((await list('q=une')).items.map((c: { id: string }) => c.id)).toEqual(['TF1.fr'])
     expect((await list('q=médias')).items.map((c: { id: string }) => c.id)).toEqual(['France24.fr'])
@@ -157,13 +177,20 @@ describe('IPTV favourites and history', () => {
 })
 
 describe('IPTV settings', () => {
-  it('admin only; guide address validated', async () => {
+  it('admin only; guide address and priority countries validated', async () => {
     expect((await request(app).put('/api/iptv/settings').set(alice).send({ hideOffline: true })).status).toBe(403)
     expect((await request(app).put('/api/iptv/settings').set(admin).send({ epgUrl: 'javascript:alert(1)' })).status).toBe(422)
     const s = (await request(app).put('/api/iptv/settings').set(admin).send({ hideOffline: true, autoRefresh: false })).body.data
-    expect(s).toEqual({ hideOffline: true, autoRefresh: false, epgUrl: null })
+    expect(s).toEqual({ hideOffline: true, autoRefresh: false, epgUrl: null, priorityCountries: ['CA', 'FR', 'MG', 'US'] })
     expect((await request(app).post('/api/iptv/refresh').set(alice)).status).toBe(403)
-    await request(app).put('/api/iptv/settings').set(admin).send({ hideOffline: false })
+    // Priority countries: typed as text or sent as a list, two-letter codes, no duplicate
+    const typed = (await request(app).put('/api/iptv/settings').set(admin).send({ priorityCountries: 'be, ch;fr  BE' })).body.data
+    expect(typed.priorityCountries).toEqual(['BE', 'CH', 'FR'])
+    for (const bad of ['france', ['F1'], 42, Array.from({ length: 13 }, (_, i) => `A${String.fromCharCode(65 + i)}`)]) {
+      expect((await request(app).put('/api/iptv/settings').set(admin).send({ priorityCountries: bad })).status).toBe(422)
+    }
+    const back = (await request(app).put('/api/iptv/settings').set(admin).send({ hideOffline: false, priorityCountries: ['ca', 'fr', 'mg', 'us'] })).body.data
+    expect(back).toMatchObject({ hideOffline: false, priorityCountries: ['CA', 'FR', 'MG', 'US'] })
   })
 })
 
@@ -243,16 +270,196 @@ describe('IPTV with the Python module', () => {
     process.env.IPTV_API_BASE = `${base}/api`
     process.env.IPTV_PLAYLIST_URL = `${base}/index.m3u`
     process.env.IPTV_DATA_DIR = `/tmp/nexus-iptv-test-${process.pid}`
+    process.env.IPTV_FREETV_URL = 'off'             // never the real Free-TV playlist in a test
     try {
       const state = await refreshCatalogue()
-      expect(state).toMatchObject({ ok: true, source: 'api' })
+      expect(state).toMatchObject({ ok: true, source: 'api', sources: ['iptv-org'] })
       expect(state.stats).toMatchObject({ channels: 1, imported: 1 })
       expect((await list('')).items.map((c: { id: string }) => c.id)).toEqual(['Remote.fr'])
       const { rows } = await query('SELECT COUNT(*)::int AS n FROM iptv_favorites WHERE user_id = $1', [aliceId])
       expect(rows[0].n).toBe(2)                       // kept even while their channels are gone
       expect((await request(app).get('/api/iptv/favorites').set(alice)).body.data).toEqual([])
+
+      // With Free-TV: its streams first on the channels iptv-org knows, its own channels added
+      // (a YouTube live kept as a « page » stream), DASH streams left out
+      process.env.IPTV_FREETV_URL = `${base}/freetv.m3u8`
+      const both = await refreshCatalogue()
+      expect(both).toMatchObject({ ok: true, source: 'api', sources: ['iptv-org', 'free-tv'] })
+      expect(both.stats).toMatchObject({ channels: 2, freetv_matched: 1, freetv_added: 1, freetv_dash: 1, freetv_pages: 1 })
+      const items = (await list('sort=name')).items
+      expect(items.map((c: { name: string }) => c.name)).toEqual(['Remote TV', 'Télé Libre'])
+      expect(items[0]).toMatchObject({ id: 'Remote.fr', curated: true, labels: [] })    // one of its streams is not geo-blocked
+      expect(items[0].streams.map((x: { source: string; labels: string[] }) => [x.source, x.labels])).toEqual([['free-tv', ['Geo-blocked']], ['iptv-org', []]])
+      expect(items[1]).toMatchObject({ country: 'FR', curated: true })
+      expect(items[1].streams).toEqual([{ quality: null, labels: [], title: 'Télé Libre', kind: 'page', source: 'free-tv', page: 'https://www.youtube.com/c/TeleLibre/live' }])
     } finally {
-      delete process.env.IPTV_API_BASE; delete process.env.IPTV_PLAYLIST_URL; delete process.env.IPTV_DATA_DIR
+      delete process.env.IPTV_API_BASE; delete process.env.IPTV_PLAYLIST_URL; delete process.env.IPTV_DATA_DIR; delete process.env.IPTV_FREETV_URL
     }
+  }, 180_000)
+})
+
+describe('IPTV second source (Free-TV), priority countries, web pages', () => {
+  const token = () => makeToken('user', 'stream')
+  const ids = (items: { id: string }[]) => items.map((c) => c.id)
+  const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'nexus-iptv-ytdlp-'))
+  const calls = path.join(tmp, 'calls.log')
+  const YT = 'https://www.youtube.com/c/NexusTest/live'
+  const TWITCH = 'https://www.twitch.tv/nexusoffline'
+  const NO_TOOL = 'https://www.dailymotion.com/video/x8nexus'
+  const page = (url: string, title: string) => ({ url, kind: 'page', source: 'free-tv', title, labels: [] })
+
+  beforeAll(async () => {
+    // A stand-in for yt-dlp: answers like `yt-dlp -J <page>` and notes every call
+    const script = path.join(tmp, 'fake-ytdlp.py')
+    fs.writeFileSync(script, [
+      'import json, sys',
+      'url = sys.argv[-1]',
+      `open(${JSON.stringify(calls)}, 'a').write(url + '\\n')`,
+      "if 'offline' in url:",
+      "    sys.stderr.write('ERROR: [twitch:stream] nexusoffline: The channel is not currently live\\n')",
+      '    sys.exit(1)',
+      `stream = ${JSON.stringify(`${base}/live/master.m3u8`)}`,
+      "print(json.dumps({'title': 'Live', 'formats': [{'protocol': 'm3u8_native', 'url': stream, 'manifest_url': stream, 'height': 720,",
+      "                  'http_headers': {'User-Agent': 'YT/1', 'Referer': 'https://www.youtube.com/'}}]}))",
+    ].join('\n'))
+    process.env.IPTV_YTDLP = `python3 ${script}`
+    await importCatalogue({
+      generated_at: new Date().toISOString(), source: 'api', sources: ['iptv-org', 'free-tv'],
+      channels: [
+        channel('Cbc.ca', 'CBC', { country: 'CA', curated: 5 }),
+        channel('Alpha.ca', 'Alpha CA', { country: 'CA' }),
+        channel('Zed.fr', 'Zed TV', { country: 'FR', curated: 1 }),
+        channel('Alpha.fr', 'Alpha TV', { country: 'FR', curated: 2 }),
+        channel('Beta.fr', 'Élan TV', { country: 'FR' }),       // ordered with the E, whatever the database collation
+        channel('Usa.us', 'USA Live', { country: 'US', curated: 9 }),
+        channel('Aaa.de', 'Aaa DE', { country: 'DE', curated: 3 }),
+        channel('Bbb.de', 'Bbb DE', { country: 'DE' }),
+        // Not in a priority country, no place in the selection: after everything above
+        channel('Fallback.tv', 'Fallback TV', { streams: [{ url: `${base}/geo.m3u8` }, { url: `${base}/redirect.m3u8`, source: 'free-tv' }] }),
+        channel('Portal.tv', 'Portal TV', { streams: [{ url: `${base}/portal` }] }),
+        channel('Dash.tv', 'Dash TV', { streams: [{ url: `${base}/manifest` }] }),
+        channel('Yt.tv', 'YT Live', { streams: [{ url: `${base}/geo.m3u8` }, page(YT, 'YT Live')] }),
+        channel('Twitch.tv', 'Twitch Live', { streams: [page(TWITCH, 'Twitch Live')] }),
+        channel('NoTool.tv', 'No Tool', { streams: [page(NO_TOOL, 'No Tool')] }),
+        channel('Many.tv', 'Many streams', {
+          streams: [...Array.from({ length: 12 }, (_, i) => ({ url: `${base}/live/master.m3u8?n=${i}` })),
+            page('https://www.youtube.com/c/One/live', 'One'), page('https://www.youtube.com/c/Two/live', 'Two'), page('https://www.youtube.com/c/Three/live', 'Three')],
+        }),
+      ],
+      countries: [
+        { code: 'US', name: 'United States', flag: '🇺🇸', count: 1 }, { code: 'DE', name: 'Germany', flag: '🇩🇪', count: 2 },
+        { code: 'FR', name: 'France', flag: '🇫🇷', count: 3 }, { code: 'CA', name: 'Canada', flag: '🇨🇦', count: 2 },
+      ],
+      categories: [], languages: [],
+    })
+  })
+  afterAll(() => {
+    delete process.env.IPTV_YTDLP
+    fs.rmSync(tmp, { recursive: true, force: true })
+  })
+
+  it('orders channels: priority countries and the Free-TV selection first; by name on request', async () => {
+    expect(ids((await list('limit=7')).items)).toEqual(['Cbc.ca', 'Zed.fr', 'Alpha.fr', 'Usa.us', 'Alpha.ca', 'Beta.fr', 'Aaa.de'])
+    expect(ids((await list('country=FR')).items)).toEqual(['Zed.fr', 'Alpha.fr', 'Beta.fr'])          // the selection in its own order
+    expect(ids((await list('country=FR&sort=name')).items)).toEqual(['Alpha.fr', 'Beta.fr', 'Zed.fr'])
+    expect(ids((await list('sort=name&limit=3')).items)).toEqual(['Aaa.de', 'Alpha.ca', 'Alpha.fr'])
+    const all = await list('')
+    expect(all.total).toBe(15)
+    expect(all.items.find((c: { id: string }) => c.id === 'Zed.fr')).toMatchObject({ curated: true, bestStream: null })
+    expect(all.items.find((c: { id: string }) => c.id === 'Beta.fr').curated).toBe(false)
+    // The owner chooses the countries
+    await request(app).put('/api/iptv/settings').set(admin).send({ priorityCountries: 'de, fr' })
+    expect(ids((await list('limit=7')).items)).toEqual(['Aaa.de', 'Zed.fr', 'Alpha.fr', 'Bbb.de', 'Beta.fr', 'Cbc.ca', 'Usa.us'])
+    await request(app).put('/api/iptv/settings').set(admin).send({ priorityCountries: ['CA', 'FR', 'MG', 'US'] })
+  })
+
+  it('home: one shelf per priority country, a country without any channel said as such', async () => {
+    const sum = (await request(app).get('/api/iptv/summary').set(alice)).body.data
+    expect(sum.priority.map((p: { code: string; count: number }) => [p.code, p.count])).toEqual([['CA', 2], ['FR', 3], ['MG', 0], ['US', 1]])
+    expect(sum.priority[0]).toMatchObject({ name: 'Canada', flag: '🇨🇦' })
+    expect(ids(sum.priority[0].items)).toEqual(['Cbc.ca', 'Alpha.ca'])
+    expect(ids(sum.priority[1].items)).toEqual(['Zed.fr', 'Alpha.fr', 'Beta.fr'])
+    expect(sum.priority[2]).toEqual({ code: 'MG', name: null, flag: null, count: 0, items: [] })    // nothing made up
+    expect(sum.countries.map((c: { code: string }) => c.code)).toEqual(['CA', 'FR', 'US', 'DE'])
+    expect(sum.refresh.sources).toBeDefined()
+  })
+
+  it('keeps ten streams per channel, web pages included; only a page address is shown', async () => {
+    const many = (await request(app).get('/api/iptv/channels/Many.tv').set(alice)).body.data
+    expect(many.streams.map((x: { kind: string }) => x.kind)).toEqual([...Array(8).fill('hls'), 'page', 'page'])
+    expect(many.streams[9].page).toBe('https://www.youtube.com/c/Two/live')
+    const yt = (await request(app).get('/api/iptv/channels/Yt.tv').set(alice)).body.data
+    expect(yt.streams).toEqual([
+      { quality: null, labels: [], title: null, kind: 'hls', source: 'iptv-org', page: null },
+      { quality: null, labels: [], title: 'YT Live', kind: 'page', source: 'free-tv', page: YT },
+    ])
+    expect(JSON.stringify(yt)).not.toContain('/geo.m3u8')
+  })
+
+  it('refuses a channel address answering a web page or a DASH manifest, with the reason', async () => {
+    const portal = await request(app).get(`/api/iptv/play/Portal.tv/0/index.m3u8?token=${token()}`)
+    expect(portal.status).toBe(502)
+    expect(portal.body.error).toMatch(/page web/)
+    const dash = await request(app).get(`/api/iptv/play/Dash.tv/0/index.m3u8?token=${token()}`)
+    expect(dash.status).toBe(502)
+    expect(dash.body.error).toMatch(/DASH/)
+  })
+
+  it('a check remembers the stream that works: the player starts there', async () => {
+    const ch = await checkChannel(aliceId, 'Fallback.tv')
+    expect(ch).toMatchObject({ status: 'online', statusReason: null, bestStream: 1 })
+    const dead = await checkChannel(aliceId, 'Portal.tv')
+    expect(dead).toMatchObject({ status: 'offline', bestStream: null })
+    expect(dead.statusReason).toMatch(/page web/)
+    expect((await checkChannel(aliceId, 'Dash.tv')).statusReason).toMatch(/DASH/)
+  }, 60_000)
+
+  it('plays a live given as a web page: looked up by yt-dlp once, relayed with its headers', async () => {
+    hits.length = 0
+    const first = await request(app).get(`/api/iptv/play/Yt.tv/1/index.m3u8?token=${token()}`)
+    expect(first.status).toBe(200)
+    expect(first.text).toContain('/api/iptv/play/Yt.tv/1/seg?u=')
+    expect(first.text).not.toContain('youtube.com')
+    expect(hits[0]).toMatchObject({ path: '/live/master.m3u8', ua: 'YT/1', referer: 'https://www.youtube.com/' })
+    // Variants and segments go out with the headers yt-dlp gave, without another look-up
+    hits.length = 0
+    const variant = await request(app).get(first.text.split('\n')[2])
+    expect(variant.status).toBe(200)
+    expect(hits[0]).toMatchObject({ path: '/live/low/index.m3u8', ua: 'YT/1' })
+    expect((await request(app).get(`/api/iptv/play/Yt.tv/1/index.m3u8?token=${token()}`)).status).toBe(200)
+    expect(fs.readFileSync(calls, 'utf8').trim().split('\n')).toEqual([YT])
+    // Checked the same way: the page's stream is the one that works on this channel
+    expect(await checkChannel(aliceId, 'Yt.tv')).toMatchObject({ status: 'online', bestStream: 1 })
+  }, 60_000)
+
+  it('says why a web page cannot be played: no live at the moment, yt-dlp not installed', async () => {
+    const off = await request(app).get(`/api/iptv/play/Twitch.tv/0/index.m3u8?token=${token()}`)
+    expect(off.status).toBe(502)
+    expect(off.body.error).toBe('Direct indisponible (pas de direct en cours)')
+    const before = fs.readFileSync(calls, 'utf8')
+    expect((await request(app).get(`/api/iptv/play/Twitch.tv/0/index.m3u8?token=${token()}`)).body.error).toMatch(/pas de direct en cours/)
+    expect(fs.readFileSync(calls, 'utf8')).toBe(before)             // a failure is not looked up again at once
+    expect(await checkChannel(aliceId, 'Twitch.tv')).toMatchObject({ status: 'offline', statusReason: 'pas de direct en cours' })
+
+    process.env.IPTV_YTDLP = path.join(tmp, 'no-such-yt-dlp')
+    const missing = await request(app).get(`/api/iptv/play/NoTool.tv/0/index.m3u8?token=${token()}`)
+    expect(missing.status).toBe(502)
+    expect(missing.body.error).toMatch(/yt-dlp n’est pas installé/)
+    // Nothing is known about such a channel: « unknown », not « offline »
+    const unknown = await checkChannel(aliceId, 'NoTool.tv')
+    expect(unknown.status).toBe('unknown')
+    expect(unknown.statusReason).toMatch(/yt-dlp/)
+    expect(unknown.checkedAt).toBeTruthy()
+  }, 60_000)
+
+  it('background checks start with the selection of the priority countries', async () => {
+    await query(`UPDATE iptv_channels SET checked_at = NULL, status = 'unknown', status_reason = NULL, best_stream = NULL`)
+    expect(await checkDueChannels(3)).toBe(3)
+    const { rows } = await query<{ id: string }>(`SELECT id FROM iptv_channels WHERE checked_at IS NOT NULL ORDER BY id`)
+    expect(rows.map((r) => r.id)).toEqual(['Alpha.fr', 'Cbc.ca', 'Zed.fr'])
+    // Verified channels come first in their country
+    await query(`UPDATE iptv_channels SET status = 'online', checked_at = NOW() WHERE id = 'Beta.fr'`)
+    await query(`UPDATE iptv_channels SET status = 'offline' WHERE id = 'Zed.fr'`)
+    expect(ids((await list('country=FR')).items)).toEqual(['Alpha.fr', 'Beta.fr', 'Zed.fr'])
   }, 120_000)
 })
