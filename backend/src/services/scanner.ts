@@ -5,6 +5,7 @@ import { ConflictError } from '../utils/errors'
 import { chapterVersion, findChapters } from './chapters'
 import { logger } from '../utils/logger'
 import axios from 'axios'
+import { catalogueSynopsis, tagFr } from './frenchMeta'
 
 /** No online lookup may hold a scan (and every scan waiting behind it) longer than this. */
 const HTTP_TIMEOUT = 20_000
@@ -422,6 +423,17 @@ async function searchAniList(title: string, type: 'ANIME' | 'MANGA' = 'ANIME'): 
 }
 
 // ─── MangaDex search ─────────────────────────────────
+/** MangaDex descriptions are Markdown with a list of links at the end: keep the plain synopsis. */
+export function cleanMangaDexText(text: string | null | undefined): string | null {
+  if (!text) return null
+  const body = text.split(/\n\s*(?:---|___|\*\*\*)\s*\n/)[0]
+    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')      // [label](url) → label
+    .replace(/[*_]{1,3}([^*_]+)[*_]{1,3}/g, '$1')       // bold / italics
+    .replace(/\n{3,}/g, '\n\n')
+    .trim()
+  return body || null
+}
+
 /** "One Piece: Ace's Story—The Manga" → "one piece aces story the manga" */
 const normTitle = (t: string) => t.toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/['’`]/g, '')
   .replace(/[^\p{L}\p{N}]+/gu, ' ').trim()
@@ -902,6 +914,12 @@ export class MediaScanner {
         }
 
         const mdx = await searchMangaDex(title)
+        // French first: MangaDex's own French text, else anime-sama's synopsis, else English
+        const a = mdx?.attributes
+        const frTitle = a?.title?.fr || a?.altTitles?.find((t) => t.fr)?.fr
+        const frOverview = cleanMangaDexText(a?.description?.fr)
+          || await catalogueSynopsis(frTitle, title, a?.title?.en, a?.title?.['ja-ro'])
+        const overview = frOverview || cleanMangaDexText(a?.description?.en)
 
         await query(
           `INSERT INTO media_items
@@ -913,25 +931,29 @@ export class MediaScanner {
              -- does not answer ($5 null) the stored data is kept
              title          = CASE WHEN $5::text IS NULL THEN media_items.title ELSE EXCLUDED.title END,
              original_title = CASE WHEN $5::text IS NULL THEN media_items.original_title ELSE EXCLUDED.original_title END,
-             overview       = CASE WHEN $5::text IS NULL OR media_items.mangadex_id IS NOT DISTINCT FROM $5::text
+             -- a French synopsis replaces the English one stored by earlier scans
+             overview       = CASE WHEN $10::boolean AND EXCLUDED.overview IS NOT NULL THEN EXCLUDED.overview
+                                WHEN $5::text IS NULL OR media_items.mangadex_id IS NOT DISTINCT FROM $5::text
                                 THEN COALESCE(media_items.overview, EXCLUDED.overview) ELSE EXCLUDED.overview END,
              poster_path    = CASE WHEN $5::text IS NULL OR media_items.mangadex_id IS NOT DISTINCT FROM $5::text
                                 THEN COALESCE(media_items.poster_path, EXCLUDED.poster_path) ELSE EXCLUDED.poster_path END,
-             genres         = CASE WHEN $5::text IS NOT NULL AND media_items.mangadex_id IS DISTINCT FROM $5::text THEN EXCLUDED.genres
+             -- genres come from MangaDex's tags (now in French): taken again when it answers
+             genres         = CASE WHEN $5::text IS NOT NULL AND cardinality(EXCLUDED.genres) > 0 THEN EXCLUDED.genres
                                 WHEN cardinality(media_items.genres) > 0 THEN media_items.genres ELSE EXCLUDED.genres END,
              status         = CASE WHEN $5::text IS NULL THEN media_items.status ELSE COALESCE(EXCLUDED.status, media_items.status) END,
              mangadex_id    = COALESCE($5::text, media_items.mangadex_id),
              last_scanned   = NOW()`,
           [
             'manga',
-            mdx?.attributes?.title?.en || mdx?.attributes?.title?.['ja-ro'] || title,
-            mdx?.attributes?.title?.ja || null,
+            frTitle || a?.title?.en || a?.title?.['ja-ro'] || title,
+            a?.title?.ja || null,
             mangaPath,
             mdx?.id || null,
-            mdx?.attributes?.description?.en || null,
+            overview || null,
             mdx?.coverUrl || null,
-            mdx?.attributes?.tags?.map((t) => t.attributes?.name?.['en']).filter(Boolean) || [],
-            mdx?.attributes?.status || null,
+            a?.tags?.map((t) => t.attributes?.name?.['en']).filter((n): n is string => !!n).map(tagFr) || [],
+            a?.status || null,
+            !!frOverview,
           ],
         )
 
