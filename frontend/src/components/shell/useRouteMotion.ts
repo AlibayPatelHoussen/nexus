@@ -24,7 +24,8 @@ function keyframes(device: Device, motion: Motion): [Keyframe[], number] {
   if (device === 'phone') {
     if (motion === 'push') return [[{ transform: 'translateX(32%)', opacity: 0.4 }, { transform: 'none', opacity: 1 }], 420]
     if (motion === 'pop')  return [[{ transform: 'translateX(-24%)', opacity: 0.4 }, { transform: 'none', opacity: 1 }], 380]
-    return [[{ opacity: 0 }, { opacity: 1 }], 200]
+    // Tab switch: the new tab is simply there (iOS / Apple Music: no fade, which flashed)
+    return [[], 0]
   }
   // Mac: content changes in place with a short fade, pushed pages rise slightly
   if (motion === 'push') return [[{ transform: 'translateY(8px) scale(0.995)', opacity: 0 }, { transform: 'none', opacity: 1 }], 320]
@@ -78,6 +79,6 @@ export function useRouteMotion(frame: () => HTMLElement | null, device: Device, 
     const sameTab = tabFor(from)?.to === tabFor(to)?.to || to.startsWith('/media/') || from.startsWith('/media/')
     const motion = sameTab ? motionFor(from, to) : 'switch'
     const [frames, duration] = keyframes(device, motion)
-    node.animate(frames, { duration, easing: EASE })
+    if (duration) node.animate(frames, { duration, easing: EASE })
   }, [location.pathname, location.key, navType, device, frame, scroller])
 }

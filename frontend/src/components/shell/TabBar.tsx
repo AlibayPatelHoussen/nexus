@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react'
+import { startTransition, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { motion, useMotionValue, useSpring, useTransform, type MotionValue } from 'framer-motion'
 import { useAuthStore } from '@/stores/authStore'
@@ -13,6 +13,8 @@ const OVERFLOW = 5      // the lens spills over the bar, top and bottom (pt)
 // settles back into the pill a bit slower (≈ .5 / .8)
 const FOLLOW = { stiffness: 700, damping: 42, mass: 0.6 }
 const SETTLE = { type: 'spring', stiffness: 300, damping: 28 } as const
+/** After the finger lifts, the lens glides onto the chosen tab before melting into its pill */
+const RELEASE_MS = 240
 
 /**
  * iOS 26 tab bar (Apple's iOS 26 kit, "Tab Bar – iPhone"; motion from a screen
@@ -46,12 +48,16 @@ export default function TabBar() {
   const bar = useRef<HTMLUListElement>(null)
   const rect = useRef<DOMRect | null>(null)
   const [width, setWidth] = useState(0)
-  const [pressing, setPressing] = useState(false)
+  // press: finger down, the lens follows it; release: the lens glides to the chosen tab
+  const [phase, setPhase] = useState<'idle' | 'press' | 'release'>('idle')
+  const pressing = phase === 'press'
+  const releaseTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  useEffect(() => () => { if (releaseTimer.current) clearTimeout(releaseTimer.current) }, [])
   // Tab under the finger while pressing, then the tab picked until the route catches up:
   // the (hidden) pill follows it at once, so it is already in place when the lens lets go
   const [under, setUnder] = useState<number | null>(null)
   const handled = useRef(false)
-  useEffect(() => { if (!pressing && under != null && (under === active || active < 0)) setUnder(null) }, [pressing, under, active])
+  useEffect(() => { if (phase === 'idle' && under != null && (under === active || active < 0)) setUnder(null) }, [phase, under, active])
 
   useLayoutEffect(() => {
     const el = bar.current
@@ -87,13 +93,16 @@ export default function TabBar() {
     rect.current = bar.current.getBoundingClientRect()
     handled.current = true
     const x = relX(e.clientX)
-    // The lens grows out of the selected pill, then runs to the finger
-    const from = active >= 0 ? PAD + (active + 0.5) * tabW : x
-    center.jump(from); finger.jump(from)
+    if (releaseTimer.current) { clearTimeout(releaseTimer.current); releaseTimer.current = null }
+    if (phase === 'idle') {
+      // The lens grows out of the selected pill, then runs to the finger
+      const from = active >= 0 ? PAD + (active + 0.5) * tabW : x
+      center.jump(from); finger.jump(from)
+    }
     finger.set(x)
     touch.set(1)
     setUnder(indexAt(x))
-    setPressing(true)
+    setPhase('press')
   }
   const onPointerMove = (e: React.PointerEvent) => {
     if (!pressing) return
@@ -103,16 +112,21 @@ export default function TabBar() {
   }
   const end = (select: boolean, clientX?: number) => {
     if (!pressing) return
-    setPressing(false)
-    touch.set(0)
-    if (select && clientX != null) {
-      const i = indexAt(relX(clientX))
-      setUnder(i)
-      navigator.vibrate?.(8)
-      if (tabs[i]) navigate(tabs[i].to)   // the same tab again goes back to its root
-    } else {
-      setUnder(null)
+    if (!select || clientX == null) {
+      setPhase('idle'); touch.set(0); setUnder(null)
+      return
     }
+    const i = indexAt(relX(clientX))
+    setUnder(i)
+    // Apple Music: on a tap the lens does not vanish where it is, it glides onto the
+    // chosen tab, then melts into its pill
+    finger.set(PAD + (i + 0.5) * tabW)
+    setPhase('release')
+    releaseTimer.current = setTimeout(() => { releaseTimer.current = null; setPhase('idle'); touch.set(0) }, RELEASE_MS)
+    navigator.vibrate?.(8)
+    // The new page renders without blocking the lens animation (interruptible render)
+    const to = tabs[i]?.to
+    if (to) requestAnimationFrame(() => startTransition(() => navigate(to)))   // the same tab again goes back to its root
   }
   const pill = under ?? active
   // The pill moves instantly when the finger chose the tab (it is hidden under the lens);
@@ -149,7 +163,7 @@ export default function TabBar() {
                 className="absolute z-0 left-0 rounded-pill pointer-events-none bg-[color:var(--glass-select)]"
                 style={{ top: PAD, bottom: PAD, width: tabW }}
                 initial={false}
-                animate={{ x: PAD + pill * tabW, opacity: pressing ? 0 : 1, scale: pressing ? 1.15 : 1 }}
+                animate={{ x: PAD + pill * tabW, opacity: phase === 'idle' ? 1 : 0, scale: phase === 'idle' ? 1 : 1.15 }}
                 transition={{ ...SETTLE, x: pillMove }}
               />
             )}
@@ -159,8 +173,8 @@ export default function TabBar() {
               className="tab-lens absolute z-20 left-0 rounded-pill pointer-events-none"
               style={{ x: lensX, width: lensW, top: -OVERFLOW, bottom: -OVERFLOW }}
               initial={false}
-              animate={{ opacity: pressing ? 1 : 0, scale: pressing ? 1 : 0.72 }}
-              transition={pressing ? { type: 'spring', stiffness: 520, damping: 30 } : SETTLE}
+              animate={{ opacity: phase === 'idle' ? 0 : 1, scale: phase === 'idle' ? 0.8 : 1 }}
+              transition={phase === 'idle' ? { type: 'spring', stiffness: 420, damping: 34 } : { type: 'spring', stiffness: 520, damping: 30 }}
             />
           </>
         )}
@@ -170,7 +184,7 @@ export default function TabBar() {
             to={t.to}
             label={t.label}
             Icon={t.icon}
-            on={i === (pressing ? active : pill)}
+            on={i === (phase === 'idle' ? pill : active)}
             centre={PAD + (i + 0.5) * tabW}
             reach={lensW * 0.6}
             lensCenter={center}

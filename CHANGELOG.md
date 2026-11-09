@@ -4,6 +4,11 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Fixed — iPhone tab bar: switching tab by tapping looked glitchy
+- Like Apple Music: after a tap the glass lens no longer vanishes where it was, it glides onto the chosen tab and melts into its pill
+- The new tab appears at once (no more fade from blank), and its page renders without blocking the animation
+- Section pages are loaded in the background after opening Nexus: the first visit of a tab no longer shows a spinner
+
 ### Changed — player controls better spread out on the phone
 - Inline on a phone: smaller centre buttons (−10 s / Lecture / +10 s) centred in the picture, a slim timeline capsule at the bottom, and « Épisodes » / « Épisode suivant » as two glass capsules under the video instead of inside the bar; full screen keeps the larger controls
 - A TV refusing the video now shows its reason in Nexus (it was sent as 502, which a proxy in front of Nexus replaces: « Request failed with status code 502 »)
