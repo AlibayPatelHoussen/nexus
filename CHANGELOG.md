@@ -4,6 +4,10 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Fixed — tab bar lens stuck on a tab, quicker shrink
+- A touch whose end never reached the bar (iOS took the gesture, the app went to the background, the page changed) left the lens stuck over a tab: it is now ended as cancelled
+- The lens shrinks back into its pill faster (0.26 s instead of 0.4 s)
+
 ### Fixed — tab bar lens like Apple Music (owner's feedback)
 - Letting go: the lens no longer vanishes at once; it glides to the chosen tab and shrinks smoothly back into its pill (CSS transitions, run by the compositor, so the page rendering at the same time cannot make it stutter)
 - Quick taps: the lens pops out every time (at least 170 ms with a slight overshoot) then shrinks back, instead of staying stuck
