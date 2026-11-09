@@ -4,6 +4,12 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Fixed — player options on iPhone (owner's feedback)
+- AirPlay / Image dans l’image / lock buttons moved up into the top bar next to « Retour » (they covered the +10 s button); in full screen they stay over the video
+- iPhone, iPad, Mac: the cast button opens the system AirPlay list at once, i.e. every AirPlay TV on the phone's own network (Roku, Samsung, LG… TVs), not the server's. Safari now plays converted videos with its own HLS player, the only one AirPlay and Picture in Picture accept (hls.js was used on recent iPhones)
+- Image dans l’image: iOS refuses it to apps opened from the Home Screen (Apple's limit, WebKit bug 303885). In that case the button explains it and offers « Ouvrir dans Safari » (same video, resumes at the same place), where Picture in Picture works, also automatically when Safari is left
+- TVs found by the server (other browsers): the real reason when one refuses the video; a Roku refusing network commands says where to allow them (Contrôle par les applications mobiles › Permissif) and suggests AirPlay, since recent Roku OS versions removed « Play on Roku »
+
 ### Added — player: Diffuser (AirPlay, Chromecast, TVs), Picture in Picture, Épisodes, lock
 - Top of the player, in a Liquid Glass capsule: « Diffuser », « Image dans l’image » and (touch screens) « Verrouiller »; in full screen a close button and the title on the left
 - Diffuser: AirPlay on Apple devices (Apple TV and AirPlay TVs; a converted video switches to Safari's own HLS so AirPlay can send it), Chromecast / Google TV through the browser elsewhere, and the TVs the server finds on its network: DLNA / UPnP (Samsung, LG, Sony, Philips, many Android TV / Fire TV, Kodi, VLC…) and Roku. The TV reads the file from Nexus itself; the player turns into a remote (play / pause, ±10 s on DLNA, « Arrêter la diffusion » resumes on the device where the TV stopped) and the position is saved for « Reprendre ». `CAST_BASE_URL` sets the address the TV uses when the automatic one (server's LAN IP and port) is not reachable

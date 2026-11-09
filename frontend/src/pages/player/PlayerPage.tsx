@@ -42,6 +42,8 @@ export default function PlayerPage() {
   const [resumeAt,   setResumeAt]   = useState<number | null>(null)
   const [showResume, setShowResume] = useState(false)
   const [seekTo,     setSeekTo]     = useState<{ time: number; key: number } | undefined>()
+  /** Right of the top bar: the player puts AirPlay / Image dans l’image / lock there */
+  const [toolbarSlot, setToolbarSlot] = useState<HTMLDivElement | null>(null)
 
   const { data: media } = useQuery({
     queryKey: ['media', id],
@@ -175,11 +177,10 @@ export default function PlayerPage() {
           <button type="button" className="flex items-center h-9 my-1 pl-1.5 pr-3.5 rounded-pill glass-clear text-[15px] md:text-body font-medium text-white" onClick={() => navigate(-1)}>
             <ChevronLeft size={26} strokeWidth={2} className="md:w-5 md:h-5" aria-hidden="true" /> Retour
           </button>
-          {media && (
-            <span className="flex-1 min-w-0 text-center text-subhead text-white/70 truncate pr-16">
-              {media.title}{currentEpisode && ` · S${currentEpisode.season ?? 1}, É${currentEpisode.episodeNumber}`}
-            </span>
-          )}
+          <span className="flex-1 min-w-0 text-center text-subhead text-white/70 truncate">
+            {media && <>{media.title}{currentEpisode && ` · S${currentEpisode.season ?? 1}, É${currentEpisode.episodeNumber}`}</>}
+          </span>
+          <div ref={setToolbarSlot} className="flex-shrink-0 flex justify-end min-w-[88px]" />
         </div>
 
         <div className="relative">
@@ -210,6 +211,7 @@ export default function PlayerPage() {
               onTimeUpdate={handleTimeUpdate}
               onEnded={handleEnded}
               title={playerTitle}
+              toolbarSlot={toolbarSlot}
               artwork={media?.posterPath}
               episodes={playerEpisodes}
               onSelectEpisode={(epId) => navigate(`/player/${id}?ep=${epId}`, { replace: true })}
