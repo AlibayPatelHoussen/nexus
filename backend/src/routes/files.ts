@@ -11,6 +11,7 @@ import { forgetPaths } from '../services/libraryDelete'
 import { sudoLimiter } from '../middleware/rateLimit'
 import { elevatedDelete } from '../services/elevatedDelete'
 import { FilesService, isInsideDir, sanitizePath } from '../services/files'
+import { DLNA_STREAM_HEADERS } from '../services/cast'
 import { AppError, ForbiddenError, NotFoundError, ValidationError } from '../utils/errors'
 import { query } from '../config/database'
 import { archivePages, chapterKind } from '../services/chapters'
@@ -92,6 +93,8 @@ router.get('/stream', authenticateStream, asyncHandler(async (req: Request, res:
   const ext = path.extname(filePath).toLowerCase()
   const contentType = MIME[ext] || 'application/octet-stream'
   const isPdf = ext === '.pdf'
+  // DLNA TVs (« Diffuser ») ask how they may read the stream
+  if (req.headers['getcontentfeatures.dlna.org']) for (const [k, v] of Object.entries(DLNA_STREAM_HEADERS)) res.setHeader(k, v)
 
   // Range requests for every file, PDFs included: PDF.js and Safari's viewer
   // fetch big PDFs piece by piece (first pages first)

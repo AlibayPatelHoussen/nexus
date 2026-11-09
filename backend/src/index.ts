@@ -31,6 +31,7 @@ import { startYtDlpUpdater } from './services/ytdlp'
 import { startKeyframeIndexer } from './services/keyframeIndexer'
 import terminalRoutes from './routes/terminal'
 import imagesRoutes   from './routes/images'
+import castRoutes     from './routes/cast'
 import { registerSocketHandlers } from './socket'
 
 const STARTED_AT = new Date().toISOString()
@@ -92,6 +93,7 @@ app.use('/api/media',    mediaRoutes)
 app.use('/api/services', servicesRoutes)
 app.use('/api/downloads', downloadsRoutes)
 app.use('/api/push', pushRoutes)
+app.use('/api/cast', castRoutes)
 app.use('/api/terminal', terminalRoutes)
 app.get('/api/health',   (_req, res) => res.json({
   status:    'ok',

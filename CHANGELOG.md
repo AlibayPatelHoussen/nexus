@@ -4,6 +4,13 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Added — player: Diffuser (AirPlay, Chromecast, TVs), Picture in Picture, Épisodes, lock
+- Top of the player, in a Liquid Glass capsule: « Diffuser », « Image dans l’image » and (touch screens) « Verrouiller »; in full screen a close button and the title on the left
+- Diffuser: AirPlay on Apple devices (Apple TV and AirPlay TVs; a converted video switches to Safari's own HLS so AirPlay can send it), Chromecast / Google TV through the browser elsewhere, and the TVs the server finds on its network: DLNA / UPnP (Samsung, LG, Sony, Philips, many Android TV / Fire TV, Kodi, VLC…) and Roku. The TV reads the file from Nexus itself; the player turns into a remote (play / pause, ±10 s on DLNA, « Arrêter la diffusion » resumes on the device where the TV stopped) and the position is saved for « Reprendre ». `CAST_BASE_URL` sets the address the TV uses when the automatic one (server's LAN IP and port) is not reachable
+- Image dans l’image: button, and Safari continues the video in Picture in Picture when the app is left; lock screen / Control Center show the title and poster with play / pause, ±10 s, position and « suivant » (Media Session)
+- Touch screens: big centred −10 s / Lecture / +10 s (iOS player), a tap shows / hides the controls; the bar keeps the timeline. Series: « Épisodes » (panel over the video, also in full screen) and « Épisode suivant »
+- « Verrouiller »: hides every control so a touch does nothing; a tap shows « Déverrouiller »
+
 ### Added — change your user name in Réglages
 - Réglages › Nom d’utilisateur: type the new name, confirm with your password. 3 to 50 letters, digits, _ or -; a name (or e-mail) already used, whatever the case, is refused. The new name is shown at once and is the one to log in with (`PATCH /api/auth/username`)
 

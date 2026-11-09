@@ -122,6 +122,9 @@
     box-shadow: var(--glass-clear-rim), 0 8px 28px rgba(0, 0, 0, 0.32);
     color: #fff;
   }
+  /* Panels over video (« Épisodes », « Diffuser »): same glass, denser, so lists stay
+     readable over bright frames */
+  .glass-media.glass-media-dense { background: rgba(18, 18, 20, 0.7); }
   /* iOS 26 / macOS 26 bars: no background of their own and no hairline; the content
      scrolling under them dissolves (blur + fade, the kit's "Scroll Edge Effect – Soft") */
   .edge-bar { isolation: isolate; }
