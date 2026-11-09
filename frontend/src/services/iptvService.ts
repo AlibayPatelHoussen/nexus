@@ -50,7 +50,10 @@ export interface IptvSummary extends IptvFacets {
  *  conversions running, a stream the server could not read, a conversion that failed */
 export type PictureReason = 'audio' | 'ffmpeg' | 'busy' | 'unreadable' | 'failed'
 export interface PictureAnswer {
+  /** Codecs the stream holds (ffprobe names: h264, hevc, mpeg2video… / aac, ac3, eac3, mp2…) */
   video: string | null; audio: string | null
+  /** Interlaced video (broadcast video passed on as it is); `plain`: the usual 8-bit 4:2:0 */
+  interlaced: boolean; plain: boolean
   /** The server converts the picture: play `convertedUrl` */
   convert: boolean
   reason: PictureReason | null

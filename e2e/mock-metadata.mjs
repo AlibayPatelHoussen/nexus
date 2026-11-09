@@ -59,8 +59,10 @@ const IPTV_CHANNELS = [
   ['Mix.it', 'Canale Misto', 'IT', ['general'], ['ita']],      // a playlist whose first variant is sound only
   ['Old.it', 'Tele Antica', 'IT', ['general'], ['ita']],       // MPEG-2 video: converted by the server
   ['Radio.it', 'Radio Onda', 'IT', ['music'], ['ita']],        // no picture at all
+  ['Tnt.it', 'Tele Digitale', 'IT', ['general'], ['ita']],     // interlaced H.264 + Dolby sound, as broadcast
+  ['Ts.it', 'Tele Diretta', 'IT', ['general'], ['ita']],       // a bare MPEG-TS stream, not a playlist
 ]
-const IPTV_FILES = { 'Mix.it': 'mix.m3u8', 'Old.it': 'old.m3u8', 'Radio.it': 'radio.m3u8' }
+const IPTV_FILES = { 'Mix.it': 'mix.m3u8', 'Old.it': 'old.m3u8', 'Radio.it': 'radio.m3u8', 'Tnt.it': 'tnt.m3u8', 'Ts.it': 'direct.ts' }
 export const IPTV_API = {
   channels: IPTV_CHANNELS.map(([id, name, country, categories]) => ({ id, name, country, categories, is_nsfw: id === 'Adult.us', closed: null, alt_names: [], network: null, website: null })),
   feeds: IPTV_CHANNELS.map(([channel, , , , languages]) => ({ channel, id: 'SD', is_main: true, languages })),

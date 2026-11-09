@@ -4,9 +4,10 @@ A check is one GET of the stream (with its Referer / User-Agent when the catalog
 them), reading at most a few KB:
 - an HLS playlist (.m3u8) must answer #EXTM3U; a master playlist is followed one level, to
   its first variant, which must list segments (#EXTINF);
-- any other stream must answer 200/206 with bytes the player can read: a web page, a DASH
-  manifest or a bare MPEG-TS stream answer, but a browser cannot play them — they are reported
-  offline with the reason, instead of « available » on a channel that never starts;
+- any other stream must answer 200/206 with bytes that can be played: a web page or a DASH
+  manifest answer, but nothing plays them here — they are reported offline with the reason,
+  instead of « available » on a channel that never starts. A bare MPEG-TS stream is fine: no
+  browser plays it as it is, the Nexus server converts it when it is watched;
 - a « page » stream (YouTube, Twitch, Dailymotion live) is first looked up with yt-dlp, then
   the stream found is checked like the others. Without yt-dlp the answer is « unknown ».
 Few checks run at a time (4 by default) with short timeouts: the iptv-org servers are not
@@ -66,8 +67,6 @@ def _readable(ctype: str, body: bytes, path: str) -> Tuple[str, str]:
         return 'offline', 'page web, pas un flux vidéo'
     if head.startswith((b'<', b'{', b'[')):
         return 'offline', 'réponse inattendue, pas un flux vidéo'
-    if 'mp2t' in ctype or (len(body) > 188 and body[0] == 0x47 and body[188] == 0x47):
-        return 'offline', 'flux MPEG-TS direct, illisible dans un navigateur'
     return 'online', ''
 
 

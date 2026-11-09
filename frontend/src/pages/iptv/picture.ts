@@ -1,4 +1,4 @@
-import type { PictureReason } from '@/services/iptvService'
+import type { PictureAnswer, PictureReason } from '@/services/iptvService'
 
 /*
  * Channels that play with sound but no picture.
@@ -10,6 +10,39 @@ import type { PictureReason } from '@/services/iptvService'
  *   converts it live (services/iptvConvert.ts on the server);
  * - the channel sends no picture at all (a radio): said as such, the sound goes on.
  */
+
+// ─── Streams this browser needs the server's conversion for ──────────────────────
+/** What the player of this browser reads: Safari plays streams itself (`native`), the others
+ *  go through hls.js and the browser's Media Source decoders */
+export interface Reader { native: boolean; hevc: boolean; ac3: boolean; eac3: boolean }
+const PLAIN_AUDIO = new Set(['aac', 'mp3', 'mp2'])
+
+/**
+ * Why this browser needs the server's conversion for a stream holding `held` (told by the
+ * server), or null when it can play it as it is.
+ * `unsure`: the browser may still show it — to be decided once playback had its chance.
+ */
+export function needsConversion(held: Pick<PictureAnswer, 'video' | 'audio' | 'interlaced' | 'plain'>, reader: Reader): { why: string; unsure: boolean } | null {
+  const { video, audio } = held
+  if (!video) return null          // a radio, or a stream the server could not read: nothing to decide from
+  if (video !== 'h264' && !(video === 'hevc' && reader.hevc)) return { why: `vidéo ${video} non lue par ce navigateur`, unsure: false }
+  if (video === 'h264' && !held.plain) return { why: 'vidéo H.264 hors du format courant (10 bits ou 4:2:2)', unsure: false }
+  // Outside Safari the sound goes through the browser's own decoders: no Dolby in most of them
+  if (!reader.native && audio && !PLAIN_AUDIO.has(audio) && !(audio === 'ac3' && reader.ac3) && !(audio === 'eac3' && reader.eac3)) {
+    return { why: `son ${audio} non lu par ce navigateur`, unsure: false }
+  }
+  // Interlaced broadcast video passed on as it is: Safari often plays its sound over a black
+  // screen until the stream is started again by hand — but not always
+  if (reader.native && held.interlaced) return { why: 'vidéo entrelacée, non affichée par Safari', unsure: true }
+  return null
+}
+
+/** « h264 entrelacé · son eac3 », for the playback details */
+export function describeStream(held: Pick<PictureAnswer, 'video' | 'audio' | 'interlaced' | 'plain' | 'reason'>): string {
+  if (!held.video && !held.audio) return held.reason === 'ffmpeg' ? 'non analysé (ffmpeg absent du serveur)' : 'non lu par le serveur'
+  const video = held.video ? `${held.video}${held.interlaced ? ' entrelacé' : ''}${held.plain ? '' : ' (hors 8 bits 4:2:0)'}` : 'pas d’image'
+  return `${video} · son ${held.audio ?? 'absent'}`
+}
 
 /** What the player needs to know of an hls.js level */
 export interface Variant { uri: string; width?: number; videoCodec?: string; bitrate?: number }

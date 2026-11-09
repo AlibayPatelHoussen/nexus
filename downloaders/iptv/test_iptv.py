@@ -383,10 +383,10 @@ class Checker(LocalServer):
             '/live.mpd': (200, b'<?xml version="1.0"?><MPD xmlns="urn:mpeg:dash:schema:mpd:2011"></MPD>', {'Content-Type': 'application/dash+xml'}),
             '/error': (200, b'{"error": "geo"}', {'Content-Type': 'application/json'}),
         })
-        reasons = {path: stream_checker.check(f'{self.base}{path}') for path in ('/direct.ts', '/direct', '/direct-page', '/live.mpd', '/error')}
+        reasons = {path: stream_checker.check(f'{self.base}{path}') for path in ('/direct-page', '/live.mpd', '/error')}
         self.assertEqual({r['status'] for r in reasons.values()}, {'offline'})
-        self.assertIn('MPEG-TS', reasons['/direct.ts']['reason'])
-        self.assertIn('MPEG-TS', reasons['/direct']['reason'])
+        # A bare MPEG-TS stream is a live stream all the same: the server converts it when it is watched
+        self.assertEqual({stream_checker.check(f'{self.base}{path}')['status'] for path in ('/direct.ts', '/direct')}, {'online'})
         self.assertIn('page web', reasons['/direct-page']['reason'])
         self.assertIn('DASH', reasons['/live.mpd']['reason'])
         self.assertIn('inattendue', reasons['/error']['reason'])

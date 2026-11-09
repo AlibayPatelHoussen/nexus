@@ -156,6 +156,12 @@ ffmpeg -loglevel error -y -f lavfi -i "testsrc=size=320x180:rate=25" -f lavfi -i
 ffmpeg -loglevel error -y -f lavfi -i "sine=frequency=500" -t 60 -c:a aac -b:a 64k \
   -f hls -hls_time 2 -hls_list_size 0 -hls_playlist_type vod "$E2E/iptv-hls/radio.m3u8"
 printf '#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=256000\nradio.m3u8\n#EXT-X-STREAM-INF:BANDWIDTH=400000\nindex.m3u8\n' > "$E2E/iptv-hls/mix.m3u8"
+# Broadcast video passed on as it is (interlaced H.264, Dolby sound: a browser plays part of it at
+# best), as a playlist and as a bare MPEG-TS stream (no browser reads that)
+TNT=(-f lavfi -i "testsrc=size=720x576:rate=25" -f lavfi -i "sine=frequency=500" -t 12 -c:v libx264 -preset ultrafast -pix_fmt yuv420p
+     -flags +ilme+ildct -x264opts tff=1 -g 25 -c:a ac3 -b:a 128k)
+ffmpeg -loglevel error -y "${TNT[@]}" -f hls -hls_time 2 -hls_list_size 0 -hls_playlist_type vod "$E2E/iptv-hls/tnt.m3u8"
+ffmpeg -loglevel error -y "${TNT[@]}" -f mpegts "$E2E/iptv-hls/direct.ts"
 MOCK_PORT=$MOCK_PORT E2E_DIR=$E2E node "$ROOT/e2e/mock-metadata.mjs" > "$E2E/mock.log" 2>&1 < /dev/null &
 echo $! > "$E2E/mock.pid"
 

@@ -2,17 +2,21 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  AlertTriangle, ChevronLeft, ExternalLink, Heart, Maximize, Minimize, Pause, PictureInPicture2, Play, RefreshCw, SkipBack,
+  AlertTriangle, ChevronLeft, ExternalLink, Heart, Maximize, Minimize, Pause, PictureInPicture2, Play, RefreshCw, ServerCog, SkipBack,
   SkipForward, Volume2, VolumeX,
 } from 'lucide-react'
 import type Hls from 'hls.js'
+import toast from 'react-hot-toast'
 import Spinner from '@/components/ui/Spinner'
 import { getStreamToken } from '@/services/streamToken'
 import { iptvService, type IptvChannel, type PictureAnswer, type PictureReason } from '@/services/iptvService'
 import { cn } from '@/utils'
 import { ChannelLogo, readQueue, rememberQueue, useToggleFavorite } from './ChannelTile'
 import { categoryName, countryName, flag } from './labels'
-import { SOUND_ONLY, framesReported, rememberConverted, rememberFramesReported, variantsToDrop, wasConverted } from './picture'
+import {
+  SOUND_ONLY, describeStream, framesReported, needsConversion, rememberConverted, rememberFramesReported, variantsToDrop, wasConverted,
+  type Reader,
+} from './picture'
 
 /** Safari plays HLS itself (AirPlay, Picture in Picture); elsewhere hls.js */
 const NATIVE_HLS = typeof document !== 'undefined' && 'WebKitPlaybackTargetAvailabilityEvent' in window
@@ -24,6 +28,14 @@ const CODEC_ERRORS = new Set(['bufferAddCodecError', 'bufferIncompatibleCodecsEr
 const NO_CODEC = 'Ce navigateur ne lit pas le format vidéo de cette chaîne, et le serveur n’a pas pu le convertir.'
 /** Video formats Safari plays by itself */
 const SAFARI_READS = new Set(['h264', 'hevc'])
+/** What the player says while the server prepares a conversion, by what led to it */
+const ASKING = {
+  silent: 'Ce navigateur n’affiche pas l’image de cette chaîne. Le serveur regarde s’il peut la convertir…',
+  unfit: 'Cette chaîne est diffusée dans un format que ce navigateur lit mal. Le serveur la convertit…',
+  failed: 'Lecture directe impossible. Le serveur essaie de convertir la chaîne…',
+  asked: 'Conversion de la chaîne par le serveur…',
+}
+const supports = (type: string) => typeof MediaSource !== 'undefined' && MediaSource.isTypeSupported(type)
 /** A video element that tells when it shows a frame (Safari 15.4+, Chromium) */
 type FrameVideo = HTMLVideoElement & { requestVideoFrameCallback?: (cb: () => void) => number; cancelVideoFrameCallback?: (handle: number) => void }
 
@@ -51,6 +63,10 @@ function siteName(page: string | null | undefined): string | null {
  * converts the first one (MPEG-2, HEVC… to H.264), or the channel is said to be sound only.
  * Safari (iPhone) reads streams itself and sometimes plays the sound of a stream it could show
  * without its picture, until the stream is loaded again: that is tried first there.
+ * The server also says what each stream holds while it starts: one this browser is known to play
+ * badly (interlaced broadcast video on Safari, Dolby sound elsewhere, MPEG-2…) is converted
+ * without waiting for the trouble; a channel no stream of which starts is tried through the
+ * conversion before giving up; and the viewer can ask for the conversion (the button in the bar).
  */
 export default function IptvPlayerPage() {
   const { id = '' } = useParams<{ id: string }>()
@@ -74,8 +90,8 @@ export default function IptvPlayerPage() {
    *  ('converted'), or that stream kept as it is ('sound'). `n` counts the tries. */
   const [rescue, setRescue] = useState<{ run: string; index: number; mode: 'converted' | 'sound'; why: PictureReason | null; n: number } | null>(null)
   const saved = rescue?.run === run ? rescue : null
-  /** The server is looking at a stream / starting its conversion */
-  const [rescuing, setRescuing] = useState(false)
+  /** The server is looking at a stream / starting its conversion: what to say meanwhile */
+  const [rescuing, setRescuing] = useState<string | null>(null)
   /** Sound without a picture, kept as it is: why */
   const [quiet, setQuiet] = useState<{ run: string; why: PictureReason } | null>(null)
   const quietWhy = quiet?.run === run ? quiet.why : null
@@ -84,11 +100,14 @@ export default function IptvPlayerPage() {
   /** Streams of this attempt that gave sound but no picture, in the order they were tried
    *  (`codec`: one of them in a format the browser refuses altogether; `again`: those already
    *  loaded a second time for their picture) */
-  const silentStreams = useRef<{ run: string; list: number[]; codec: boolean; again: number[] }>({ run, list: [], codec: false, again: [] })
+  const silentStreams = useRef<{ run: string; list: number[]; codec: boolean; again: number[]; asked: number[]; last: boolean }>(
+    { run, list: [], codec: false, again: [], asked: [], last: false })
+  /** The viewer asked for the conversion (the button): told when it cannot be done */
+  const manual = useRef(false)
   /** Bumped to load the current stream again as it is */
   const [reload, setReload] = useState(0)
   /** What the player is doing, for the playback details (three taps on « EN DIRECT ») */
-  const trace = useRef({ engine: '', mode: 'direct', shown: null as boolean | null, loads: 0, note: '', next: '' })
+  const trace = useRef({ engine: '', mode: 'direct', shown: null as boolean | null, loads: 0, note: '', next: '', held: '' })
   const [details, setDetails] = useState<string[] | null>(null)
   const taps = useRef<number[]>([])
   const [phase, setPhase] = useState<Phase>('loading')
@@ -156,38 +175,49 @@ export default function IptvPlayerPage() {
     const v = videoRef.current
     if (!v || !channel || !token) return
     let cancelled = false
-    if (silentStreams.current.run !== run) silentStreams.current = { run, list: [], codec: false, again: [] }
+    if (silentStreams.current.run !== run) silentStreams.current = { run, list: [], codec: false, again: [], asked: [], last: false }
     const memo = silentStreams.current
     const mode = saved?.mode ?? 'direct'
     const tries = saved?.n ?? 0
     const nextStream = () => { if (!cancelled) setFailed((f) => ({ run, n: (f.run === run ? f.n : 0) + 1 })) }
     const stopHls = () => { hlsRef.current?.destroy(); hlsRef.current = null }
 
+    const noStream = () => giveUp(memo.codec ? NO_CODEC : 'Aucun des flux de cette chaîne ne répond.', () => cancelled)
     /**
-     * Asks the server what stream `i` holds: a picture it converts (then played from the
-     * converted stream), or nothing it can show (the stream is kept for its sound).
-     * `here`: stream `i` is the one playing now, its sound goes on meanwhile.
-     * `again`: the conversion was only assumed from last time; without it the stream plays as it is.
+     * Asks the server to convert stream `i`: played from the converted stream when it can.
+     * When it cannot, by what led here (`how`):
+     * - 'silent' (sound without a picture): the stream is kept for its sound — as it plays now
+     *   when `here` (stream `i` is the one playing), else loaded for that;
+     * - 'unfit' (a format this browser plays badly): the stream goes on as it is;
+     * - 'failed' (no stream of the channel started): the channel is given up;
+     * - 'asked' (remembered from last time, or the viewer's button): the stream is played as it is.
      */
-    const rescuePicture = async (i: number, here: boolean, again = false) => {
-      setRescuing(true)
+    const rescuePicture = async (i: number, how: keyof typeof ASKING, here = false) => {
+      setRescuing(ASKING[how])
       let res: PictureAnswer
-      try { res = await iptvService.convert(channel.id, i) } catch { res = { video: null, audio: null, convert: false, reason: 'failed' } }
+      try { res = await iptvService.convert(channel.id, i) } catch { res = { video: null, audio: null, interlaced: false, plain: true, convert: false, reason: 'failed' } }
       if (cancelled) return
-      setRescuing(false)
+      setRescuing(null)
       rememberConverted(channel.id, i, res.convert)
       const n = tries + 1
+      const why = res.reason ?? 'failed'
+      if (manual.current) { manual.current = false; if (!res.convert) toast.error(SOUND_ONLY[why]) }
       if (res.convert) setRescue({ run, index: i, mode: 'converted', why: null, n })
-      else if (again) setReload((r) => r + 1)
-      else if (here) setQuiet({ run, why: res.reason ?? 'failed' })
-      else setRescue({ run, index: i, mode: 'sound', why: res.reason ?? 'failed', n })
+      else if (how === 'asked') { memo.asked.push(i); setReload((r) => r + 1) }
+      else if (how === 'unfit') trace.current.note = `conversion impossible (${why})`
+      else if (how === 'failed') void noStream()
+      else if (here) setQuiet({ run, why })
+      else setRescue({ run, index: i, mode: 'sound', why, n })
     }
 
-    setRescuing(false)
+    setRescuing(null)
     if (!saved && step >= order.length) {
-      // No stream with a picture, but one with sound: its picture from the server, else its sound
-      if (memo.list.length) void rescuePicture(memo.list[0], false)
-      else void giveUp(memo.codec ? NO_CODEC : 'Aucun des flux de cette chaîne ne répond.', () => cancelled)
+      // No stream with a picture, but one with sound: its picture from the server, else its sound.
+      // No stream started at all: the server may still read one (a slow source, a bare MPEG-TS
+      // stream, a format the browser refuses) and convert it.
+      if (memo.list.length) void rescuePicture(memo.list[0], 'silent')
+      else if (!memo.last && order.length) { memo.last = true; void rescuePicture(order[0], 'failed') }
+      else void noStream()
       return () => { cancelled = true }
     }
     const idx = saved ? saved.index : order[step]
@@ -197,8 +227,8 @@ export default function IptvPlayerPage() {
     setPicture(false)
     setQuiet(saved?.mode === 'sound' ? { run, why: saved.why ?? 'failed' } : null)
     // This browser needed the conversion for this stream last time: asked at once
-    if (mode === 'direct' && wasConverted(channel.id, idx)) {
-      void rescuePicture(idx, false, true)
+    if (mode === 'direct' && wasConverted(channel.id, idx) && !memo.asked.includes(idx)) {
+      void rescuePicture(idx, 'asked')
       return () => { cancelled = true }
     }
     const page = mode !== 'converted' && channel.streams[idx]?.kind === 'page'
@@ -210,7 +240,7 @@ export default function IptvPlayerPage() {
       stopHls()
       if (mode === 'direct') nextStream()
       else if (mode === 'sound') void giveUp(memo.codec ? NO_CODEC : 'Le flux de cette chaîne s’est arrêté.', () => cancelled)
-      else if (tries < 3) void rescuePicture(idx, false)             // the conversion stopped: started again
+      else if (tries < 3) void rescuePicture(idx, 'silent')           // the conversion stopped: started again
       else setRescue({ run, index: idx, mode: 'sound', why: 'failed', n: tries + 1 })
     }
     /** Sound, but no picture (`playing`: the sound is running now) */
@@ -220,7 +250,7 @@ export default function IptvPlayerPage() {
       if (mode === 'converted') { if (playing) setQuiet({ run, why: 'failed' }); else fail(); return }
       if (!memo.list.includes(idx)) memo.list.push(idx)
       if (step < order.length - 1) { stopHls(); nextStream() }      // another stream of the channel may have a picture
-      else void rescuePicture(memo.list[0], playing && memo.list[0] === idx)
+      else void rescuePicture(memo.list[0], 'silent', playing && memo.list[0] === idx)
     }
 
     // Variants of this stream found to carry sound only (hls.js)
@@ -235,22 +265,34 @@ export default function IptvPlayerPage() {
     const trusted = native && tells && framesReported()
     let shown = false
     const frameHandle = tells ? frames.requestVideoFrameCallback!(() => { shown = true; trace.current.shown = true; if (native) rememberFramesReported() }) : 0
-    trace.current = { engine: native ? 'Safari' : 'hls.js', mode, shown: tells ? false : null, loads: trace.current.loads + 1, note: trace.current.next, next: '' }
+    trace.current = { engine: native ? 'Safari' : 'hls.js', mode, shown: tells ? false : null, loads: trace.current.loads + 1, note: trace.current.next, next: '', held: trace.current.held }
+    // Told by the server while the stream starts (below): a format this browser often shows
+    // nothing of — converted when no frame of it was shown once playback had its chance
+    let risky: string | null = null
+    let probing = false
     let from: number | null = null
     const watch = setInterval(() => {
       if (mode === 'sound' || v.paused || v.readyState < 2) return
       const sized = v.videoWidth > 0
-      if (sized && (shown || !trusted)) { clearInterval(watch); return }
+      if (sized && shown) { clearInterval(watch); return }
       if (from == null) { from = v.currentTime; return }
       const levels = hlsRef.current?.levels
       // hls.js already saw that no variant has a picture: no need to wait as long
       const known = !!levels?.length && levels.every((l) => silent.has(l.uri))
       if (v.currentTime - from < (known ? 1.5 : native ? 3 : 4)) return
+      // Sized, and nothing here tells whether it is shown: taken as a picture (once the server
+      // said what the stream holds)
+      if (sized && !trusted && !(risky && tells)) { if (!probing) clearInterval(watch); return }
       clearInterval(watch)
-      if (sized) {
-        // Safari knows the picture but shows none of it: the stream loaded again, once
+      if (risky && mode === 'direct' && !memo.asked.includes(idx)) {
+        memo.asked.push(idx)
+        trace.current.next = `converti : ${risky}`
+        void rescuePicture(idx, 'unfit', true)
+      } else if (sized) {
+        // Safari knows the picture but shows none of it: the stream loaded again, once, then converted
         trace.current.note = 'image connue mais non affichée'
         if (!memo.again.includes(idx)) { memo.again.push(idx); trace.current.next = 'rechargé : image connue mais non affichée'; setReload((r) => r + 1) }
+        else noPicture(true)
       } else if (native && mode === 'direct' && !memo.again.includes(idx)) void loadAgain()
       else noPicture(true)
     }, 500)
@@ -265,6 +307,29 @@ export default function IptvPlayerPage() {
       else noPicture(true)
     }
 
+    // What the stream holds, asked while it starts: a stream this browser is known to play badly
+    // is converted without waiting for the trouble to show
+    if (mode === 'direct' && !page) {
+      const reader: Reader = {
+        native, hevc: native || supports('video/mp4; codecs="hvc1.1.6.L93.B0"'),
+        ac3: supports('audio/mp4; codecs="ac-3"'), eac3: supports('audio/mp4; codecs="ec-3"'),
+      }
+      probing = true
+      void iptvService.convert(channel.id, idx, true).then((held) => {
+        probing = false
+        if (cancelled) return
+        trace.current.held = describeStream(held)
+        const need = needsConversion(held, reader)
+        if (!need || memo.asked.includes(idx) || (need.unsure && shown)) return
+        // It may still show: left to the check above, where the browser tells which frames it shows
+        if (need.unsure && tells) { risky = need.why; return }
+        memo.asked.push(idx)
+        clearInterval(watch)
+        trace.current.next = `converti : ${need.why}`
+        void rescuePicture(idx, 'unfit')
+      }, () => { probing = false /* not known: the stream plays as it comes */ })
+    }
+
     if (native) {
       v.src = url
       v.onerror = fail
@@ -277,8 +342,10 @@ export default function IptvPlayerPage() {
         const open = () => {
           const hls = new HlsJs({
             liveSyncDurationCount: 3, maxBufferLength: 30, backBufferLength: 60, levelLoadingMaxRetry: 2,
-            // The server looks a page stream up before it answers (up to 45 s): wait for it, once
-            ...(page ? { manifestLoadingTimeOut: 50_000, manifestLoadingMaxRetry: 0 } : { manifestLoadingMaxRetry: 1 }),
+            // The server looks a page stream up before it answers (up to 45 s): wait for it, once.
+            // Other sources may only start their stream when it is asked for: they get time too.
+            ...(page ? { manifestLoadingTimeOut: 50_000, manifestLoadingMaxRetry: 0 } : { manifestLoadingTimeOut: 25_000, manifestLoadingMaxRetry: 1 }),
+            levelLoadingTimeOut: 20_000,
           })
           hlsRef.current = hls
           let recoveries = 0
@@ -374,7 +441,8 @@ export default function IptvPlayerPage() {
       setDetails([
         `Lecteur : ${t.engine || '…'} · ${t.mode === 'converted' ? 'image convertie par le serveur' : t.mode === 'sound' ? 'son seul' : 'flux direct'} · chargement n° ${t.loads}`,
         `Image : ${v.videoWidth}×${v.videoHeight} · affichée : ${t.shown == null ? 'inconnu' : t.shown ? 'oui' : 'non'} · état ${v.readyState} · ${v.paused ? 'en pause' : 'en lecture'} · ${v.currentTime.toFixed(0)} s`,
-        `Flux ${index + 1}/${channel?.streams.length ?? 0}${hls ? ` · ${hls.levels.length} variante(s), niveau ${hls.currentLevel}` : ''}${t.note ? ` · ${t.note}` : ''}`,
+        `Flux ${index + 1}/${channel?.streams.length ?? 0}${t.held ? ` : ${t.held}` : ''}${hls ? ` · ${hls.levels.length} variante(s), niveau ${hls.currentLevel}` : ''}`,
+        ...(t.note ? [t.note] : []),
       ])
     }
     read()
@@ -424,6 +492,23 @@ export default function IptvPlayerPage() {
     } catch { /* not available here */ }
   }
   const retry = () => { setError(null); setPhase('loading'); setAttempt((a) => a + 1) }
+  /** The viewer's own switch: this stream converted by the server (remembered for this browser), or back as it is */
+  const converted = saved?.mode === 'converted'
+  const toggleConversion = () => {
+    if (!channel) return
+    const memo = silentStreams.current
+    if (converted) {
+      rememberConverted(channel.id, index, false)
+      if (memo.run === run) memo.asked.push(index)          // not converted again by itself in this attempt
+    } else {
+      rememberConverted(channel.id, index, true)
+      if (memo.run === run) memo.asked = memo.asked.filter((i) => i !== index)
+      manual.current = true
+    }
+    setRescue(null)
+    setQuiet(null)
+    setReload((r) => r + 1)
+  }
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -471,7 +556,7 @@ export default function IptvPlayerPage() {
           <div className="flex flex-col items-center gap-3 px-6 text-center max-w-[380px]">
             <Spinner size={36} label="Chargement de la chaîne" color="rgba(255,255,255,.9)" />
             {rescuing
-              ? <p className="text-[14px] text-white/75">Ce navigateur n’affiche pas l’image de cette chaîne. Le serveur regarde s’il peut la convertir…</p>
+              ? <p className="text-[14px] text-white/75" style={{ textShadow: '0 1px 6px rgba(0,0,0,.8)' }}>{rescuing}</p>
               : site && !started && <p className="text-[14px] text-white/75">Recherche du direct sur {site}…</p>}
           </div>
         </div>
@@ -589,7 +674,7 @@ export default function IptvPlayerPage() {
             <p className="flex-1 min-w-0 px-2 text-[13px] text-white/75 truncate">
               <span className="hidden sm:inline">
                 {[current?.quality, site, channel && channel.streams.length > 1 && `flux ${index + 1}/${channel.streams.length}`,
-                  saved?.mode === 'converted' && 'image convertie par le serveur'].filter(Boolean).join(' · ')}
+                  converted && 'image convertie par le serveur'].filter(Boolean).join(' · ')}
               </span>
             </p>
             <button type="button" className={btn} onClick={() => { if (videoRef.current) videoRef.current.muted = !videoRef.current.muted }} aria-label={muted ? 'Activer le son' : 'Couper le son'}>
@@ -597,6 +682,11 @@ export default function IptvPlayerPage() {
             </button>
             <input type="range" min={0} max={1} step={0.02} value={muted ? 0 : volume} className="hidden sm:block w-24" style={{ accentColor: 'white' }}
               onChange={(e) => { const v = videoRef.current; if (v) { v.volume = Number(e.target.value); v.muted = v.volume === 0 } }} aria-label="Volume" />
+            <button type="button" className={cn(btn, converted && 'bg-white/20')} onClick={toggleConversion} aria-pressed={converted} disabled={!channel || !!rescuing}
+              aria-label={converted ? 'Revenir au flux direct' : 'Image ou son absent : faire convertir la chaîne par le serveur'}
+              title={converted ? 'Revenir au flux direct' : 'Image ou son absent ? Convertir par le serveur'}>
+              <ServerCog size={19} />
+            </button>
             <button type="button" className={btn} onClick={togglePip} aria-label="Image dans l’image"><PictureInPicture2 size={19} /></button>
             <button type="button" className={btn} onClick={toggleFullscreen} aria-label={fullscreen ? 'Quitter le plein écran' : 'Plein écran'}>
               {fullscreen ? <Minimize size={18} /> : <Maximize size={18} />}

@@ -22,7 +22,8 @@ import type { IptvStream } from './iptv'
  * - timeouts, a size limit on playlists, the upstream request is aborted when the player leaves.
  */
 
-const HEADER_TIMEOUT = 15_000
+/** Some sources only start their stream when it is first asked for: they take a while to answer */
+const HEADER_TIMEOUT = 20_000
 const MAX_PLAYLIST = 2 * 1024 * 1024
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36'
 
