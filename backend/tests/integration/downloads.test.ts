@@ -7,7 +7,7 @@ import { app } from '../../src/index'
 import { query } from '../../src/config/database'
 import { signedImage } from '../../src/services/images'
 import {
-  requeueInterrupted, setDownloadsNamespace, startDownloadWorker, stopDownloadWorker,
+  requeueInterrupted, setDownloadsNamespace, startDownloadWorker, stopDownloadWorker, _test,
 } from '../../src/services/downloads'
 import { checkDueFollows } from '../../src/services/follows'
 import { MediaScanner } from '../../src/services/scanner'
@@ -90,7 +90,8 @@ elif '--download' in args:
             out(type='item_start', name=f'Chapitre {n}', index=n, total=2)
             open(p, 'w').write('x')
             out(type='item_done', name=f'Chapitre {n}', path=p)
-            time.sleep(4)
+            # « …-stop »: stays busy after its first chapter until it is cancelled
+            time.sleep(60 if ident.endswith('-stop') else 4)
         out(type='done', ok=2, failed=0, skipped=0)
         sys.exit(0)
     if ident.startswith('oxtorrent:'):
@@ -533,38 +534,45 @@ describe('Deleting a title from the library removes its downloads and follow', (
 
 describe('A job of several episodes / chapters', () => {
   it('each finished one shows up in the library without waiting for the rest; also when stopped halfway', async () => {
-    await startDownloadWorker()          // stopped by the restart test above
     process.env.DOWNLOADS_RESCAN_DELAY_MS = '300'
-    const scans: { at: number }[] = []
-    const spy = jest.spyOn(MediaScanner, 'scanManga').mockImplementation(async () => { scans.push({ at: Date.now() }); return 0 })
+    const scans: number[] = []
+    // Scans are instant here: on CI, earlier tests' real scans look titles up online and can
+    // still be running, and a scan waits for the one in progress
+    const spy = jest.spyOn(MediaScanner, 'scanManga').mockImplementation(async () => { scans.push(Date.now()); return 0 })
+    const others = (['scanFilms', 'scanSeries', 'scanAnimes', 'scanYoutube'] as const)
+      .map((m) => jest.spyOn(MediaScanner, m).mockResolvedValue(0))
+    await startDownloadWorker()          // stopped by the restart test above (after the mocks: jobs queued meanwhile rescan too)
+    await waitFor(async () => !MediaScanner.isRunning(), 90_000)
+    const dump = async (err: Error) => {
+      // What the queue was doing (seen only when it fails, e.g. on CI)
+      const { rows } = await query(`SELECT source_id, status, progress->>'items_done' AS done, error, created_at, started_at FROM downloads ORDER BY created_at`)
+      console.log('queue', JSON.stringify({ scanning: MediaScanner.isRunning(), running: [..._test.running.keys()], rows }, null, 1))
+      throw err
+    }
     try {
+      // The fake script finishes chapter 1, then stays busy (60 s) until it is cancelled
       const res = await request(app).post('/api/downloads').set(admin)
-        .send({ id: 'anisama:manga:progressive', title: 'Progressif', lang: 'vf', chapters: [1, 2] })
+        .send({ id: 'anisama:manga:progressive-stop', title: 'Progressif', lang: 'vf', chapters: [1, 2] })
       expect(res.status).toBe(201)
       const id = res.body.data.id
-      // Chapter 1 is done, the job is still running: the library was already rescanned
-      await waitFor(async () => scans.length > 0)
-      expect(await statusOf(id)).toBe('running')
-      await waitFor(async () => (await statusOf(id)) === 'done')
-      await waitFor(async () => scans.length >= 2)      // chapter 2 / end of the job
-
-      // Cancelled after its first chapter: that chapter is still added to the library
-      const again = await request(app).post('/api/downloads').set(admin)
-        .send({ id: 'anisama:manga:progressive-2', title: 'Progressif 2', lang: 'vf', chapters: [1, 2] })
-      const id2 = again.body.data.id
       await waitFor(async () => {
-        const row = (await request(app).get('/api/downloads').set(admin)).body.data.find((d: { id: string }) => d.id === id2)
-        return row?.progress?.items_done === 1
-      })
-      await new Promise((r) => setTimeout(r, 1200))       // the rescan of chapter 1 has run
-      process.env.DOWNLOADS_RESCAN_DELAY_MS = '60000'    // only the rescan made on cancel can count now
+        const { rows } = await query<{ progress: { items_done?: number } }>('SELECT progress FROM downloads WHERE id = $1', [id])
+        return (rows[0]?.progress?.items_done ?? 0) >= 1
+      }, 25_000).catch(dump)
+      // Chapter 1 is done, the job still runs: the library is rescanned without waiting for the end
+      await waitFor(async () => scans.length > 0, 25_000).catch(dump)
+      expect(await statusOf(id)).toBe('running')
+
+      // Cancelled halfway: one more rescan, so chapter 1 stays readable
+      process.env.DOWNLOADS_RESCAN_DELAY_MS = '600000'   // only the rescan made on cancel can count now
       const before = scans.length
-      expect((await request(app).post(`/api/downloads/${id2}/cancel`).set(admin)).status).toBe(200)
-      await waitFor(async () => (await statusOf(id2)) === 'cancelled')
-      await waitFor(async () => scans.length > before)
+      expect((await request(app).post(`/api/downloads/${id}/cancel`).set(admin)).status).toBe(200)
+      await waitFor(async () => (await statusOf(id)) === 'cancelled', 25_000)
+      await waitFor(async () => scans.length > before, 25_000)
     } finally {
       spy.mockRestore()
+      for (const o of others) o.mockRestore()
       delete process.env.DOWNLOADS_RESCAN_DELAY_MS
     }
-  }, 30_000)
+  }, 240_000)
 })

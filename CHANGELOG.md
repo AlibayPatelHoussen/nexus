@@ -4,6 +4,15 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Added — the library scans itself when a page opens
+- Online lookups of a scan (TMDB, AniList, MangaDex) give up after 20 s: a site that never answered kept the scan running forever, and every other scan (downloads, pages opened, « Analyser ») was refused behind it
+- Opening Films, Séries, Animes, Manga, YouTube or a title page runs a quick scan of that library: new files and new episodes / chapters (a download running…) appear without « Analyser la bibliothèque », the page refreshes itself. Skipped while another scan runs or when that library was scanned less than 10 s ago (`AUTO_SCAN_MIN_MS`)
+- Quick scans (pages opened, each finished download) no longer ask AniList / MangaDex again for titles already in the library, which they did for every anime / manga at every scan: only new titles are looked up. « Analyser la bibliothèque » keeps the full scan
+
+### Fixed — a new download could wait 10 s before starting; main CI red
+- A download added while the queue was starting others was only picked up by the next check (10 s later): the queue now makes one more pass right away
+- The test of « each finished chapter in the library » waited too little on a slow CI (that is what kept the previous version from being deployed)
+
 ### Changed — each finished episode / chapter is in the library at once
 - A download of several episodes or chapters no longer waits for the whole job: every finished episode / chapter is added to the library a few seconds later (the rescans of items finished close together are grouped, at most one per 15 s; `DOWNLOADS_RESCAN_DELAY_MS`), so 30 chapters out of 50 can be read while the rest downloads
 - Paused, cancelled or failed halfway: what was finished is added to the library too (before, only a complete job was)

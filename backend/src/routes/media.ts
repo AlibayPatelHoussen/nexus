@@ -105,6 +105,37 @@ router.post('/prune', asyncHandler(async (_req, res: Response) => {
   res.json({ success: true, data: { removed } })
 }))
 
+// Automatic scan when a library page opens: quick (no online lookup for known titles),
+// skipped while another scan runs or when this library was scanned less than 10 s ago
+const AUTO_SCANS: Record<string, [string, () => Promise<number>]> = {
+  films: ['film', () => MediaScanner.scanFilms()],
+  series: ['serie', () => MediaScanner.scanSeries()],
+  animes: ['anime', () => MediaScanner.scanAnimes()],
+  manga: ['manga', () => MediaScanner.scanManga()],
+  youtube: ['youtube', () => MediaScanner.scanYoutube()],
+}
+const AUTO_SCAN_MIN_MS = () => Number(process.env.AUTO_SCAN_MIN_MS) || 10_000
+
+router.post('/scan/:type/auto', asyncHandler(async (req: Request, res: Response) => {
+  const type = req.params.type
+  const scan = AUTO_SCANS[type]
+  if (!scan) { res.status(400).json({ success: false, error: 'Unknown type' }); return }
+  if (MediaScanner.isRunning()) { res.json({ success: true, data: { skipped: 'running' } }); return }
+  const last = Math.max(MediaScanner.lastDone.get(type) ?? 0, MediaScanner.lastDone.get('all') ?? 0)
+  if (Date.now() - last < AUTO_SCAN_MIN_MS()) { res.json({ success: true, data: { skipped: 'recent' } }); return }
+  try {
+    const scanned = await MediaScanner.quickly(type, async () => {
+      await MediaScanner.pruneDeleted(scan[0])
+      return scan[1]()
+    })
+    if (['films', 'series', 'animes'].includes(type)) indexLibrarySoon()
+    res.json({ success: true, data: { scanned } })
+  } catch (err) {
+    if (err instanceof ConflictError) { res.json({ success: true, data: { skipped: 'running' } }); return }
+    throw err
+  }
+}))
+
 router.post('/scan/:type', asyncHandler(async (req: Request, res: Response) => {
   const typeMap: Record<string, string> = {
     films: 'film', series: 'serie', animes: 'anime', manga: 'manga', youtube: 'youtube',

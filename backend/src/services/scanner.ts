@@ -6,6 +6,9 @@ import { chapterVersion, findChapters } from './chapters'
 import { logger } from '../utils/logger'
 import axios from 'axios'
 
+/** No online lookup may hold a scan (and every scan waiting behind it) longer than this. */
+const HTTP_TIMEOUT = 20_000
+
 const TMDB_KEY      = process.env.TMDB_API_KEY
 const TMDB_BASE     = process.env.TMDB_BASE_URL     || 'https://api.themoviedb.org/3'
 const TMDB_IMG      = process.env.TMDB_IMAGE_BASE_URL || 'https://image.tmdb.org/t/p'
@@ -132,7 +135,7 @@ async function searchTMDB(title: string, year?: number, type: 'movie' | 'tv' = '
   try {
     const params: Record<string, string | number> = { api_key: TMDB_KEY!, query: title, language: 'fr-FR' }
     if (year) params.year = year
-    const { data } = await axios.get(`${TMDB_BASE}/search/${type}`, { params })
+    const { data } = await axios.get(`${TMDB_BASE}/search/${type}`, { params, timeout: HTTP_TIMEOUT })
     return (data.results?.[0] as TmdbResult) || null
   } catch (err) {
     logger.warn(`TMDB search failed for "${title}": ${err}`)
@@ -186,7 +189,7 @@ export async function findAnimeOnTMDB(names: (string | null | undefined)[], year
   if (!hasTmdbKey()) return null
   for (const name of animeSearchNames(names)) {
     try {
-      const { data } = await axios.get(`${TMDB_BASE}/search/tv`, { params: { api_key: TMDB_KEY!, query: name, language: 'fr-FR' } })
+      const { data } = await axios.get(`${TMDB_BASE}/search/tv`, { params: { api_key: TMDB_KEY!, query: name, language: 'fr-FR' }, timeout: HTTP_TIMEOUT })
       const hit = pickAnimeResult((data.results ?? []) as TmdbResult[], year)
       if (hit) return hit
     } catch (err) {
@@ -230,7 +233,7 @@ async function getTMDBDetails(id: number, type: 'movie' | 'tv'): Promise<TmdbRes
   if (!hasTmdbKey()) return null
   try {
     const { data } = await axios.get(`${TMDB_BASE}/${type}/${id}`, {
-      params: { api_key: TMDB_KEY, language: 'fr-FR' },
+      params: { api_key: TMDB_KEY, language: 'fr-FR' }, timeout: HTTP_TIMEOUT,
     })
     return data as TmdbResult
   } catch { return null }
@@ -312,7 +315,7 @@ async function getTMDBSeason(tvId: number, season: number): Promise<TmdbEpisode[
   if (!hasTmdbKey()) return []
   try {
     const { data } = await axios.get(`${TMDB_BASE}/tv/${tvId}/season/${season}`, {
-      params: { api_key: TMDB_KEY, language: 'fr-FR' },
+      params: { api_key: TMDB_KEY, language: 'fr-FR' }, timeout: HTTP_TIMEOUT,
     })
     return (data.episodes as TmdbEpisode[]) || []
   } catch { return [] }
@@ -411,7 +414,7 @@ async function searchAniList(title: string, type: 'ANIME' | 'MANGA' = 'ANIME'): 
     const { data } = await axios.post(ANILIST_URL, {
       query: query_gql,
       variables: { search: title, type },
-    })
+    }, { timeout: HTTP_TIMEOUT })
     return (data.data?.Media as AniListResult) || null
   } catch {
     return null
@@ -473,6 +476,7 @@ async function searchMangaDex(title: string): Promise<MangaDexResult | null> {
         'order[relevance]': 'desc',
         'contentRating[]': ['safe', 'suggestive', 'erotica'],
       },
+      timeout: HTTP_TIMEOUT,
     })
     const best = pickManga(title, (data.data ?? []) as MangaDexResult[])
     if (!best) return null
@@ -541,7 +545,26 @@ export class MediaScanner {
       return await fn()
     } finally {
       this.running = null
+      this.lastDone.set(label, Date.now())
     }
+  }
+
+  /** When each kind of scan last finished ('films', 'series', 'animes', 'manga', 'youtube', 'all'…). */
+  static lastDone = new Map<string, number>()
+
+  /**
+   * Quick mode (automatic scans: a page opened, a chapter downloaded): titles already in
+   * the library only get their episodes / chapters refreshed, without asking AniList /
+   * MangaDex again (those were asked for every title at every scan). New titles are
+   * still looked up. The « Analyser » button keeps the full scan.
+   */
+  static quick = false
+
+  static quickly<T>(label: string, fn: () => Promise<T>): Promise<T> {
+    return this.exclusive(label, async () => {
+      this.quick = true
+      try { return await fn() } finally { this.quick = false }
+    })
   }
 
 
@@ -790,6 +813,15 @@ export class MediaScanner {
         const animePath = path.join(dir, entry.name)
         const { title } = parseFilename(entry.name)
 
+        if (MediaScanner.quick) {
+          const known = await query<{ id: string }>('SELECT id FROM media_items WHERE file_path = $1', [animePath])
+          if (known.rows[0]) {
+            await scanShowEpisodes(animePath, known.rows[0].id)
+            count++
+            continue
+          }
+        }
+
         const anilist = await searchAniList(title, 'ANIME')
         // The TMDB series (poster with the title, logo, key art), looked up once
         const known = await query<{ tmdb_id: number | null }>('SELECT tmdb_id FROM media_items WHERE file_path = $1', [animePath])
@@ -858,6 +890,16 @@ export class MediaScanner {
         const { title } = parseFilename(entry.name)
         // One unreadable manga must not stop the scan of the others
         try {
+
+        if (MediaScanner.quick) {
+          const known = await query('SELECT 1 FROM media_items WHERE file_path = $1', [mangaPath])
+          if (known.rows[0]) {
+            await MediaScanner.scanChapters(mangaPath, entry.name)
+            await query('UPDATE media_items SET file_size = $1, last_scanned = NOW() WHERE file_path = $2', [await getDirSize(mangaPath), mangaPath])
+            count++
+            continue
+          }
+        }
 
         const mdx = await searchMangaDex(title)
 

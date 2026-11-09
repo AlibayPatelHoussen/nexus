@@ -435,21 +435,29 @@ export async function removeReplaced(row: DownloadRow) {
   }
 }
 
+let tickAgain = false
+
 /** Starts queued jobs while there is room. */
 export async function tick() {
-  if (!started || ticking) return
+  if (!started) return
+  // Asked while a pass is running (a job just added, another just finished): one more
+  // pass right after, instead of leaving the new job to the next 10 s check
+  if (ticking) { tickAgain = true; return }
   ticking = true
   try {
-    while (running.size < MAX_PARALLEL()) {
-      const { rows } = await query<DownloadRow>(
-        `UPDATE downloads SET status = 'running', started_at = NOW(), updated_at = NOW(), error = NULL
-         WHERE id = (SELECT id FROM downloads WHERE status = 'queued' ORDER BY created_at LIMIT 1 FOR UPDATE SKIP LOCKED)
-         RETURNING *`,
-      )
-      if (!rows[0]) break
-      broadcastStatus(rows[0])
-      void launch(rows[0]).catch((err: Error) => logger.error(`Download ${rows[0].id}: ${err.message}`))
-    }
+    do {
+      tickAgain = false
+      while (running.size < MAX_PARALLEL()) {
+        const { rows } = await query<DownloadRow>(
+          `UPDATE downloads SET status = 'running', started_at = NOW(), updated_at = NOW(), error = NULL
+           WHERE id = (SELECT id FROM downloads WHERE status = 'queued' ORDER BY created_at LIMIT 1 FOR UPDATE SKIP LOCKED)
+           RETURNING *`,
+        )
+        if (!rows[0]) break
+        broadcastStatus(rows[0])
+        void launch(rows[0]).catch((err: Error) => logger.error(`Download ${rows[0].id}: ${err.message}`))
+      }
+    } while (tickAgain)
   } catch (err) {
     logger.error(`Download worker: ${(err as Error).message}`)
   } finally {
@@ -595,7 +603,8 @@ function rescanLibrary(kind: Kind, attempt = 0): Promise<void> {
     if (attempt >= 30) return Promise.resolve()
     return new Promise((resolve) => { setTimeout(() => { void rescanLibrary(kind, attempt + 1).then(resolve) }, 60_000).unref() })
   }
-  return MediaScanner.exclusive(scan[0], scan[1])
+  // Quick: only the new title is looked up online, the others just get their new episodes / chapters
+  return MediaScanner.quickly(scan[0], scan[1])
     .then((n) => {
       logger.info(`Library rescan after download (${kind}): ${n}`)
       // MKV → MP4 once the file has settled (a file written less than a minute ago is skipped)

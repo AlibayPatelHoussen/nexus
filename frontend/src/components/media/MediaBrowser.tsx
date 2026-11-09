@@ -25,6 +25,7 @@ import { MEDIA_GRID } from './layout'
 import { VIDEO_SECTIONS, SectionMenu, SearchButton, SearchBarOpen } from './PhoneLibraryBar'
 import { useContextMenu } from '@/components/ui/useContextMenu'
 import { useFavorites } from '@/hooks/useFavorites'
+import { useAutoScan } from '@/hooks/useAutoScan'
 
 export interface BrowserTab {
   key:       string
@@ -80,6 +81,7 @@ export default function MediaBrowser({ title, tabs, yearFilter, emptyIcon, video
   const tab = tabs.find((t) => t.key === params.get('type')) ?? tabs[0]
   const type = tab.type
   const isVideo = type !== 'manga' && type !== 'webtoon'
+  useAutoScan(tab.scanType)
 
   const [search,   setSearch]   = useState('')
   const [genre,    setGenre]    = useState('')
