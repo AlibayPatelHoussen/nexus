@@ -4,6 +4,10 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Changed — manga synopses and genres in French
+- A manga's synopsis is now taken in French: MangaDex's French description first, else the French synopsis anime-sama's catalogue knows for this title, English only as a last resort. The MangaDex Markdown (links list, bold) is cleaned
+- A French synopsis replaces the English one stored by earlier scans; genres (MangaDex tags) are translated into French and refreshed. Existing mangas are updated by « Analyser la bibliothèque »
+
 ### Changed — manga pages turn like a real book
 - Page by page, the page now folds like paper: its corner follows the finger, its back shows with shadows along the crease, and the next page appears under it. Drag the page anywhere: towards the spine turns to the next page, away from it brings the previous one back; let go past the spine (or with a flick) to turn, otherwise the page falls back
 - One tap still turns the page: on the outer edge the next one, on the spine side the previous one (with the same fold), in the middle the reader bars show / hide. Keyboard arrows and the desktop buttons use the fold too; right to left (manga): everything mirrored, the pictures never. Off with « Réduire les animations »
