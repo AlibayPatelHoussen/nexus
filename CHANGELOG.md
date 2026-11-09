@@ -4,6 +4,11 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Fixed — tab bar lens like Apple Music (owner's feedback)
+- Letting go: the lens no longer vanishes at once; it glides to the chosen tab and shrinks smoothly back into its pill (CSS transitions, run by the compositor, so the page rendering at the same time cannot make it stutter)
+- Quick taps: the lens pops out every time (at least 170 ms with a slight overshoot) then shrinks back, instead of staying stuck
+- While touched, the whole bar swells a little (never past the lens) and turns clearer, brighter glass, then settles back
+
 ### Changed — iPhone tab bar closer to Apple Music (iOS 26)
 - Glass: the light caught by the edge of a thick glass slab (bright top, shaded bottom, brighter curved ends like a lens) and a deeper shadow, so the bar reads as an object floating above the content
 - Scrolling down a page tucks the bar away into a small capsule with the current tab (accent); scrolling back up, reaching the top or tapping the capsule brings it back

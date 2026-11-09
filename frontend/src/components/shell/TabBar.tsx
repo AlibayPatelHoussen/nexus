@@ -16,6 +16,14 @@ const FOLLOW = { stiffness: 700, damping: 42, mass: 0.6 }
 const SETTLE = { type: 'spring', stiffness: 300, damping: 28 } as const
 /** After the finger lifts, the lens glides onto the chosen tab (the page changes after) */
 const GLIDE_MS = 170
+/** …and shrinks back into the pill of that tab (CSS transition: run by the compositor,
+ * so the page rendering meanwhile cannot make it stutter) */
+const SHRINK_MS = 400
+// iOS-like curves: a springy grow (slight overshoot), a soft settle back
+const GROW = 'cubic-bezier(0.2, 0.9, 0.25, 1.18)'
+const SHRINK = 'cubic-bezier(0.3, 0.7, 0.2, 1)'
+/** Even a very quick tap shows the lens popping out before it shrinks back (Apple Music) */
+const MIN_POP_MS = 170
 
 /**
  * iOS 26 tab bar (Apple's iOS 26 kit, "Tab Bar – iPhone"; motion from a screen
@@ -79,7 +87,14 @@ export default function TabBar() {
   const [phase, setPhase] = useState<'idle' | 'press' | 'release'>('idle')
   const pressing = phase === 'press'
   const releaseTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
-  useEffect(() => () => { if (releaseTimer.current) clearTimeout(releaseTimer.current) }, [])
+  const navTimer = useRef<ReturnType<typeof setTimeout> | null>(null)
+  const pressedAt = useRef(0)
+  /** Finger on the bar (the lens may still be popping out after it lifted) */
+  const down = useRef(false)
+  useEffect(() => () => {
+    if (releaseTimer.current) clearTimeout(releaseTimer.current)
+    if (navTimer.current) clearTimeout(navTimer.current)
+  }, [])
   // Tab under the finger while pressing, then the tab picked until the route catches up:
   // the (hidden) pill follows it at once, so it is already in place when the lens lets go
   const [under, setUnder] = useState<number | null>(null)
@@ -108,10 +123,9 @@ export default function TabBar() {
     const max = width - PAD - lensW + tabW * 0.12
     return want < min ? min - (min - want) * 0.3 : want > max ? max + (want - max) * 0.3 : want
   })
-  // The lens grows in when the finger lands (main thread is free then); it never shrinks
-  // back: on release it only fades (opacity, run by the compositor), so a page rendering
-  // at the same time cannot make it stutter (it did at ~10 fps on iPhone)
-  const lensScale = useSpring(1, { stiffness: 520, damping: 30 })
+  // At rest the lens is the size of the pill (it grows out of it and shrinks back into it)
+  const restScaleX = lensW ? tabW / lensW : 1
+  const restScaleY = (62 - PAD * 2) / (62 + OVERFLOW * 2)   // --tabbar-h: 62
   // 0 at rest, 1 while touching: drives the tint / magnification of the tabs
   const touch = useSpring(0, { stiffness: 500, damping: 40 })
 
@@ -124,47 +138,61 @@ export default function TabBar() {
     rect.current = bar.current.getBoundingClientRect()
     handled.current = true
     const x = relX(e.clientX)
+    // A new touch while the lens shrinks back: it grows again from where it is (fast taps)
     if (releaseTimer.current) { clearTimeout(releaseTimer.current); releaseTimer.current = null }
     if (phase === 'idle') {
       // The lens grows out of the selected pill, then runs to the finger
       const from = active >= 0 ? PAD + (active + 0.5) * tabW : x
       center.jump(from); finger.jump(from)
-      lensScale.jump(0.8); lensScale.set(1)
     }
     finger.set(x)
     touch.set(reduced ? 0 : 1)
     setUnder(indexAt(x))
     setPhase('press')
+    pressedAt.current = performance.now()
+    down.current = true
+  }
+  /** The lens shrinks back once it had time to pop out, then the bar is at rest */
+  const settle = () => {
+    const wait = reduced ? 0 : Math.max(0, MIN_POP_MS - (performance.now() - pressedAt.current))
+    const shrink = () => {
+      setPhase('release')
+      releaseTimer.current = setTimeout(() => { releaseTimer.current = null; setPhase('idle') }, reduced ? 0 : SHRINK_MS)
+    }
+    if (wait) releaseTimer.current = setTimeout(shrink, wait)
+    else shrink()
   }
   const onPointerMove = (e: React.PointerEvent) => {
-    if (!pressing) return
+    if (!down.current) return
     const x = relX(e.clientX)
     finger.set(x)
     setUnder(indexAt(x))
   }
   const end = (select: boolean, clientX?: number) => {
-    if (!pressing) return
+    if (!down.current) return
+    down.current = false
     if (!select || clientX == null) {
-      setPhase('idle'); touch.jump(0); setUnder(null)
+      touch.set(0); setUnder(null)
+      settle()
       return
     }
     const i = indexAt(relX(clientX))
     setUnder(i)
-    // Apple Music: on a tap the lens does not vanish where it is, it glides onto the
-    // chosen tab, then fades into its pill. The page changes once the glide is over:
-    // rendering it meanwhile would steal the frames of the glide
+    // Apple Music: the lens glides onto the chosen tab while it shrinks back into its pill
+    // and the bar settles. The page changes once the glide is over: rendering it meanwhile
+    // would steal the frames of the glide (the shrink itself is a CSS transition)
     finger.set(PAD + (i + 0.5) * tabW)
-    setPhase('release')
+    touch.set(0)
+    settle()
     selectionHaptic()
     // Another tab: the page left in it. The current tab again: back to its root, and when
     // already there, back to the top of the page (iOS)
     const tab = tabs[i]
     const again = i === active
     const to = !tab ? undefined : again ? (pathname === tab.to ? undefined : tab.to) : lastPathByTab[tab.to] ?? tab.to
-    releaseTimer.current = setTimeout(() => {
-      releaseTimer.current = null
-      setPhase('idle')
-      touch.jump(0)
+    if (navTimer.current) clearTimeout(navTimer.current)
+    navTimer.current = setTimeout(() => {
+      navTimer.current = null
       if (to) startTransition(() => navigate(to))
       else if (again) window.scrollTo({ top: 0, behavior: reduced ? 'auto' : 'smooth' })
     }, reduced ? 0 : GLIDE_MS)
@@ -191,9 +219,11 @@ export default function TabBar() {
         className="glass glass-float relative pointer-events-auto flex w-full max-w-[460px] h-[var(--tabbar-h)] p-1 rounded-pill touch-none select-none"
         style={{
           opacity: compact ? 0 : 1,
-          transform: compact ? 'translateY(12px)' : 'none',
+          // Touched, the whole bar swells a little (never past the lens) and turns clearer
+          transform: compact ? 'translateY(12px)' : pressing && !reduced ? 'scale(1.035)' : 'none',
           pointerEvents: compact ? 'none' : undefined,
-          transition: reduced ? 'opacity 150ms linear' : `opacity 220ms ease-out, transform 420ms ${barEase}`,
+          transition: reduced ? 'opacity 150ms linear'
+            : `opacity 220ms ease-out, transform ${pressing ? `420ms ${GROW}` : compact ? `420ms ${barEase}` : `${SHRINK_MS}ms ${SHRINK}`}`,
         }}
         aria-hidden={compact || undefined}
         onPointerDown={onPointerDown}
@@ -203,6 +233,12 @@ export default function TabBar() {
         // The pointer already chose the tab; the links' own clicks are for the keyboard
         onClickCapture={(e) => { if (handled.current) { e.preventDefault(); handled.current = false } }}
       >
+        {/* Liquid sheen over the bar while it is touched (opacity only) */}
+        <span
+          aria-hidden="true"
+          className="tabbar-sheen absolute inset-0 rounded-pill pointer-events-none"
+          style={{ opacity: pressing && !reduced ? 1 : 0, transition: `opacity ${pressing ? 160 : SHRINK_MS}ms ease-out` }}
+        />
         {tabW > 0 && (
           <>
             {/* Resting pill under the selected tab (already under the finger's tab when the lens lets go) */}
@@ -213,18 +249,30 @@ export default function TabBar() {
                 className="absolute z-0 left-0 rounded-pill pointer-events-none bg-[color:var(--glass-select)]"
                 style={{ top: PAD, bottom: PAD, width: tabW }}
                 initial={false}
-                animate={{ x: PAD + pill * tabW, opacity: phase === 'idle' ? 1 : 0 }}
-                transition={{ x: pillMove, opacity: { duration: 0.16, ease: 'easeOut' } }}
+                // Hidden under the lens while touching; comes back as the lens shrinks into it
+                animate={{ x: PAD + pill * tabW, opacity: pressing ? 0 : 1 }}
+                transition={{ x: pillMove, opacity: pressing ? { duration: 0.08 } : { duration: 0.2, delay: reduced ? 0 : 0.12, ease: 'easeOut' } }}
               />
             )}
-            {/* The glass lens: only while touching; grows in, follows the finger, glides to the tab, fades */}
+            {/* The glass lens: grows out of the pill when touched, follows the finger, glides to the
+                chosen tab and shrinks back into its pill. Position: motion value (follows the finger);
+                size and opacity: CSS transitions on an inner layer (compositor, never stutters) */}
             <motion.span
               aria-hidden="true"
-              className="tab-lens absolute z-20 left-0 rounded-pill pointer-events-none"
-              style={{ x: lensX, scale: lensScale, width: lensW, top: -OVERFLOW, bottom: -OVERFLOW,
-                // CSS opacity transition: done by the compositor, smooth even while the new page renders
-                opacity: phase === 'idle' || reduced ? 0 : 1, transition: `opacity ${phase === 'idle' ? 160 : 90}ms ease-out` }}
-            />
+              className="absolute z-20 left-0 pointer-events-none"
+              style={{ x: lensX, width: lensW, top: -OVERFLOW, bottom: -OVERFLOW }}
+            >
+              <span
+                className="tab-lens absolute inset-0 rounded-pill"
+                style={{
+                  transform: pressing ? 'none' : `scale(${restScaleX}, ${restScaleY})`,
+                  opacity: pressing && !reduced ? 1 : 0,
+                  transition: reduced ? 'none' : pressing
+                    ? `transform 420ms ${GROW}, opacity 90ms ease-out`
+                    : `transform ${SHRINK_MS}ms ${SHRINK}, opacity ${SHRINK_MS - 120}ms ease-in 120ms`,
+                }}
+              />
+            </motion.span>
           </>
         )}
         {tabs.map((t, i) => (
@@ -233,7 +281,7 @@ export default function TabBar() {
             to={t.to}
             label={t.label}
             Icon={t.icon}
-            on={i === (phase === 'idle' ? pill : active)}
+            on={i === (pressing ? active : pill)}
             centre={PAD + (i + 0.5) * tabW}
             reach={lensW * 0.6}
             lensCenter={center}
