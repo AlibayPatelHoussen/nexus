@@ -10,6 +10,7 @@ import {
   requeueInterrupted, setDownloadsNamespace, startDownloadWorker, stopDownloadWorker,
 } from '../../src/services/downloads'
 import { checkDueFollows } from '../../src/services/follows'
+import { MediaScanner } from '../../src/services/scanner'
 import { makeToken } from '../helpers'
 
 /**
@@ -82,6 +83,16 @@ elif '--download' in args:
         out(type='error', message='Aucune source', item='Episode 1', fatal=False)
         out(type='done', ok=0, failed=1, skipped=0)
         sys.exit(2)
+    if 'progressive' in ident:              # one chapter done, then still busy for a while
+        os.makedirs(dest, exist_ok=True)
+        for n in (1, 2):
+            p = os.path.join(dest, f'Progressif {n}.pdf')
+            out(type='item_start', name=f'Chapitre {n}', index=n, total=2)
+            open(p, 'w').write('x')
+            out(type='item_done', name=f'Chapitre {n}', path=p)
+            time.sleep(4)
+        out(type='done', ok=2, failed=0, skipped=0)
+        sys.exit(0)
     if ident.startswith('oxtorrent:'):
         p = os.path.join(dest, 'Film (2024)', ident.replace(':', '_') + '.mkv')
         os.makedirs(os.path.dirname(p), exist_ok=True); open(p, 'w').write('x')
@@ -518,4 +529,42 @@ describe('Deleting a title from the library removes its downloads and follow', (
     expect((await query('SELECT 1 FROM media_items WHERE id = $1', [id])).rows).toHaveLength(0)
     expect(await there(dl)).toBe(false)
   })
+})
+
+describe('A job of several episodes / chapters', () => {
+  it('each finished one shows up in the library without waiting for the rest; also when stopped halfway', async () => {
+    await startDownloadWorker()          // stopped by the restart test above
+    process.env.DOWNLOADS_RESCAN_DELAY_MS = '300'
+    const scans: { at: number }[] = []
+    const spy = jest.spyOn(MediaScanner, 'scanManga').mockImplementation(async () => { scans.push({ at: Date.now() }); return 0 })
+    try {
+      const res = await request(app).post('/api/downloads').set(admin)
+        .send({ id: 'anisama:manga:progressive', title: 'Progressif', lang: 'vf', chapters: [1, 2] })
+      expect(res.status).toBe(201)
+      const id = res.body.data.id
+      // Chapter 1 is done, the job is still running: the library was already rescanned
+      await waitFor(async () => scans.length > 0)
+      expect(await statusOf(id)).toBe('running')
+      await waitFor(async () => (await statusOf(id)) === 'done')
+      await waitFor(async () => scans.length >= 2)      // chapter 2 / end of the job
+
+      // Cancelled after its first chapter: that chapter is still added to the library
+      const again = await request(app).post('/api/downloads').set(admin)
+        .send({ id: 'anisama:manga:progressive-2', title: 'Progressif 2', lang: 'vf', chapters: [1, 2] })
+      const id2 = again.body.data.id
+      await waitFor(async () => {
+        const row = (await request(app).get('/api/downloads').set(admin)).body.data.find((d: { id: string }) => d.id === id2)
+        return row?.progress?.items_done === 1
+      })
+      await new Promise((r) => setTimeout(r, 1200))       // the rescan of chapter 1 has run
+      process.env.DOWNLOADS_RESCAN_DELAY_MS = '60000'    // only the rescan made on cancel can count now
+      const before = scans.length
+      expect((await request(app).post(`/api/downloads/${id2}/cancel`).set(admin)).status).toBe(200)
+      await waitFor(async () => (await statusOf(id2)) === 'cancelled')
+      await waitFor(async () => scans.length > before)
+    } finally {
+      spy.mockRestore()
+      delete process.env.DOWNLOADS_RESCAN_DELAY_MS
+    }
+  }, 30_000)
 })

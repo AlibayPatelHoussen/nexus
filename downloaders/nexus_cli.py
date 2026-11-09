@@ -652,13 +652,25 @@ def _ytdlp_once(args, item, on_line, stall):
     global last_ytdlp_error
     last_ytdlp_error = None
     cmd = [*ytdlp_cmd(), *YTDLP_PROGRESS, *YTDLP_NETWORK, *args]
+    # A pause / cancel (SIGTERM) arriving between the start of yt-dlp and its registration
+    # would leave it running alone: the stop signals wait until it is registered
+    stops = {signal.SIGTERM, signal.SIGHUP}
+    blocked = threading.current_thread() is threading.main_thread()
+    if blocked:
+        signal.pthread_sigmask(signal.SIG_BLOCK, stops)
     try:
         # Own process group: a stalled yt-dlp is stopped with its children (ffmpeg…)
-        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True)
+        proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, start_new_session=True,
+                                # yt-dlp itself must not inherit the blocked signals
+                                preexec_fn=(lambda: signal.pthread_sigmask(signal.SIG_UNBLOCK, stops)) if blocked else None)
     except FileNotFoundError:
         emit("error", message="yt-dlp n'est pas installé", item=item, fatal=False)
         return 127, [], False
-    _CHILD_GROUPS.add(proc.pid)
+    else:
+        _CHILD_GROUPS.add(proc.pid)
+    finally:
+        if blocked:
+            signal.pthread_sigmask(signal.SIG_UNBLOCK, stops)     # a pending stop is handled now
     try:
         return _ytdlp_follow(proc, item, on_line, stall)
     finally:

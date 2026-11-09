@@ -1629,7 +1629,10 @@ def _download_chapter_json(ch, title, folder, index, total):
     if not pages:
         nexus_cli.emit("error", message="Aucune page", item=item, fatal=False)
         return "failed"
-    img_dir = DOWNLOAD_DIR / slugify(title) / folder / slugify(item)
+    # Nexus copy: pages go to a hidden folder while the chapter downloads (the library is
+    # rescanned after each finished chapter: a half chapter must never show up in it)
+    final_dir = DOWNLOAD_DIR / slugify(title) / folder / slugify(item)
+    img_dir = final_dir.with_name(".part-" + final_dir.name)
     img_dir.mkdir(parents=True, exist_ok=True)
     throttle = nexus_cli.Throttle(0.4)
     done_pages = 0
@@ -1672,7 +1675,11 @@ def _download_chapter_json(ch, title, folder, index, total):
         nexus_cli.emit("item_done", name=item, path=str(pdf))
         return "ok"
     except ImportError:
-        nexus_cli.emit("item_done", name=item, path=str(img_dir))   # images kept, like the menu
+        if final_dir.exists():
+            import shutil
+            shutil.rmtree(final_dir, ignore_errors=True)
+        img_dir.rename(final_dir)
+        nexus_cli.emit("item_done", name=item, path=str(final_dir))   # images kept, like the menu
         return "ok"
     except Exception as e:
         nexus_cli.emit("error", message=f"PDF : {e}", item=item, fatal=False)

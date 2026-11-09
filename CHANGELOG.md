@@ -4,6 +4,12 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Changed — each finished episode / chapter is in the library at once
+- A download of several episodes or chapters no longer waits for the whole job: every finished episode / chapter is added to the library a few seconds later (the rescans of items finished close together are grouped, at most one per 15 s; `DOWNLOADS_RESCAN_DELAY_MS`), so 30 chapters out of 50 can be read while the rest downloads
+- Paused, cancelled or failed halfway: what was finished is added to the library too (before, only a complete job was)
+- Manga (anime-sama): the pages of a chapter being downloaded go to a hidden folder, so a half chapter never shows up in the library
+- YouTube: a pause / cancel arriving the instant yt-dlp starts no longer leaves it running alone (the stop now waits until it is registered)
+
 ### Fixed — no tab selected on a title page (iPhone tab bar, sidebar)
 - A title page (a manga, a film…) is under the tab it was opened from; that was forgotten when the bar was created again (back from the full-screen reader / player) or when the app reopened directly on the page: no tab was blue. The tab is now kept, and a title page opened directly selects its own library (Manga for a manga, Médias / Films et séries for a film…)
 - Sidebar (desktop): same; the selected section is also announced to VoiceOver (`aria-current`) on title pages
