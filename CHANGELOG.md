@@ -7,6 +7,9 @@ All notable changes to Nexus will be documented here.
 ### Changed — « À la une » changes every hour
 - The billboard draw (among all the titles of the section) now changes once an hour instead of at every visit: the same titles all hour long, others the next hour. The order comes from a hash of each title with the hour, nothing is stored
 
+
+### Fixed — download progress could go back (« 0 chapter done » while one was)
+- The progress of a download is saved after each event; two saves sent together could reach the database in the wrong order (« chapter 1 started » written over « chapter 1 done »), and stay so until the next event. Saves of a download now go one after the other
 ### Added — the library scans itself when a page opens
 - Online lookups of a scan (TMDB, AniList, MangaDex) give up after 20 s: a site that never answered kept the scan running forever, and every other scan (downloads, pages opened, « Analyser ») was refused behind it
 - Opening Films, Séries, Animes, Manga, YouTube or a title page runs a quick scan of that library: new files and new episodes / chapters (a download running…) appear without « Analyser la bibliothèque », the page refreshes itself. Skipped while another scan runs or when that library was scanned less than 10 s ago (`AUTO_SCAN_MIN_MS`)

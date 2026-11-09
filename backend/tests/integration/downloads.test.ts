@@ -546,7 +546,8 @@ describe('A job of several episodes / chapters', () => {
     const dump = async (err: Error) => {
       // What the queue was doing (seen only when it fails, e.g. on CI)
       const { rows } = await query(`SELECT source_id, status, progress->>'items_done' AS done, error, created_at, started_at FROM downloads ORDER BY created_at`)
-      console.log('queue', JSON.stringify({ scanning: MediaScanner.isRunning(), running: [..._test.running.keys()], rows }, null, 1))
+      const live = [..._test.running.values()].map((r) => ({ progress: r.progress, pid: r.handle.child.pid, exit: r.handle.child.exitCode }))
+      console.log('queue', JSON.stringify({ scanning: MediaScanner.isRunning(), running: [..._test.running.keys()], live, args: fs.readFileSync(ARGS_LOG, 'utf8').trim().split('\n').slice(-3), rows: rows.slice(-2) }, null, 1))
       throw err
     }
     try {
