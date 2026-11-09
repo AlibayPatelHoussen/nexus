@@ -9,7 +9,6 @@ All notable changes to Nexus will be documented here.
 - One tap still turns the page: on the outer edge the next one, on the spine side the previous one (with the same fold), in the middle the reader bars show / hide. Keyboard arrows and the desktop buttons use the fold too; right to left (manga): everything mirrored, the pictures never. Off with « Réduire les animations »
 - Replaces the 3D page rotation added just before
 
-
 ### Fixed — « Page par page, de droite à gauche » showed mirrored pages
 - The manga reading mode flipped every page like a mirror (text unreadable): pages are now shown as they are, only the turning direction changes. ← is the next page (keyboard and desktop arrows), → the previous one; swiping and the position slider already followed the direction
 - The reading mode chosen last (vertical, page, right to left) is kept on the device
