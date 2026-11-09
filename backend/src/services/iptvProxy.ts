@@ -98,6 +98,50 @@ export function rewritePlaylist(text: string, base: string, toRelay: (absolute: 
   }).join('\n')
 }
 
+const AUDIO_CODEC = /^(mp4a|ac-[34]|ec-3|opus|flac|vorbis|alac|mp3)/
+const TEXT_CODEC = /^(stpp|wvtt)/
+
+/**
+ * Leaves the sound-only variants out of a playlist of qualities (for slow networks, often listed
+ * first). A player that starts on one may never show the picture: hls.js cannot bring it in
+ * afterwards, Safari on iPhone plays the sound over a black screen until the stream is loaded
+ * again. A variant goes when it has no picture and another one may have:
+ * - it announces sound codecs only (CODECS without a video codec, no RESOLUTION);
+ * - it announces nothing while others announce a picture, all at a higher bitrate;
+ * - nothing is announced anywhere, and its bitrate (under 200 kb/s, less than half of another
+ *   variant's) only fits sound.
+ * A playlist of sound-only variants (a radio) is kept as it is.
+ */
+export function dropSoundOnlyVariants(text: string): string {
+  const lines = text.split(/\r?\n/)
+  const attr = (line: string, name: string) => new RegExp(`(?:^|[:,])${name}=(?:"([^"]*)"|([^,]*))`, 'i').exec(line)
+  const variants: { from: number; to: number; video: boolean; sound: boolean; bandwidth: number }[] = []
+  for (let i = 0; i < lines.length; i++) {
+    const tag = lines[i].trim()
+    if (!/^#EXT-X-STREAM-INF:/i.test(tag)) continue
+    // Its address: the next line that is not a comment
+    let u = i + 1
+    while (u < lines.length && (!lines[u].trim() || (lines[u].trim().startsWith('#') && !/^#EXT-X-STREAM-INF:/i.test(lines[u].trim())))) u++
+    if (u >= lines.length || lines[u].trim().startsWith('#')) continue
+    const found = attr(tag, 'CODECS')
+    const codecs = found ? (found[1] ?? found[2] ?? '').split(',').map((c) => c.trim().toLowerCase()).filter(Boolean) : []
+    const video = !!attr(tag, 'RESOLUTION') || codecs.some((c) => !AUDIO_CODEC.test(c) && !TEXT_CODEC.test(c))
+    const bandwidth = attr(tag, 'BANDWIDTH')
+    variants.push({ from: i, to: u, video, sound: !video && codecs.some((c) => AUDIO_CODEC.test(c)), bandwidth: Number(bandwidth?.[1] ?? bandwidth?.[2] ?? 0) || 0 })
+  }
+  if (variants.length < 2) return text
+  const pictured = variants.filter((v) => v.video)
+  const top = Math.max(...variants.map((v) => v.bandwidth))
+  const drop = variants.filter((v) => !v.video && (
+    v.sound ? variants.some((o) => !o.sound)
+      : pictured.length ? pictured.every((o) => o.bandwidth > v.bandwidth)
+        : v.bandwidth > 0 && v.bandwidth < 200_000 && top >= 2 * v.bandwidth))
+  if (!drop.length || drop.length === variants.length) return text
+  const gone = new Set<number>()
+  for (const v of drop) for (let i = v.from; i <= v.to; i++) gone.add(i)
+  return lines.filter((_, i) => !gone.has(i)).join('\n')
+}
+
 /**
  * Sends the stream at `url` to the player: playlists rewritten, anything else passed on as it
  * comes (segments, keys; Range kept for players that ask for parts).
@@ -162,7 +206,7 @@ export async function relay(req: Request, res: Response, opts: {
     }
     res.setHeader('Content-Type', 'application/vnd.apple.mpegurl')
     res.setHeader('Cache-Control', 'no-store')
-    res.send(rewritePlaylist(text, finalUrl, opts.relayPath))
+    res.send(rewritePlaylist(dropSoundOnlyVariants(text), finalUrl, opts.relayPath))
     return true
   }
 

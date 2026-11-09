@@ -4,6 +4,12 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Fixed — IPTV on iPhone: the picture only came after the channel was started again
+- Sound-only variants are now left out by the server itself, before the playlist reaches the player (declared sound only, or without anything announced under the bitrate of every variant with a picture): Safari on iPhone reads streams by itself and could start on one, playing the sound over a black screen until the stream was loaded again
+- Safari: when the sound runs for 3 s without a picture and the stream does hold one Safari reads (H.264, HEVC), the player loads it again by itself, once — what leaving and reopening the app did by hand. A radio is not reloaded; a format Safari does not read goes to the server's conversion as elsewhere
+- Paused player (or a browser that refuses to start by itself): a large play button in the middle
+- Tests: backend (variants left out, through the relay too; `?probe=1`), frontend, E2E with Chromium standing in for Safari (first load without a picture → loaded again; radio)
+
 ### Fixed — IPTV: channels with sound but no picture
 - A playlist that lists a sound-only variant first (for slow networks) made the player start on it and never show the picture: those variants are now left out, the picture shows at once
 - Video in a format the browser does not read (MPEG-2 from old broadcast encoders, HEVC on a browser without it, 10-bit H.264): the player notices (sound running, no picture), tries the channel's other streams, then asks the server, which converts the picture live to H.264 with ffmpeg (720p at most, two conversions at a time, stopped 30 s after the last viewer). Shown as « image convertie par le serveur »; the browser remembers the stream and asks for the conversion at once the next time

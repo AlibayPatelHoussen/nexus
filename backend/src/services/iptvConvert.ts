@@ -185,8 +185,10 @@ async function ready(job: LiveJob, timeoutMs: number): Promise<boolean> {
  * What stream `s` of channel `id` holds, and its conversion started when ffmpeg can give it a
  * picture the browser reads. Answers once the converted stream is ready to play.
  * `token`: a stream token, for ffmpeg to read the stream through the relay.
+ * `launch` false: only what the stream holds (a player that reads this format loads it again
+ * rather than have it converted).
  */
-export async function convertStream(id: string, s: number, token: string): Promise<PictureAnswer> {
+export async function convertStream(id: string, s: number, token: string, launch = true): Promise<PictureAnswer> {
   if (!(await hasFfmpeg())) return { video: null, audio: null, convert: false, reason: 'ffmpeg' }
   let content: Content
   try {
@@ -197,6 +199,7 @@ export async function convertStream(id: string, s: number, token: string): Promi
   }
   const found = { video: content.video, audio: content.audio }
   if (!content.video) return { ...found, convert: false, reason: 'audio' }
+  if (!launch) return { ...found, convert: false, reason: null }
   const key = `${id}|${s}`
   let job = jobs.get(key)
   if (job && (job.done || job.failed)) { stop(job, 'restarted'); job = undefined }

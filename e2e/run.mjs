@@ -579,6 +579,32 @@ test('IPTV: sound without a picture — sound-only variant left out, MPEG-2 conv
   await page.context().close()
 })
 
+test('IPTV on iPhone (Safari reads the stream itself): sound without a picture → the stream is loaded again', async () => {
+  admin = await login('admin', 'Admin1234')
+  const page = await newPage(admin)
+  // Chromium stands in for Safari when it can read HLS by itself
+  if (!(await page.evaluate(() => document.createElement('video').canPlayType('application/vnd.apple.mpegurl')))) { await page.context().close(); return }
+  await page.addInitScript(() => {
+    window.WebKitPlaybackTargetAvailabilityEvent = function () {}      // what the player recognises Safari by
+    // Safari's glitch: the first load of a stream plays its sound without a picture, the next one shows it
+    window.__loads = 0
+    const src = Object.getOwnPropertyDescriptor(HTMLMediaElement.prototype, 'src')
+    const width = Object.getOwnPropertyDescriptor(HTMLVideoElement.prototype, 'videoWidth')
+    Object.defineProperty(HTMLMediaElement.prototype, 'src', { get() { return src.get.call(this) }, set(v) { window.__loads++; src.set.call(this, v) } })
+    Object.defineProperty(HTMLVideoElement.prototype, 'videoWidth', { get() { return window.__loads <= 1 ? 0 : width.get.call(this) } })
+  })
+  await page.goto(`${B}/iptv/watch/Kids.fr`, { waitUntil: 'domcontentloaded' })
+  await playVideo(page)
+  await page.waitForFunction(() => { const v = document.querySelector('video'); return window.__loads >= 2 && v.videoWidth > 0 && v.currentTime > 0.5 }, null, { timeout: 60000 })
+  assert(!(await page.evaluate(() => document.querySelector('video').currentSrc)).includes('/converted/'), 'the stream itself, loaded again: nothing converted')
+  // A radio there: no second load, said as sound only
+  await page.goto(`${B}/iptv/watch/Radio.it`, { waitUntil: 'domcontentloaded' })
+  await playVideo(page)
+  await page.waitForSelector('text=Son uniquement', { timeout: 30000 })
+  eq(await page.evaluate(() => window.__loads), 1, 'a radio is not loaded again')
+  await page.context().close()
+})
+
 test('IMDb: ids from TMDB, ratings from the dataset, Top 10 ranked by IMDb', async () => {
   const user = await login('alice', 'User12345')
   eq((await api('/api/media/imdb/refresh', { method: 'POST', token: user.accessToken })).status, 403, 'non-admin refused')

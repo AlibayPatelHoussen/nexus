@@ -12,17 +12,19 @@ import type { PictureReason } from '@/services/iptvService'
  */
 
 /** What the player needs to know of an hls.js level */
-export interface Variant { uri: string; width?: number; videoCodec?: string }
+export interface Variant { uri: string; width?: number; videoCodec?: string; bitrate?: number }
 
 /**
  * The variants of a stream to leave out, highest index first (the order hls.removeLevel needs):
  * those found to carry sound only (`silent`), and those announced without a picture when others
- * announce one. One variant always stays (the last one: hls.js orders them by bitrate).
+ * announce one, all at a higher bitrate (the server's relay leaves the same ones out, see
+ * dropSoundOnlyVariants there). One variant always stays (the last one: hls.js orders them by bitrate).
  */
 export function variantsToDrop(levels: readonly Variant[], silent: ReadonlySet<string>): number[] {
   const pictured = (l: Variant) => (l.width ?? 0) > 0 || !!l.videoCodec
-  const some = levels.some(pictured)
-  const drop = levels.map((l, i) => (silent.has(l.uri) || (some && !pictured(l)) ? i : -1)).filter((i) => i >= 0)
+  const withPicture = levels.filter(pictured)
+  const below = (l: Variant) => withPicture.length > 0 && withPicture.every((o) => (o.bitrate ?? Infinity) > (l.bitrate ?? 0))
+  const drop = levels.map((l, i) => (silent.has(l.uri) || (!pictured(l) && below(l)) ? i : -1)).filter((i) => i >= 0)
   if (drop.length >= levels.length) drop.pop()
   return drop.reverse()
 }

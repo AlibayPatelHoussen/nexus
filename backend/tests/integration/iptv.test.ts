@@ -9,7 +9,7 @@ import { app } from '../../src/index'
 import { query } from '../../src/config/database'
 import { makeToken } from '../helpers'
 import { checkChannel, checkDueChannels, importCatalogue, refreshCatalogue } from '../../src/services/iptv'
-import { rewritePlaylist } from '../../src/services/iptvProxy'
+import { dropSoundOnlyVariants, rewritePlaylist } from '../../src/services/iptvProxy'
 import { convertJobs, stopConversions } from '../../src/services/iptvConvert'
 
 /*
@@ -39,6 +39,8 @@ const server = http.createServer((req, res) => {
   if (u === '/live/low/index.m3u8') return send(200, '#EXTM3U\n#EXT-X-KEY:METHOD=AES-128,URI="../key.bin"\n#EXTINF:6,\nseg1.ts\n#EXTINF:6,\nhttps://cdn.example/abs.ts\n')
   if (u === '/live/low/seg1.ts') return send(200, Buffer.alloc(376, 0x47), 'video/mp2t')
   if (u === '/redirect.m3u8') { res.writeHead(302, { Location: '/live/master.m3u8' }); return res.end() }
+  // A sound-only variant listed first, as many broadcasters do for slow networks
+  if (u === '/live/sound-first.m3u8') return send(200, '#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=64000,CODECS="mp4a.40.2"\naudio/index.m3u8\n#EXT-X-STREAM-INF:BANDWIDTH=800000,RESOLUTION=640x360\nlow/index.m3u8\n')
   if (u === '/php/stream.php') return send(200, '#EXTM3U\n#EXTINF:6,\nseg.ts\n', 'text/plain')
   if (u === '/geo.m3u8') return send(403, 'no')
   if (u === '/html.m3u8') return send(200, '<html>nope</html>', 'text/html')
@@ -94,7 +96,7 @@ beforeAll(async () => {
       channel('France24.fr', 'France 24', { country: 'FR', categories: ['news'], languages: ['fra', 'eng'], network: 'France Médias Monde' }),
       channel('BBCNews.uk', 'BBC News', { country: 'GB', categories: ['news'], languages: ['eng'] }),
       channel('Cartoon.us', 'Cartoon 100%', { country: 'US', categories: ['kids'], languages: ['eng'] }),
-      channel('stream-abc123', 'Local TV'),
+      channel('stream-abc123', 'Local TV', { streams: [{ url: `${base}/live/master.m3u8` }, { url: `${base}/live/sound-first.m3u8` }] }),
       channel('Php.fr', 'Php TV', { streams: [{ url: `${base}/php/stream.php`, user_agent: 'Agent/7', referrer: 'https://ref.example/page' }] }),
       channel('Geo.fr', 'Geo TV', { streams: [{ url: `${base}/geo.m3u8` }, { url: `${base}/redirect.m3u8` }] }),
       channel('Html.fr', 'Html TV', { streams: [{ url: `${base}/html.m3u8` }] }),
@@ -256,6 +258,37 @@ describe('IPTV relay (player)', () => {
     const html = await request(app).get(`/api/iptv/play/Html.fr/0/index.m3u8?token=${token()}`)
     expect(html.status).toBe(502)
     expect(html.body.error).toMatch(/pas une playlist HLS/)
+  })
+
+  it('leaves the sound-only variants out of a playlist of qualities (a player may start on one and never show the picture)', async () => {
+    const inf = (attrs: string, uri: string) => `#EXT-X-STREAM-INF:${attrs}\n${uri}`
+    const list = (...v: string[]) => ['#EXTM3U', ...v].join('\n')
+    const audio = inf('BANDWIDTH=64000,CODECS="mp4a.40.2"', 'audio.m3u8')
+    const sd = inf('AVERAGE-BANDWIDTH=700000,BANDWIDTH=800000,RESOLUTION=640x360', 'sd.m3u8')
+    const hd = inf('BANDWIDTH=2500000,CODECS="avc1.64001f,mp4a.40.2"', 'hd.m3u8')
+    // Announced as sound only, next to variants with a picture (or that say nothing)
+    expect(dropSoundOnlyVariants(list(audio, sd, hd))).toBe(list(sd, hd))
+    expect(dropSoundOnlyVariants(list(sd, audio, inf('BANDWIDTH=900000', 'x.m3u8')))).toBe(list(sd, inf('BANDWIDTH=900000', 'x.m3u8')))
+    // Says nothing, under the bitrate of every variant that announces a picture
+    expect(dropSoundOnlyVariants(list(inf('BANDWIDTH=96000', 'a.m3u8'), sd))).toBe(list(sd))
+    // Nothing announced anywhere: a bitrate only sound fits in, next to a much larger one
+    expect(dropSoundOnlyVariants(list(inf('BANDWIDTH=64000', 'a.m3u8'), inf('BANDWIDTH=1200000', 'v.m3u8')))).toBe(list(inf('BANDWIDTH=1200000', 'v.m3u8')))
+    // Kept: a radio (sound-only variants only), variants that may all have a picture, a single variant, a media playlist
+    for (const kept of [
+      list(audio, inf('BANDWIDTH=128000,CODECS="mp4a.40.2"', 'audio-hi.m3u8')),
+      list(inf('BANDWIDTH=300000', 'a.m3u8'), inf('BANDWIDTH=500000', 'b.m3u8')),
+      list(audio),
+      '#EXTM3U\n#EXTINF:6,\nseg1.ts\n',
+    ]) expect(dropSoundOnlyVariants(kept)).toBe(kept)
+    // Its tags go with it; the alternate audio of the other variants stays
+    const media = '#EXT-X-MEDIA:TYPE=AUDIO,GROUP-ID="a",NAME="fr",URI="fr.m3u8"'
+    expect(dropSoundOnlyVariants(list(media, audio, inf('BANDWIDTH=800000,RESOLUTION=640x360,AUDIO="a"', 'sd.m3u8'))))
+      .toBe(list(media, inf('BANDWIDTH=800000,RESOLUTION=640x360,AUDIO="a"', 'sd.m3u8')))
+    // Through the relay
+    const master = await request(app).get(`/api/iptv/play/stream-abc123/1/index.m3u8?token=${token()}`)
+    expect(master.status).toBe(200)
+    expect(master.text).not.toContain('audio%2Findex.m3u8')
+    expect(master.text).toContain('low%2Findex.m3u8')
   })
 
   it('rewritePlaylist keeps comments, data: keys and blank lines', () => {
@@ -531,6 +564,14 @@ if (!hasFfmpeg) console.warn('ffmpeg not installed: IPTV conversion tests skippe
     // One conversion per stream, shared by its viewers
     expect((await request(app).post('/api/iptv/play/Old.fr/0/convert').set(bob)).body.data.convert).toBe(true)
     expect(convertJobs()).toEqual(['Old.fr|0'])
+  }, 120_000)
+
+  it('?probe=1 only says what the stream holds: nothing is started', async () => {
+    stopConversions()
+    const res = await request(app).post('/api/iptv/play/Old.fr/0/convert?probe=1').set(alice)
+    expect(res.body.data).toEqual({ video: 'mpeg2video', audio: 'mp2', convert: false, reason: null })
+    expect(convertJobs()).toEqual([])
+    expect((await request(app).post('/api/iptv/play/Old.fr/0/convert').set(alice)).body.data.convert).toBe(true)
   }, 120_000)
 
   it('a stream without any picture is a radio: nothing to convert', async () => {
