@@ -106,7 +106,7 @@ router.post('/prune', asyncHandler(async (_req, res: Response) => {
 }))
 
 // Automatic scan when a library page opens: quick (no online lookup for known titles),
-// skipped while another scan runs or when this library was scanned less than 30 s ago
+// skipped while another scan runs or when this library was scanned less than 10 s ago
 const AUTO_SCANS: Record<string, [string, () => Promise<number>]> = {
   films: ['film', () => MediaScanner.scanFilms()],
   series: ['serie', () => MediaScanner.scanSeries()],
@@ -114,7 +114,7 @@ const AUTO_SCANS: Record<string, [string, () => Promise<number>]> = {
   manga: ['manga', () => MediaScanner.scanManga()],
   youtube: ['youtube', () => MediaScanner.scanYoutube()],
 }
-const AUTO_SCAN_MIN_MS = () => Number(process.env.AUTO_SCAN_MIN_MS) || 30_000
+const AUTO_SCAN_MIN_MS = () => Number(process.env.AUTO_SCAN_MIN_MS) || 10_000
 
 router.post('/scan/:type/auto', asyncHandler(async (req: Request, res: Response) => {
   const type = req.params.type

@@ -10,7 +10,7 @@ export const scanTypeOf = (type: string | undefined): string | null => ({
 /**
  * Each time a library page (or a title page) opens: a quick scan of that library on the
  * server (new files, new episodes / chapters), then the page refreshes itself. The server
- * skips it while another scan runs or when it scanned that library less than 30 s ago.
+ * skips it while another scan runs or when it scanned that library less than 10 s ago.
  */
 export function useAutoScan(scanType: string | null) {
   const qc = useQueryClient()
