@@ -603,7 +603,8 @@ function rescanLibrary(kind: Kind, attempt = 0): Promise<void> {
     if (attempt >= 30) return Promise.resolve()
     return new Promise((resolve) => { setTimeout(() => { void rescanLibrary(kind, attempt + 1).then(resolve) }, 60_000).unref() })
   }
-  return MediaScanner.exclusive(scan[0], scan[1])
+  // Quick: only the new title is looked up online, the others just get their new episodes / chapters
+  return MediaScanner.quickly(scan[0], scan[1])
     .then((n) => {
       logger.info(`Library rescan after download (${kind}): ${n}`)
       // MKV → MP4 once the file has settled (a file written less than a minute ago is skipped)

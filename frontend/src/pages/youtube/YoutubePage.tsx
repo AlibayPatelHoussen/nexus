@@ -17,6 +17,7 @@ import { VideoSectionSwitch } from '@/components/media/MediaBrowser'
 import { SectionMenu } from '@/components/media/PhoneLibraryBar'
 import { formatDuration } from '@/pages/downloads/SearchView'
 import DownloadsButton from '@/components/downloads/DownloadsButton'
+import { useAutoScan } from '@/hooks/useAutoScan'
 
 type Sort = 'recent' | 'title'
 const GRID = 'grid grid-cols-[repeat(auto-fill,minmax(250px,1fr))] max-sm:grid-cols-1 gap-x-5 gap-y-7'
@@ -76,6 +77,7 @@ function VideoTile({ v, progress }: { v: MediaItem; progress?: number }) {
 
 /** Médias › YouTube: the videos of /media/youtube, newest first, optionally by channel. */
 export default function YoutubePage() {
+  useAutoScan('youtube')
   const { device } = useShell()
   const phone = device === 'phone'
   const [sort, setSort] = useState<Sort>('recent')

@@ -541,7 +541,26 @@ export class MediaScanner {
       return await fn()
     } finally {
       this.running = null
+      this.lastDone.set(label, Date.now())
     }
+  }
+
+  /** When each kind of scan last finished ('films', 'series', 'animes', 'manga', 'youtube', 'all'…). */
+  static lastDone = new Map<string, number>()
+
+  /**
+   * Quick mode (automatic scans: a page opened, a chapter downloaded): titles already in
+   * the library only get their episodes / chapters refreshed, without asking AniList /
+   * MangaDex again (those were asked for every title at every scan). New titles are
+   * still looked up. The « Analyser » button keeps the full scan.
+   */
+  static quick = false
+
+  static quickly<T>(label: string, fn: () => Promise<T>): Promise<T> {
+    return this.exclusive(label, async () => {
+      this.quick = true
+      try { return await fn() } finally { this.quick = false }
+    })
   }
 
 
@@ -790,6 +809,15 @@ export class MediaScanner {
         const animePath = path.join(dir, entry.name)
         const { title } = parseFilename(entry.name)
 
+        if (MediaScanner.quick) {
+          const known = await query<{ id: string }>('SELECT id FROM media_items WHERE file_path = $1', [animePath])
+          if (known.rows[0]) {
+            await scanShowEpisodes(animePath, known.rows[0].id)
+            count++
+            continue
+          }
+        }
+
         const anilist = await searchAniList(title, 'ANIME')
         // The TMDB series (poster with the title, logo, key art), looked up once
         const known = await query<{ tmdb_id: number | null }>('SELECT tmdb_id FROM media_items WHERE file_path = $1', [animePath])
@@ -858,6 +886,16 @@ export class MediaScanner {
         const { title } = parseFilename(entry.name)
         // One unreadable manga must not stop the scan of the others
         try {
+
+        if (MediaScanner.quick) {
+          const known = await query('SELECT 1 FROM media_items WHERE file_path = $1', [mangaPath])
+          if (known.rows[0]) {
+            await MediaScanner.scanChapters(mangaPath, entry.name)
+            await query('UPDATE media_items SET file_size = $1, last_scanned = NOW() WHERE file_path = $2', [await getDirSize(mangaPath), mangaPath])
+            count++
+            continue
+          }
+        }
 
         const mdx = await searchMangaDex(title)
 
