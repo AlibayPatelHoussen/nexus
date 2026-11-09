@@ -44,7 +44,7 @@ echo "▶ build"
 # ── 2. Database, installed like a real deploy ───────
 echo "▶ database"
 mkdir -p "$PGDIR"; [ "$(id -u)" = 0 ] && chown postgres "$PGDIR"
-"${RUN_AS[@]}" "$PGBIN/initdb" -D "$PGDIR/data" -A trust >/dev/null
+"${RUN_AS[@]}" "$PGBIN/initdb" -D "$PGDIR/data" -A trust -E UTF8 --locale=C >/dev/null   # UTF-8, like a real install
 "${RUN_AS[@]}" "$PGBIN/pg_ctl" -D "$PGDIR/data" -o "-p $PGPORT -k $PGDIR" -l "$PGDIR/log" start >/dev/null 2>&1 < /dev/null
 for _ in $(seq 1 30); do "$PGBIN/pg_isready" -h "$PGDIR" -p "$PGPORT" -q && break; sleep 0.5; done
 psql -h "$PGDIR" -p "$PGPORT" -U postgres -qc "CREATE ROLE nexus_user LOGIN PASSWORD 'e2e_password'" \
@@ -189,6 +189,8 @@ AUTH_RATE_LIMIT_MAX=1000
 LOG_FILE=$E2E/nexus.log
 IPTV_API_BASE=http://localhost:$MOCK_PORT/iptv-api
 IPTV_PLAYLIST_URL=http://localhost:$MOCK_PORT/iptv/index.m3u
+IPTV_FREETV_URL=http://localhost:$MOCK_PORT/freetv/playlist.m3u8
+IPTV_YTDLP="python3 '$ROOT/e2e/fake-ytdlp.py' --live http://localhost:$MOCK_PORT/iptv-hls/index.m3u8"
 IPTV_DATA_DIR=$E2E/iptv-data
 IPTV_ALLOW_PRIVATE=1
 EOF

@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import {
-  ArrowDownAZ, ArrowUpZA, ChevronDown, ChevronRight, ChevronUp, Globe, Heart, History, House, Languages, LayoutGrid, RefreshCw,
+  ArrowUpDown, ChevronDown, ChevronRight, ChevronUp, Globe, Heart, History, House, Languages, LayoutGrid, RefreshCw,
   Settings2, Shapes, Tv,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -23,7 +23,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { spring } from '@/design/motion'
 import { cn } from '@/utils'
 import { serverError } from '@/utils/errorToast'
-import { iptvService, type IptvChannel, type IptvSummary } from '@/services/iptvService'
+import { iptvService, type ChannelSort, type IptvChannel, type IptvSettings, type IptvSummary } from '@/services/iptvService'
 import { CHANNEL_GRID, ChannelLogo, ChannelTile, useInfiniteTrigger, useOpenChannel } from './ChannelTile'
 import { MAIN_CATEGORIES, categoryName, countryName, flag, languageName } from './labels'
 
@@ -41,7 +41,8 @@ const VIEWS: { id: View; label: string; icon: typeof House }[] = [
 const PHONE_LABEL: Partial<Record<View, string>> = { chaines: 'Chaînes', recents: 'Récentes', reglages: 'Paramètres' }
 
 /**
- * IPTV: the iptv-org channels (https://github.com/iptv-org/iptv), watched live in Nexus.
+ * IPTV: the channels of iptv-org (https://github.com/iptv-org/iptv) and Free-TV
+ * (https://github.com/Free-TV/IPTV), watched live in Nexus. The owner's priority countries come first.
  * Desktop: the IPTV sections in a column next to the content; iPhone: capsules under the title.
  */
 export default function IptvPage() {
@@ -170,13 +171,20 @@ function HomeView() {
         <Stat label="Catégories" value={data.categories.length} />
       </dl>
 
+      {data.recent.length > 0 && <Shelf title="Récemment regardées" items={data.recent} onOpen={open} more="/iptv/recents" />}
+      {data.favorites.length > 0 && <Shelf title="Favoris" items={data.favorites} onOpen={open} more="/iptv/favoris" />}
+      {/* The priority countries, in the owner's order. One without any channel says so: nothing is made up */}
+      {data.priority.map((p) => (p.count > 0 ? (
+        <Shelf key={p.code} id={`iptv-pays-${p.code}`} lead={p.flag ?? flag(p.code)} title={countryName(p.code, p.name)} items={p.items}
+          onOpen={open} more={`/iptv/chaines?country=${p.code}`} />
+      ) : (
+        <NoChannelYet key={p.code} code={p.code} name={countryName(p.code, p.name)} />
+      )))}
       {!!sample.data?.items.length && (
         <Shelf title={onlineFirst ? 'Chaînes disponibles' : 'Toutes les chaînes'} items={sample.data.items} onOpen={open}
           more={onlineFirst ? '/iptv/chaines?online=1' : '/iptv/chaines'} />
       )}
-      {data.recent.length > 0 && <Shelf title="Récemment regardées" items={data.recent} onOpen={open} more="/iptv/recents" />}
-      {data.favorites.length > 0 && <Shelf title="Favoris" items={data.favorites} onOpen={open} more="/iptv/favoris" />}
-      {/* Real plays on this server only: iptv-org publishes no audience figures */}
+      {/* Real plays on this server only: the sources publish no audience figures */}
       {data.popular.length > 0 && <Shelf title="Les plus regardées sur ce serveur" items={data.popular} onOpen={open} />}
 
       <section aria-labelledby="iptv-cats">
@@ -212,24 +220,27 @@ function Stat({ label, value, hint }: { label: string; value: number; hint?: str
   )
 }
 
-function SectionTitle({ id, title, to }: { id: string; title: string; to?: string }) {
+function SectionTitle({ id, title, to, lead }: { id: string; title: string; to?: string; lead?: string }) {
+  const text = <>{lead && <span className="mr-2" aria-hidden="true">{lead}</span>}{title}</>
   return (
     <h2 id={id} className="mb-3 text-[17px] md:text-[19px] font-bold leading-[22px] text-label">
       {to ? (
         <Link to={to} title={`Tout voir : ${title}`} className="inline-flex items-center gap-0.5 rounded-control hover:opacity-70 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent">
-          {title}
+          {text}
           <ChevronRight size={20} strokeWidth={2.5} className="text-label2 translate-y-px" aria-hidden="true" />
         </Link>
-      ) : title}
+      ) : text}
     </h2>
   )
 }
 
-function Shelf({ title, items, onOpen, more }: { title: string; items: IptvChannel[]; onOpen: (c: IptvChannel, l: IptvChannel[]) => void; more?: string }) {
-  const id = `shelf-${title.replace(/\W+/g, '-')}`
+function Shelf({ title, items, onOpen, more, lead, id: given }: {
+  title: string; items: IptvChannel[]; onOpen: (c: IptvChannel, l: IptvChannel[]) => void; more?: string; lead?: string; id?: string
+}) {
+  const id = given ?? `shelf-${title.replace(/\W+/g, '-')}`
   return (
     <section aria-labelledby={id}>
-      <SectionTitle id={id} title={title} to={more} />
+      <SectionTitle id={id} title={title} to={more} lead={lead} />
       <div className="-mx-4 px-4 md:mx-0 md:px-0 overflow-x-auto scrollbar-none">
         <ul className="flex gap-4 w-max">
           {items.map((c) => (
@@ -239,6 +250,19 @@ function Shelf({ title, items, onOpen, more }: { title: string; items: IptvChann
           ))}
         </ul>
       </div>
+    </section>
+  )
+}
+
+/** A priority country no source has a channel for (Madagascar today): said plainly, in its place */
+function NoChannelYet({ code, name }: { code: string; name: string }) {
+  const id = `iptv-pays-${code}`
+  return (
+    <section aria-labelledby={id}>
+      <SectionTitle id={id} title={name} lead={flag(code)} />
+      <p className="rounded-group bg-surface px-4 py-3.5 text-subhead text-label2 max-w-[70ch]">
+        Aucune chaîne en accès libre n’est référencée pour ce pays pour le moment. Elle apparaîtra ici dès qu’une source en publiera une.
+      </p>
     </section>
   )
 }
@@ -267,9 +291,11 @@ function HomeSkeleton() {
 
 function SourceNote({ summary }: { summary: IptvSummary }) {
   const at = summary.refresh.at ? new Date(summary.refresh.at).toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' }) : null
+  const freeTv = summary.refresh.sources.includes('free-tv')
   return (
     <p className="text-caption text-label2 max-w-[70ch]">
       Chaînes publiques référencées par <a className="text-accent-text" href="https://github.com/iptv-org/iptv" target="_blank" rel="noreferrer">iptv-org</a>
+      {freeTv && <> et <a className="text-accent-text" href="https://github.com/Free-TV/IPTV" target="_blank" rel="noreferrer">Free-TV</a></>}
       {at ? ` · catalogue du ${at}` : ''}. Les chaînes retirées à la demande des ayants droit et les contenus pour adultes ne sont pas proposés.
       Certaines chaînes ne sont visibles que depuis leur pays ou pas 24 h/24.
     </p>
@@ -285,7 +311,7 @@ function EmptyCatalogue({ summary }: { summary: IptvSummary }) {
       icon={<Tv strokeWidth={1.25} />}
       tone={summary.refresh.ok === false ? 'error' : 'neutral'}
       title={running ? 'Téléchargement du catalogue…' : summary.refresh.ok === false ? 'Catalogue indisponible' : 'Catalogue pas encore téléchargé'}
-      message={running ? 'Les chaînes d’iptv-org arrivent dans quelques secondes.'
+      message={running ? 'Les chaînes arrivent dans quelques secondes.'
         : summary.refresh.ok === false ? summary.refresh.message ?? undefined
           : 'Le serveur télécharge la liste des chaînes au démarrage, puis une fois par jour.'}
       action={isAdmin && !running ? <Button variant="plain" onClick={() => refresh.mutate()}>Télécharger maintenant</Button> : undefined}
@@ -303,6 +329,12 @@ function useRefresh() {
 }
 
 // ─── All channels (filters) ───────────────────────────────────────────────────
+const SORTS: { value: ChannelSort; label: string; short: string }[] = [
+  { value: 'top', label: 'Pays prioritaires d’abord', short: 'Priorité' },
+  { value: 'name', label: 'De A à Z', short: 'A → Z' },
+  { value: '-name', label: 'De Z à A', short: 'Z → A' },
+]
+
 function ChannelsView() {
   const [params, setParams] = useSearchParams()
   const [text, setText] = useState(params.get('q') ?? '')
@@ -310,7 +342,7 @@ function ChannelsView() {
   const country = params.get('country') ?? ''
   const category = params.get('category') ?? ''
   const language = params.get('language') ?? ''
-  const sort = params.get('sort') === '-name' ? '-name' : 'name'
+  const sort: ChannelSort = SORTS.find((o) => o.value === params.get('sort'))?.value ?? 'top'
   const online = params.get('online') === '1'
   const set = (key: string, value: string) => {
     const next = new URLSearchParams(params)
@@ -320,7 +352,7 @@ function ChannelsView() {
   useEffect(() => { if ((params.get('q') ?? '') !== q) set('q', q) }, [q]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const facets = useQuery({ queryKey: ['iptv', 'facets'], queryFn: iptvService.facets, staleTime: 5 * 60_000 })
-  const filters = { q, country, category, language, sort: sort as 'name' | '-name', status: online ? 'online' as const : 'all' as const }
+  const filters = { q, country, category, language, sort, status: online ? 'online' as const : 'all' as const }
   const list = useInfiniteQuery({
     queryKey: ['iptv', 'channels', filters],
     queryFn: ({ pageParam }) => iptvService.channels({ ...filters, page: pageParam, limit: 60 }),
@@ -348,12 +380,11 @@ function ChannelsView() {
           className={cn('h-9 px-3.5 rounded-pill text-subhead font-semibold', online ? 'bg-accent-fill text-white' : 'bg-fill text-label')}>
           Disponibles
         </button>
-        <button type="button" onClick={() => set('sort', sort === 'name' ? '-name' : '')}
-          className="h-9 px-3 rounded-pill bg-fill text-label inline-flex items-center gap-1.5 text-subhead font-semibold"
-          aria-label={sort === 'name' ? 'Tri de A à Z (changer pour Z à A)' : 'Tri de Z à A (changer pour A à Z)'}>
-          {sort === 'name' ? <ArrowDownAZ size={16} aria-hidden="true" /> : <ArrowUpZA size={16} aria-hidden="true" />}
-          {sort === 'name' ? 'A → Z' : 'Z → A'}
-        </button>
+        <PullDownMenu label="Tri" value={sort} options={SORTS} onChange={(v) => set('sort', v === 'top' ? '' : v)}
+          className="h-9 pl-3 pr-3.5 rounded-pill bg-fill text-label text-subhead font-semibold">
+          <ArrowUpDown size={15} strokeWidth={2.25} aria-hidden="true" />
+          {SORTS.find((o) => o.value === sort)!.short}
+        </PullDownMenu>
         {anyFilter && <Button variant="plain" size="small" onClick={() => { setText(''); setParams(new URLSearchParams(), { replace: true }) }}>Effacer</Button>}
       </div>
       <p className="text-subhead text-label2 tabular" aria-live="polite">
@@ -481,6 +512,8 @@ function RecentView() {
 }
 
 // ─── Settings ───────────────────────────────────────────────────────────────
+const SOURCE_NAMES: Record<string, string> = { 'iptv-org': 'iptv-org', 'free-tv': 'Free-TV' }
+
 function SettingsView() {
   const qc = useQueryClient()
   const isAdmin = useAuthStore((s) => s.user?.role === 'admin')
@@ -489,20 +522,32 @@ function SettingsView() {
     queryFn: iptvService.settings,
     refetchInterval: (q) => (q.state.data?.refresh.running ? 3000 : false),
   })
+  // What is being typed (null: the saved value)
   const [epg, setEpg] = useState<string | null>(null)
+  const [countries, setCountries] = useState<string | null>(null)
   const save = useMutation({
     mutationFn: iptvService.saveSettings,
-    onSuccess: () => { toast.success('Paramètres enregistrés'); void qc.invalidateQueries({ queryKey: ['iptv'] }) },
+    onSuccess: (saved: IptvSettings) => {
+      toast.success('Paramètres enregistrés')
+      // The saved values at once (codes in capitals, without doubles), then everything they change
+      qc.setQueryData<typeof data>(['iptv', 'settings'], (old) => (old ? { ...old, settings: saved } : old))
+      setEpg(null)
+      setCountries(null)
+      void qc.invalidateQueries({ queryKey: ['iptv'] })
+    },
     onError: (e) => toast.error(serverError(e)),
   })
   const refresh = useRefresh()
   if (!data) return <Skeleton className="h-64 rounded-group" />
   const { settings, refresh: state } = data
   const at = state.at ? new Date(state.at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : 'jamais'
+  const typed = countries ?? settings.priorityCountries.join(', ')
+  const codes = [...new Set(typed.toUpperCase().split(/[\s,;]+/).filter((c) => /^[A-Z]{2}$/.test(c)))]
   return (
     <div className="flex flex-col gap-8 max-w-[680px]">
-      <Group header="Catalogue" footer="Les chaînes viennent du dépôt public iptv-org. Une chaîne n’est marquée « disponible » qu’après une vérification réelle de son flux, faite peu à peu en arrière-plan (favoris et chaînes regardées d’abord).">
+      <Group header="Catalogue" footer="Les chaînes viennent de deux dépôts publics : iptv-org (le plus complet) et Free-TV (une courte sélection de chaînes gratuites, tenue à la main). Une chaîne n’est marquée « disponible » qu’après une vérification réelle de son flux, faite peu à peu en arrière-plan (favoris, chaînes regardées et pays prioritaires d’abord).">
         <ListRow title="Mise à jour" detail={state.running ? 'en cours…' : at} status={state.ok === false ? 'error' : undefined} />
+        {state.sources.length > 0 && <ListRow title="Sources" detail={state.sources.map((x) => SOURCE_NAMES[x] ?? x).join(' + ')} />}
         {state.stats && <ListRow title="Chaînes" detail={(state.stats.imported ?? state.stats.channels ?? 0).toLocaleString('fr-FR')} />}
         {state.ok === false && state.message && <ListRow wrap title="Dernière erreur" subtitle={state.message} />}
         {state.notes?.length > 0 && <ListRow wrap title="Remarques" subtitle={state.notes.join(' · ')} />}
@@ -525,14 +570,24 @@ function SettingsView() {
         </Group>
       )}
       <form
-        onSubmit={(e) => { e.preventDefault(); if (isAdmin) save.mutate({ epgUrl: (epg ?? settings.epgUrl ?? '').trim() || null }) }}
+        className="flex flex-col gap-8"
+        onSubmit={(e) => { e.preventDefault(); if (isAdmin) save.mutate({ priorityCountries: typed, epgUrl: (epg ?? settings.epgUrl ?? '').trim() || null }) }}
       >
+        <Group header="Pays en priorité" footer="Les chaînes de ces pays passent en premier, dans cet ordre : sur l’accueil, dans les listes et dans les vérifications. Codes de deux lettres séparés par des virgules (FR, CA, US… et UK pour le Royaume-Uni). Un pays sans chaîne dans les sources reste affiché, avec la mention qu’aucune n’est référencée.">
+          {isAdmin && (
+            <div role="listitem" className="nx-row px-4 py-2">
+              <TextField label="Pays en priorité (codes de deux lettres)" hideLabel placeholder="CA, FR, MG, US" value={typed} onChange={(e) => setCountries(e.target.value)}
+                autoCapitalize="characters" autoCorrect="off" spellCheck={false} />
+            </div>
+          )}
+          <ListRow wrap title="Ordre" subtitle={codes.length ? codes.map((c) => `${flag(c)} ${countryName(c)}`).join('  ·  ') : 'Aucun pays en priorité'} />
+        </Group>
         <Group header="Guide TV (EPG)" footer="iptv-org ne publie pas de guide prêt à l’emploi. Indique l’adresse d’un fichier XMLTV (par exemple généré avec iptv-org/epg) : « Maintenant » et « Ensuite » s’afficheront alors dans le lecteur. Sans guide, aucun programme n’est affiché.">
           <div role="listitem" className="nx-row px-4 py-2">
             <TextField label="Adresse du guide XMLTV" hideLabel placeholder="https://…/guide.xml" value={epg ?? settings.epgUrl ?? ''} onChange={(e) => setEpg(e.target.value)} disabled={!isAdmin} inputMode="url" />
           </div>
         </Group>
-        {isAdmin && <div className="flex justify-end pt-3"><Button type="submit" variant="primary" loading={save.isPending}>Enregistrer</Button></div>}
+        {isAdmin && <div className="flex justify-end -mt-5"><Button type="submit" variant="primary" loading={save.isPending}>Enregistrer</Button></div>}
       </form>
     </div>
   )

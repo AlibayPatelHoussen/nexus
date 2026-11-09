@@ -44,6 +44,11 @@ npm workspaces (`frontend`, `backend`); run from the repo root unless noted.
   mode (argument arrays, validated values, minimal env); `services/downloads.ts` keeps the queue,
   `follows.ts` auto-downloads new episodes, `downloadNotifications.ts` + `push.ts` send web push.
   `downloaders/` are copies of the owner's scripts with a non-interactive mode.
+- **IPTV**: `downloaders/iptv/` (standard library only) builds one catalogue from the iptv-org API and the
+  Free-TV playlist (`freetv.py`), checks streams, and looks up the stream behind a YouTube / Twitch /
+  Dailymotion live page with yt-dlp (`resolver.py`). `services/iptv.ts` keeps it in the `iptv_*` tables
+  (priority countries first, background checks a few at a time); `services/iptvProxy.ts` relays streams
+  through signed addresses (a stream address never reaches the browser). Pages in `pages/iptv/`.
 - **Deploy**: GitHub webhook `routes/deploy.ts` only writes a request file; `scripts/auto-deploy.sh`
   (systemd path unit) runs `scripts/deploy.sh` outside the app (build, `scripts/migrate-db.sh`, restart).
   Settings › Version compares interface and server commits.

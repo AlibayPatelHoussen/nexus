@@ -6,7 +6,8 @@ Rules (what is shown is what the data says, nothing is made up):
 - country, categories and languages only come from the database (channels.json, feeds.json);
   a stream without channel (iptv-org lists some) is kept with its title only;
 - left out: channels of the blocklist (withdrawn on the rights holder's request — DMCA — or
-  adult content), channels marked is_nsfw or in the « xxx » category, closed channels;
+  adult content), channels marked is_nsfw or in the « xxx » category, closed channels, and
+  DASH streams (.mpd: the player reads HLS, they would be listed and never start);
 - logo: the channel's logo in use (feed-specific last), PNG/JPEG/WebP first;
 - when the API cannot be had at all but the M3U playlist can, the catalogue is built from the
   playlist alone (names, logos, categories of group-title; no country, no language).
@@ -40,6 +41,11 @@ def _unlisted_id(url: str) -> str:
 
 def _is_web_url(url: str) -> bool:
     return url.startswith('http://') or url.startswith('https://')
+
+
+def _is_dash(url: str) -> bool:
+    """A DASH manifest (.mpd): the player reads HLS, such a stream would never start."""
+    return url.split('?', 1)[0].split('#', 1)[0].lower().endswith('.mpd')
 
 
 def excluded_ids(channels: List[dict], blocklist: List[dict]) -> set:
@@ -91,7 +97,7 @@ def build_from_api(api: Dict[str, list], playlist: Optional[List[PlaylistEntry]]
     seen_urls = set()
     for s in api.get('streams') or []:
         url = (s.get('url') or '').strip()
-        if not url or not _is_web_url(url) or url in seen_urls:
+        if not url or not _is_web_url(url) or url in seen_urls or _is_dash(url):
             continue
         cid = s.get('channel')
         if cid and (cid in skip or cid not in channels):
@@ -143,7 +149,7 @@ def build_from_playlist(entries: List[PlaylistEntry]) -> List[Channel]:
     out: Dict[str, Channel] = {}
     seen = set()
     for e in entries:
-        if not _is_web_url(e.url) or e.url in seen:
+        if not _is_web_url(e.url) or e.url in seen or _is_dash(e.url):
             continue
         seen.add(e.url)
         groups = group_titles(e)

@@ -478,7 +478,7 @@ test('UI: "Ma liste" toggles a favourite', async () => {
   await page.context().close()
 })
 
-test('IPTV: catalogue from iptv-org, filters, favourites, player plays the demo stream', async () => {
+test('IPTV: catalogue from iptv-org and Free-TV, priority countries, filters, favourites, player', async () => {
   admin = await login('admin', 'Admin1234')
   const r = await api('/api/iptv/refresh', { token: admin.accessToken, method: 'POST' })
   assert([200, 202].includes(r.status), `refresh → ${r.status}`)
@@ -488,15 +488,34 @@ test('IPTV: catalogue from iptv-org, filters, favourites, player plays the demo 
     if (!summary?.refresh?.running && summary?.total > 0) break
     await sleep(500)
   }
-  eq(summary.total, 7, 'channels imported (the nsfw one left out)')
+  eq(summary.total, 9, 'channels imported: 7 from iptv-org (the nsfw one left out) + 2 only Free-TV lists')
+  eq(summary.refresh.sources, ['iptv-org', 'free-tv'], 'both sources used')
+  // The owner's countries first, in their order; Madagascar has no channel in any source and says so
+  eq(summary.priority.map((p) => [p.code, p.count]), [['CA', 1], ['FR', 5], ['MG', 0], ['US', 1]], 'priority countries')
+  eq(summary.priority[0].items.map((c) => c.name), ['Érable TV'], 'the Canadian channel comes from Free-TV')
   await api('/api/iptv/favorites/Kids.fr', { token: admin.accessToken, method: 'DELETE' })   // the test can be run again
   const fr = (await api('/api/iptv/channels?country=FR', { token: admin.accessToken })).json.data
-  eq(fr.items.map((c) => c.name).sort(), ['Géo Bloquée', 'Nexus Démo', 'Petits Loups', 'Sport Direct'], 'country filter')
+  eq(fr.items.map((c) => c.name).sort(), ['Géo Bloquée', 'Info Direct', 'Nexus Démo', 'Petits Loups', 'Sport Direct'], 'country filter')
   assert(!JSON.stringify(fr).includes('/iptv-hls/'), 'stream addresses never reach the client')
+  const demo = fr.items.find((c) => c.id === 'Demo.fr')
+  eq(demo.streams.map((st) => st.source), ['free-tv', 'iptv-org'], 'a channel both sources have: Free-TV stream first')
+  const info = fr.items.find((c) => c.name === 'Info Direct')
+  eq(info.streams.map((st) => [st.kind, st.page]), [['page', 'https://www.youtube.com/@nexus-info-direct/live']], 'a YouTube live is a page stream')
+  // Default order: the priority countries before the others (a channel found offline goes last)
+  const all = (await api('/api/iptv/channels?status=all', { token: admin.accessToken })).json.data.items.filter((c) => c.status !== 'offline')
+  const prio = all.map((c) => ['CA', 'FR', 'US'].includes(c.country))
+  eq(prio, [...prio].sort((a, b) => b - a), `priority countries first: ${all.map((c) => c.id).join(' ')}`)
+  const az = (await api('/api/iptv/channels?status=all&sort=name', { token: admin.accessToken })).json.data.items.map((c) => c.name)
+  eq(az, [...az].sort((a, b) => a.localeCompare(b, 'fr')), 'sort=name is alphabetical (« Érable » with the E)')
 
   const page = await newPage(admin)
   await page.goto(`${B}/iptv`, { waitUntil: 'networkidle' })
   await page.waitForSelector('text=Nexus Démo', { timeout: 15000 })
+  // The home page: one shelf per priority country, in order, Madagascar said plainly
+  const shelves = await page.$$eval('h2[id^="iptv-pays-"]', (els) => els.map((el) => el.id.slice('iptv-pays-'.length)))
+  eq(shelves, ['CA', 'FR', 'MG', 'US'], 'priority country shelves')
+  assert(await page.locator('section[aria-labelledby="iptv-pays-CA"]').getByText('Érable TV').count(), 'Canada shelf shows its channel')
+  assert(await page.locator('section[aria-labelledby="iptv-pays-MG"]').getByText(/Aucune chaîne en accès libre/).count(), 'Madagascar: no channel, said so')
   await page.goto(`${B}/iptv/chaines`, { waitUntil: 'networkidle' })
   await page.fill('input[placeholder="Rechercher une chaîne"]', 'loups')
   await page.waitForFunction(() => !document.body.innerText.includes('Sport Direct') && document.body.innerText.includes('Petits Loups'), null, { timeout: 10000 })
@@ -514,6 +533,11 @@ test('IPTV: catalogue from iptv-org, filters, favourites, player plays the demo 
   const hist = (await api('/api/iptv/history', { token: admin.accessToken })).json.data
   assert(hist.some((c) => c.id === 'Kids.fr'), 'recently watched')
   await page.screenshot({ path: `${SHOTS}/iptv-player.png` })
+
+  // A channel given by its YouTube page: the server finds the live (yt-dlp, a stand-in here) and relays it
+  await page.goto(`${B}/iptv/watch/${info.id}`, { waitUntil: 'domcontentloaded' })
+  await playVideo(page)
+  await page.waitForFunction(() => (document.querySelector('video')?.currentTime ?? 0) > 1, null, { timeout: 30000 })
 
   // A geo-blocked stream: a clear message, never a blank player
   await page.goto(`${B}/iptv/watch/Geo.fr`, { waitUntil: 'networkidle' })

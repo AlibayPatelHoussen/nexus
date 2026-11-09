@@ -24,6 +24,9 @@ class Stream:
     referrer: Optional[str] = None
     user_agent: Optional[str] = None
     labels: list = field(default_factory=list)       # « Geo-blocked », « Not 24/7 » (iptv-org)
+    kind: str = 'hls'                                # 'page': a web page (YouTube, Twitch, Dailymotion)
+    #                                                  whose live stream is looked up when it is played
+    source: str = 'iptv-org'                         # or 'free-tv'
 
 
 @dataclass
@@ -38,6 +41,15 @@ class Channel:
     network: Optional[str] = None
     alt_names: list = field(default_factory=list)
     streams: list = field(default_factory=list)      # list[Stream], best first
+    curated: Optional[int] = None                    # place in the Free-TV playlist (hand-picked channels)
 
     def to_json(self) -> dict:
-        return asdict(self)
+        data = asdict(self)
+        # The usual values are left out: an iptv-org stream reads the same as before Free-TV
+        # was added (the server checks again only the channels whose streams really changed)
+        for stream in data['streams']:
+            if stream['kind'] == 'hls':
+                del stream['kind']
+            if stream['source'] == 'iptv-org':
+                del stream['source']
+        return data

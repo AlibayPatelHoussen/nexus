@@ -272,8 +272,11 @@ CREATE TABLE IF NOT EXISTS follows (
 );
 
 -- ─── IPTV ─────────────────────────────────────────────
--- IPTV (iptv-org catalogue): channels, per-user favourites / history, guide, settings.
--- channel ids are iptv-org ids (« TF1.fr ») or « stream-<hash> » for streams without channel.
+-- IPTV (iptv-org catalogue + the Free-TV playlist): channels, per-user favourites / history,
+-- guide, settings. Channel ids are iptv-org ids (« TF1.fr »), « stream-<hash> » for iptv-org
+-- streams without channel, « freetv-<hash> » for Free-TV channels iptv-org does not know.
+-- curated = place in the Free-TV playlist (NULL: not in it); best_stream = index of the first
+-- stream the last check found working.
 CREATE TABLE IF NOT EXISTS iptv_channels (
   id          TEXT PRIMARY KEY,
   name        TEXT NOT NULL,
@@ -289,9 +292,12 @@ CREATE TABLE IF NOT EXISTS iptv_channels (
   status      TEXT NOT NULL DEFAULT 'unknown' CHECK (status IN ('unknown', 'online', 'offline')),
   status_reason TEXT,
   checked_at  TIMESTAMPTZ,
-  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  curated     INTEGER,
+  best_stream SMALLINT
 );
 CREATE INDEX IF NOT EXISTS idx_iptv_channels_country    ON iptv_channels(country);
+CREATE INDEX IF NOT EXISTS idx_iptv_channels_curated    ON iptv_channels(curated) WHERE curated IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_iptv_channels_categories ON iptv_channels USING GIN (categories);
 CREATE INDEX IF NOT EXISTS idx_iptv_channels_languages  ON iptv_channels USING GIN (languages);
 CREATE INDEX IF NOT EXISTS idx_iptv_channels_name       ON iptv_channels (lower(name));
