@@ -376,7 +376,10 @@ class StopWithNexus(unittest.TestCase):
                 self.assertTrue(self.gone(ytdlp, 5))
             finally:
                 if _alive(ytdlp):
-                    os.kill(ytdlp, signal.SIGKILL)
+                    try:
+                        os.kill(ytdlp, signal.SIGKILL)
+                    except ProcessLookupError:      # it ended in between: the assertion above tells why
+                        pass
 
     def test_stops_when_nexus_is_gone(self):
         with tempfile.TemporaryDirectory() as d:
