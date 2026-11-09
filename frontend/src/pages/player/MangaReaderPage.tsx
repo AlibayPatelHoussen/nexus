@@ -1,6 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
-import { AnimatePresence, motion, type Variants } from 'framer-motion'
-import { spring } from '@/design/motion'
+import PageFlip, { type PageFlipHandle } from '@/components/media/PageFlip'
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
 import {
@@ -23,26 +22,6 @@ import { chapterVersions, versionName } from '@/components/media/chapterVersions
 import { loadImagePage, prefetchPages } from '@/services/readerCache'
 
 type ReadMode = 'vertical' | 'page' | 'page-rtl'
-
-/*
- * « Livre » page turn (page modes), transform / opacity only. Going forward, the page
- * being read turns away on its spine and uncovers the next one; going back, the
- * previous page turns back over it. The spine is on the left, on the right when the
- * manga is read right to left.
- */
-interface Turn { dir: number; rtl: boolean }
-const away = ({ rtl }: Turn) => (rtl ? 1 : -1) * 92
-const PAGE_TURN: Variants = {
-  enter: (t: Turn) => (t.dir > 0 ? { rotateY: 0, zIndex: 1 } : { rotateY: away(t), zIndex: 2 }),
-  center: { rotateY: 0, zIndex: 1, opacity: 1 },
-  // the page staying under the one turning back is kept until that one has landed
-  exit: (t: Turn) => (t.dir > 0 ? { rotateY: away(t), zIndex: 2 } : { rotateY: 0, zIndex: 0, opacity: 0.999 }),
-}
-const PAGE_SHADE: Variants = {
-  enter: (t: Turn) => ({ opacity: t.dir > 0 ? 0 : 0.45 }),
-  center: { opacity: 0 },
-  exit: (t: Turn) => ({ opacity: t.dir > 0 ? 0.45 : 0 }),
-}
 
 interface PageData {
   url:  string
@@ -100,7 +79,8 @@ export default function MangaReaderPage() {
   const [showChapters, setShowChapters] = useState(false)
   const isDesktop   = useMediaQuery('(min-width: 1024px)')
   const lastPointer = useRef<string>('mouse')
-  const swipeStart  = useRef<{ x: number; y: number } | null>(null)
+  const flip = useRef<PageFlipHandle>(null)
+  const reducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)')
   const containerRef = useRef<HTMLDivElement>(null)
 
   const { data: media } = useQuery({
@@ -152,8 +132,8 @@ export default function MangaReaderPage() {
       const rtl = mode === 'page-rtl'
       const next = e.key === 'ArrowDown' || e.key === (rtl ? 'ArrowLeft' : 'ArrowRight')
       const prev = e.key === 'ArrowUp' || e.key === (rtl ? 'ArrowRight' : 'ArrowLeft')
-      if (next) setCurrentPage((p) => Math.min(p + 1, pages.length - 1))
-      if (prev) setCurrentPage((p) => Math.max(p - 1, 0))
+      if (next) flip.current?.turn(1)
+      if (prev) flip.current?.turn(-1)
     }
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
@@ -172,23 +152,6 @@ export default function MangaReaderPage() {
     setShowUI((v) => !v)
   }
 
-  // Page mode: swipe left/right to turn pages (direction follows reading mode)
-  function onTouchStart(e: React.TouchEvent) {
-    const t = e.touches[0]
-    swipeStart.current = { x: t.clientX, y: t.clientY }
-  }
-  function onTouchEnd(e: React.TouchEvent) {
-    const start = swipeStart.current
-    swipeStart.current = null
-    if (!start || e.touches.length > 0) return
-    const t  = e.changedTouches[0]
-    const dx = t.clientX - start.x
-    const dy = t.clientY - start.y
-    if (Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy) * 1.5) return
-    const forward = mode === 'page-rtl' ? dx > 0 : dx < 0
-    setCurrentPage((p) => forward ? Math.min(pages.length - 1, p + 1) : Math.max(0, p - 1))
-  }
-
   function changeChapter(chap: Chapter) {
     setShowChapters(false)
     const params: Record<string, string> = { ch: chap.id }
@@ -198,23 +161,9 @@ export default function MangaReaderPage() {
     containerRef.current?.scrollTo(0, 0)
   }
 
-  const pageImg = pages[currentPage]
-  // Direction of the last page turn (book effect): forward or back
-  const lastPage = useRef(currentPage)
-  const turnDir = useRef(1)
-  // Proportions of the pages already shown (the spine is the real edge of the drawn page)
+  // Proportions of the pages already shown (the page turn draws them at their real size)
   const [ratios, setRatios] = useState<Record<string, number>>({})
-  const spine = (n: number) => {
-    const ratio = ratios[`${chapterId}-${n}`] ?? (pdfUrl ? pdf.ratio(n) : undefined) ?? 0.68
-    // the page is drawn centred, as wide as the zoom allows and at most as tall as the screen
-    const half = `min(${(isDesktop ? zoom : 100) / 2}%, ${ratio * 50}dvh)`
-    return mode === 'page-rtl' ? `calc(50% + ${half}) 50%` : `calc(50% - ${half}) 50%`
-  }
-  if (currentPage !== lastPage.current) {
-    turnDir.current = currentPage > lastPage.current ? 1 : -1
-    lastPage.current = currentPage
-  }
-
+  const ratioOf = (i: number) => ratios[`${chapterId}-${i + 1}`] ?? (pdfUrl ? pdf.ratio(i + 1) : undefined) ?? 0.68
   /** Page image: device cache first; PDF pages drawn by PDF.js, image pages downloaded once */
   const loadPage = (n: number, url: string) => () =>
     pdfUrl ? pdf.render(n) : loadImagePage(chapterId ?? '', n, url).then((b) => {
@@ -340,48 +289,42 @@ export default function MangaReaderPage() {
           </div>
         </div>
       ) : (
-        <div className="flex-1 flex items-center justify-center relative" style={{ minHeight: '100dvh', touchAction: 'pan-y pinch-zoom' }} onTouchStart={onTouchStart} onTouchEnd={onTouchEnd}>
-          {/* Book effect: the page turns on its spine (left, or right when read right to left) */}
-          <div className="absolute inset-0" style={{ perspective: 2000 }}>
-            <AnimatePresence key={chapterId} initial={false} custom={{ dir: turnDir.current, rtl: mode === 'page-rtl' }}>
-              {pageImg && (
-                <motion.div
-                  key={currentPage}
-                  custom={{ dir: turnDir.current, rtl: mode === 'page-rtl' }}
-                  variants={PAGE_TURN}
-                  initial="enter"
-                  animate="center"
-                  exit="exit"
-                  transition={spring.sheet}
-                  className="absolute inset-0 flex items-center justify-center"
-                  style={{ transformOrigin: spine(currentPage + 1), backfaceVisibility: 'hidden', willChange: 'transform' }}
-                  onLoadCapture={(e) => {
-                    const img = e.target as HTMLImageElement
-                    const k = `${chapterId}-${currentPage + 1}`
-                    if (img.naturalWidth && img.naturalHeight) setRatios((r) => (r[k] ? r : { ...r, [k]: img.naturalWidth / img.naturalHeight }))
-                  }}
-                >
-                  <ReaderPage
-                    n={currentPage + 1}
-                    load={loadPage(currentPage + 1, pageImg.url)}
-                    ratio={pdfUrl ? pdf.ratio(currentPage + 1) : undefined}
-                    revoke={!pdfUrl}
-                    eager
-                    className="object-contain"
-                    style={{ maxHeight: '100dvh', maxWidth: '100%', width: isDesktop ? `${zoom}%` : '100%' }}
-                  />
-                  {/* The page darkens as it turns away from the light */}
-                  <motion.div variants={PAGE_SHADE} custom={{ dir: turnDir.current, rtl: mode === 'page-rtl' }} transition={spring.sheet}
-                    className="absolute inset-0 pointer-events-none bg-black" aria-hidden="true" />
-                </motion.div>
-              )}
-            </AnimatePresence>
-          </div>
+        <div className="flex-1 relative" style={{ minHeight: '100dvh' }}>
+          {/* Page by page: a paper page that folds under the finger (tap the edges, or drag it) */}
+          <PageFlip
+            key={chapterId}
+            ref={flip}
+            page={currentPage}
+            count={pages.length}
+            rtl={mode === 'page-rtl'}
+            widthFraction={isDesktop ? zoom / 100 : 1}
+            ratioOf={ratioOf}
+            instant={reducedMotion}
+            onChange={setCurrentPage}
+            onCenterTap={() => { if (lastPointer.current !== 'mouse') { if (uiTimer.current) clearTimeout(uiTimer.current); setShowUI((v) => !v) } }}
+            render={(i) => (
+              <div className="w-full h-full" onLoadCapture={(e) => {
+                const img = e.target as HTMLImageElement
+                const k = `${chapterId}-${i + 1}`
+                if (img.naturalWidth && img.naturalHeight) setRatios((r) => (r[k] ? r : { ...r, [k]: img.naturalWidth / img.naturalHeight }))
+              }}>
+                <ReaderPage
+                  n={i + 1}
+                  load={loadPage(i + 1, pages[i].url)}
+                  ratio={pdfUrl ? pdf.ratio(i + 1) : undefined}
+                  revoke={!pdfUrl}
+                  eager
+                  className="object-contain"
+                  style={{ width: '100%', height: '100%' }}
+                />
+              </div>
+            )}
+          />
           {isDesktop && (() => {
             // Right to left (manga): the next page is on the left
             const rtl = mode === 'page-rtl'
-            const prev = () => setCurrentPage((p) => Math.max(0, p - 1))
-            const next = () => setCurrentPage((p) => Math.min(pages.length - 1, p + 1))
+            const prev = () => flip.current?.turn(-1)
+            const next = () => flip.current?.turn(1)
             const side = (which: 'left' | 'right') => {
               const isNext = (which === 'left') === rtl
               return (

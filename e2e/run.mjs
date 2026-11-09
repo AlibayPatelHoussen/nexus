@@ -529,8 +529,10 @@ test('UI: search and genre "Tout voir" show a results grid', async () => {
   await page.waitForSelector('text=/^1 résultat$/', { timeout: 10000 })
   await page.click('button[aria-label="Fermer la recherche"]')
   // Apple TV: the shelf title with its chevron opens the full list
-  await page.waitForSelector('button[title^="Tout voir"]', { timeout: 10000 })
-  await page.click('button[title^="Tout voir"]')
+  // a genre shelf (« Ma liste › » opens its own page)
+  const seeAll = 'button[title^="Tout voir"]:not([title="Tout voir : Ma liste"])'
+  await page.waitForSelector(seeAll, { timeout: 10000 })
+  await page.click(seeAll)
   await page.waitForSelector('text=/\\d+ résultats?/', { timeout: 10000 })
   await page.context().close()
 })
@@ -1034,7 +1036,9 @@ for (const t of tests) {
     await Promise.race([t.fn(), new Promise((_, rej) => { timer = setTimeout(() => rej(new Error(`timeout after ${limit / 1000}s`)), limit) })])
     results.push({ name: t.name, ok: true, ms: Date.now() - start })
   } catch (e) {
-    results.push({ name: t.name, ok: false, ms: Date.now() - start, err: e.message.split('\n')[0] })
+    // the line of this file where it failed (several steps of a test can wait for the same thing)
+    const at = (e.stack || '').split('\n').find((l) => l.includes('run.mjs:'))?.match(/run\.mjs:(\d+)/)?.[1]
+    results.push({ name: t.name, ok: false, ms: Date.now() - start, err: e.message.split('\n')[0] + (at ? ` (run.mjs:${at})` : '') })
   } finally { clearTimeout(timer) }
   const r = results[results.length - 1]
   console.log(`${r.ok ? '✅' : '❌'} ${r.name} (${r.ms} ms)${r.ok ? '' : `\n     → ${r.err}`}`)

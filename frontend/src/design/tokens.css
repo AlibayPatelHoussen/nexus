@@ -10,6 +10,10 @@
 
 :root {
   /* ── Colour: backgrounds ───────────────────────────── */
+  /* Manga reader page turn (the reader is always dark): back of a turning page, shadows */
+  --page-paper:        #ece8df;
+  --page-crease:       rgba(0, 0, 0, 0.28);
+  --page-shadow:       rgba(0, 0, 0, 0.45);
   --bg:          #f5f5f7;               /* window (desktop) */
   --bg-grouped:  #f2f2f7;               /* grouped lists (phone) */
   --surface:     #ffffff;               /* groups, cells, sheets */
