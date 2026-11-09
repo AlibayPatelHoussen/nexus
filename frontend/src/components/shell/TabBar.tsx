@@ -61,6 +61,8 @@ export default function TabBar() {
   // Scrolling down a page tucks the bar away into a small capsule with the current tab
   // (iOS 26 tab bar minimise); scrolling back up, reaching the top or tapping it brings it back
   const [compact, setCompact] = useState(false)
+  /** The scroll position put back when switching tab is not the user scrolling */
+  const quietUntil = useRef(0)
   useEffect(() => {
     let lastY = window.scrollY
     let run = 0
@@ -68,6 +70,7 @@ export default function TabBar() {
       const y = window.scrollY
       const d = y - lastY
       lastY = y
+      if (performance.now() < quietUntil.current) { run = 0; return }
       if (y < 48) { run = 0; setCompact(false); return }
       // Rubber band at the bottom of the page: not a scroll back up
       if (d < 0 && y >= document.documentElement.scrollHeight - window.innerHeight - 4) return
@@ -78,7 +81,7 @@ export default function TabBar() {
     window.addEventListener('scroll', onScroll, { passive: true })
     return () => window.removeEventListener('scroll', onScroll)
   }, [])
-  useEffect(() => { setCompact(false) }, [pathname])
+  useEffect(() => { quietUntil.current = performance.now() + 400; setCompact(false) }, [pathname])
 
   const bar = useRef<HTMLUListElement>(null)
   const rect = useRef<DOMRect | null>(null)

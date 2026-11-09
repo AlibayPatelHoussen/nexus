@@ -5,6 +5,7 @@ import { useDevice } from '@/hooks/useDevice'
 import { cn } from '@/utils'
 import Sidebar from './Sidebar'
 import TabBar from './TabBar'
+import TabKeepAlive from './TabKeepAlive'
 import CommandPalette from './CommandPalette'
 import VersionBanner from './VersionBanner'
 import DownloadToasts from './DownloadToasts'
@@ -74,7 +75,7 @@ export default function AppShell() {
         {/* Content clears the floating tab bar (bar + its gap + 16) */}
         <div ref={phoneRef} className="min-h-[100dvh] bg-bg overflow-x-clip" style={{ paddingBottom: 'calc(var(--tabbar-h) + var(--tabbar-bottom) + 16px)' }}>
           <VersionBanner />
-          <Outlet />
+          <TabKeepAlive />
         </div>
         <TabBar />
         {palette}

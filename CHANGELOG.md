@@ -4,6 +4,11 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Changed — iPhone: switching tab is instant (tabs stay alive, like iOS)
+- Each tab keeps its screen mounted while another one is shown: coming back to a tab shows it at once, exactly as it was left (no rebuild, no image reloaded, scroll position kept). Measured on a 4× slowed CPU: a return to a tab went from 70–230 ms of frozen screen to none
+- A hidden tab keeps the address it was shown at and pauses its live work (the server stats of « Aperçu »)
+- Coming back to a tab further down its page shows the full tab bar (the restored position no longer tucks it away)
+
 ### Fixed — tab bar lens stuck on a tab, quicker shrink
 - A touch whose end never reached the bar (iOS took the gesture, the app went to the background, the page changed) left the lens stuck over a tab: it is now ended as cancelled
 - The lens shrinks back into its pill faster (0.26 s instead of 0.4 s)
