@@ -7,7 +7,7 @@ import { app } from '../../src/index'
 import { query } from '../../src/config/database'
 import { signedImage } from '../../src/services/images'
 import {
-  requeueInterrupted, setDownloadsNamespace, startDownloadWorker, stopDownloadWorker,
+  requeueInterrupted, setDownloadsNamespace, startDownloadWorker, stopDownloadWorker, _test,
 } from '../../src/services/downloads'
 import { checkDueFollows } from '../../src/services/follows'
 import { MediaScanner } from '../../src/services/scanner'
@@ -556,7 +556,12 @@ describe('A job of several episodes / chapters', () => {
       await waitFor(async () => {
         const { rows } = await query<{ progress: { items_done?: number } }>('SELECT progress FROM downloads WHERE id = $1', [id2])
         return rows[0]?.progress?.items_done === 1
-      }, 25_000)
+      }, 25_000).catch(async (err) => {
+        // What the queue was doing (seen only when it fails, e.g. on CI)
+        const { rows } = await query(`SELECT id, source_id, status, progress, error, created_at FROM downloads ORDER BY created_at`)
+        console.log('queue', JSON.stringify({ id2, running: [..._test.running.keys()], rows }, null, 1))
+        throw err
+      })
       await new Promise((r) => setTimeout(r, 1200))       // the rescan of chapter 1 has run
       process.env.DOWNLOADS_RESCAN_DELAY_MS = '60000'    // only the rescan made on cancel can count now
       const before = scans.length
