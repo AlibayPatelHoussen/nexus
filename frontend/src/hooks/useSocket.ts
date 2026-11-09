@@ -11,14 +11,14 @@ const socketAuth = (cb: (data: object) => void) => {
     .catch(() => cb({ token: '' }))
 }
 
-export function useSystemStats() {
+export function useSystemStats(enabled = true) {
   const [stats, setStats]     = useState<SystemStats | null>(null)
   const [connected, setConnected] = useState(false)
   const socketRef = useRef<Socket | null>(null)
   const userId    = useAuthStore((s) => s.user?.id)
 
   useEffect(() => {
-    if (!userId) return
+    if (!userId || !enabled) return
 
     const socket = io('/stats', {
       auth: socketAuth,
@@ -41,7 +41,7 @@ export function useSystemStats() {
       if (retry) clearTimeout(retry)
       socket.disconnect()
     }
-  }, [userId])
+  }, [userId, enabled])
 
   return { stats, connected }
 }

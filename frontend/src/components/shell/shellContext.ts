@@ -14,3 +14,10 @@ export const ShellContext = createContext<ShellState>({
 })
 
 export const useShell = () => useContext(ShellContext)
+
+/**
+ * iPhone: each tab stays mounted while another one is shown (like iOS keeps each tab's
+ * screen alive). False while the page sits in a hidden tab: live work (sockets) can pause.
+ */
+export const PageActiveContext = createContext(true)
+export const usePageActive = () => useContext(PageActiveContext)

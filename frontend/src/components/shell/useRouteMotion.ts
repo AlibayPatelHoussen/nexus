@@ -79,7 +79,9 @@ export function useRouteMotion(frame: () => HTMLElement | null, device: Device, 
 
     // The page is the frame's last child (after the version banner); no extra
     // wrapper, so full-height pages and sticky bars keep working
-    const node = frame()?.lastElementChild as HTMLElement | null | undefined
+    // iPhone: the shown tab's page (the other tabs stay mounted, hidden; see TabKeepAlive)
+    const f = frame()
+    const node = (f?.querySelector('[data-page="current"]')?.firstElementChild ?? f?.lastElementChild) as HTMLElement | null | undefined
     if (!node || typeof node.animate !== 'function') return
     if (window.matchMedia?.('(prefers-reduced-motion: reduce)').matches) return
     // Switching tabs from the tab bar: no slide (iOS does not either)

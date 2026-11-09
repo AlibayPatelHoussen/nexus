@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { Activity, Folder, Wifi, WifiOff } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 import { useSystemStats } from '@/hooks/useSocket'
+import { usePageActive } from '@/components/shell/shellContext'
 import { useStatsHistory, type StatsHistory } from '@/hooks/useStatsHistory'
 import { servicesService } from '@/services/systemService'
 import { formatBytes, formatPercent, formatRate, formatUptime } from '@/utils'
@@ -20,7 +21,8 @@ const last = (a: number[]) => (a.length ? a[a.length - 1] : 0)
 export default function DashboardPage() {
   const { device } = useShell()
   const phone = device === 'phone'
-  const { stats, connected } = useSystemStats()
+  // Live stats only while the page is on screen (its tab stays mounted when hidden)
+  const { stats, connected } = useSystemStats(usePageActive())
   const history = useStatsHistory(stats)
   const { data: services, isError: servicesError } = useQuery({
     queryKey: ['services'],
