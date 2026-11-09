@@ -12,7 +12,7 @@ import { iptvService, type IptvChannel, type PictureAnswer, type PictureReason }
 import { cn } from '@/utils'
 import { ChannelLogo, readQueue, rememberQueue, useToggleFavorite } from './ChannelTile'
 import { categoryName, countryName, flag } from './labels'
-import { SOUND_ONLY, rememberConverted, variantsToDrop, wasConverted } from './picture'
+import { SOUND_ONLY, framesReported, rememberConverted, rememberFramesReported, variantsToDrop, wasConverted } from './picture'
 
 /** Safari plays HLS itself (AirPlay, Picture in Picture); elsewhere hls.js */
 const NATIVE_HLS = typeof document !== 'undefined' && 'WebKitPlaybackTargetAvailabilityEvent' in window
@@ -24,6 +24,8 @@ const CODEC_ERRORS = new Set(['bufferAddCodecError', 'bufferIncompatibleCodecsEr
 const NO_CODEC = 'Ce navigateur ne lit pas le format vidéo de cette chaîne, et le serveur n’a pas pu le convertir.'
 /** Video formats Safari plays by itself */
 const SAFARI_READS = new Set(['h264', 'hevc'])
+/** A video element that tells when it shows a frame (Safari 15.4+, Chromium) */
+type FrameVideo = HTMLVideoElement & { requestVideoFrameCallback?: (cb: () => void) => number; cancelVideoFrameCallback?: (handle: number) => void }
 
 /** The site of a « page » stream (the live of a YouTube / Twitch / Dailymotion page) */
 function siteName(page: string | null | undefined): string | null {
@@ -85,6 +87,10 @@ export default function IptvPlayerPage() {
   const silentStreams = useRef<{ run: string; list: number[]; codec: boolean; again: number[] }>({ run, list: [], codec: false, again: [] })
   /** Bumped to load the current stream again as it is */
   const [reload, setReload] = useState(0)
+  /** What the player is doing, for the playback details (three taps on « EN DIRECT ») */
+  const trace = useRef({ engine: '', mode: 'direct', shown: null as boolean | null, loads: 0, note: '', next: '' })
+  const [details, setDetails] = useState<string[] | null>(null)
+  const taps = useRef<number[]>([])
   const [phase, setPhase] = useState<Phase>('loading')
   const [error, setError] = useState<string | null>(null)
   const [muted, setMuted] = useState(false)
@@ -222,17 +228,30 @@ export default function IptvPlayerPage() {
     let restarts = 0
     // Playback that runs for a few seconds without any picture is a stream with sound only
     const native = NATIVE_HLS && !!v.canPlayType('application/vnd.apple.mpegurl')
+    // Safari can size a picture and show none of it: where the browser is known to tell which
+    // frames it shows, a picture counts once a frame of this load was shown
+    const frames = v as FrameVideo
+    const tells = !!frames.requestVideoFrameCallback
+    const trusted = native && tells && framesReported()
+    let shown = false
+    const frameHandle = tells ? frames.requestVideoFrameCallback!(() => { shown = true; trace.current.shown = true; if (native) rememberFramesReported() }) : 0
+    trace.current = { engine: native ? 'Safari' : 'hls.js', mode, shown: tells ? false : null, loads: trace.current.loads + 1, note: trace.current.next, next: '' }
     let from: number | null = null
     const watch = setInterval(() => {
       if (mode === 'sound' || v.paused || v.readyState < 2) return
-      if (v.videoWidth > 0) { clearInterval(watch); return }
+      const sized = v.videoWidth > 0
+      if (sized && (shown || !trusted)) { clearInterval(watch); return }
       if (from == null) { from = v.currentTime; return }
       const levels = hlsRef.current?.levels
       // hls.js already saw that no variant has a picture: no need to wait as long
       const known = !!levels?.length && levels.every((l) => silent.has(l.uri))
       if (v.currentTime - from < (known ? 1.5 : native ? 3 : 4)) return
       clearInterval(watch)
-      if (native && mode === 'direct' && !memo.again.includes(idx)) void loadAgain()
+      if (sized) {
+        // Safari knows the picture but shows none of it: the stream loaded again, once
+        trace.current.note = 'image connue mais non affichée'
+        if (!memo.again.includes(idx)) { memo.again.push(idx); trace.current.next = 'rechargé : image connue mais non affichée'; setReload((r) => r + 1) }
+      } else if (native && mode === 'direct' && !memo.again.includes(idx)) void loadAgain()
       else noPicture(true)
     }, 500)
     /** Safari, sound without a picture: when the stream holds a picture Safari reads, loading it
@@ -242,7 +261,7 @@ export default function IptvPlayerPage() {
       let res: PictureAnswer | null = null
       try { res = await iptvService.convert(channel.id, idx, true) } catch { /* not known: tried anyway */ }
       if (cancelled) return
-      if (res?.video ? SAFARI_READS.has(res.video) : res?.reason !== 'audio') setReload((r) => r + 1)
+      if (res?.video ? SAFARI_READS.has(res.video) : res?.reason !== 'audio') { trace.current.next = 'rechargé : son sans image'; setReload((r) => r + 1) }
       else noPicture(true)
     }
 
@@ -298,6 +317,7 @@ export default function IptvPlayerPage() {
     return () => {
       cancelled = true
       clearInterval(watch)
+      if (frameHandle) frames.cancelVideoFrameCallback?.(frameHandle)
       v.onerror = null
       v.onended = null
       stopHls()
@@ -341,6 +361,26 @@ export default function IptvPlayerPage() {
       v.removeEventListener('timeupdate', onTime)
     }
   }, [id, qc, reveal])
+
+  // Playback details, refreshed while they are shown
+  const shownDetails = details !== null
+  useEffect(() => {
+    if (!shownDetails) return
+    const read = () => {
+      const v = videoRef.current
+      const t = trace.current
+      if (!v) return
+      const hls = hlsRef.current
+      setDetails([
+        `Lecteur : ${t.engine || '…'} · ${t.mode === 'converted' ? 'image convertie par le serveur' : t.mode === 'sound' ? 'son seul' : 'flux direct'} · chargement n° ${t.loads}`,
+        `Image : ${v.videoWidth}×${v.videoHeight} · affichée : ${t.shown == null ? 'inconnu' : t.shown ? 'oui' : 'non'} · état ${v.readyState} · ${v.paused ? 'en pause' : 'en lecture'} · ${v.currentTime.toFixed(0)} s`,
+        `Flux ${index + 1}/${channel?.streams.length ?? 0}${hls ? ` · ${hls.levels.length} variante(s), niveau ${hls.currentLevel}` : ''}${t.note ? ` · ${t.note}` : ''}`,
+      ])
+    }
+    read()
+    const timer = setInterval(read, 1000)
+    return () => clearInterval(timer)
+  }, [shownDetails, index, channel?.streams.length])
 
   useEffect(() => {
     const onFs = () => setFullscreen(!!document.fullscreenElement)
@@ -498,7 +538,13 @@ export default function IptvPlayerPage() {
             </div>
           </div>
         )}
-        <span className="flex items-center gap-1.5 h-7 px-2.5 rounded-pill bg-danger text-[11px] font-bold tracking-wide flex-shrink-0">
+        {/* Three quick taps: the playback details (what the browser really plays), to report a problem */}
+        <span className="flex items-center gap-1.5 h-7 px-2.5 rounded-pill bg-danger text-[11px] font-bold tracking-wide flex-shrink-0"
+          onClick={() => {
+            const now = Date.now()
+            taps.current = [...taps.current.filter((t) => now - t < 1200), now]
+            if (taps.current.length >= 3) { taps.current = []; setDetails((d) => (d ? null : [])) }
+          }}>
           <span className="w-1.5 h-1.5 rounded-full bg-white" aria-hidden="true" /> EN DIRECT
         </span>
         {channel && (
@@ -508,6 +554,13 @@ export default function IptvPlayerPage() {
           </button>
         )}
       </div>
+
+      {details && (
+        <div className="absolute left-3 sm:left-5 right-3 text-[11px] leading-[1.45] text-white/90 tabular pointer-events-none" role="status"
+          style={{ top: 'calc(max(12px, env(safe-area-inset-top, 0px)) + 56px)', textShadow: '0 1px 3px rgba(0,0,0,.9)' }}>
+          {details.map((line) => <p key={line}>{line}</p>)}
+        </div>
+      )}
 
       {/* Bottom: guide (when one is configured), transport */}
       <div className="absolute inset-x-0 bottom-0 px-3 sm:px-0 flex flex-col items-center gap-3" style={{ paddingBottom: 'max(12px, env(safe-area-inset-bottom, 0px))', ...fade(show) }}>

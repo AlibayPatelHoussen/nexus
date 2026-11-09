@@ -4,6 +4,11 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Fixed — IPTV on iPhone: a picture Safari knows but does not show
+- Owner's report: a channel starts with its sound only; after leaving the app and pressing play again, the picture is there — without the stream being loaded again. Safari can know the size of a picture and show none of it: the player now asks the browser which frames it really shows (requestVideoFrameCallback) and, when none is shown after 3 s of sound, loads the stream again by itself, once. Only on a browser where that report was seen to work, so a healthy stream is never reloaded for nothing
+- Playback details, hidden: three quick taps on « EN DIRECT » show what the browser really plays (Safari or hls.js, direct or converted, picture size, frames shown or not, number of loads, why it was loaded again) — to report a problem from a phone
+- Tests: frontend, E2E with Chromium standing in for Safari (picture sized but no frame shown → loaded again; the details)
+
 ### Fixed — IPTV on iPhone: the picture only came after the channel was started again
 - Sound-only variants are now left out by the server itself, before the playlist reaches the player (declared sound only, or without anything announced under the bitrate of every variant with a picture): Safari on iPhone reads streams by itself and could start on one, playing the sound over a black screen until the stream was loaded again
 - Safari: when the sound runs for 3 s without a picture and the stream does hold one Safari reads (H.264, HEVC), the player loads it again by itself, once — what leaving and reopening the app did by hand. A radio is not reloaded; a format Safari does not read goes to the server's conversion as elsewhere

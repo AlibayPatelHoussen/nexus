@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest'
-import { rememberConverted, variantsToDrop, wasConverted } from './picture'
+import { framesReported, rememberConverted, rememberFramesReported, variantsToDrop, wasConverted } from './picture'
 
 describe('variantsToDrop (sound-only variants of a stream)', () => {
   const none = new Set<string>()
@@ -39,6 +39,12 @@ describe('streams this browser needed the conversion for', () => {
     expect(wasConverted('TF1.fr', 1)).toBe(false)
     rememberConverted('TF1.fr', 0, false)
     expect(wasConverted('TF1.fr', 0)).toBe(false)
+  })
+
+  it('remembers that this browser tells which frames it shows', () => {
+    expect(framesReported()).toBe(false)
+    rememberFramesReported()
+    expect(framesReported()).toBe(true)
   })
 
   it('forgets after a week, survives unreadable storage', () => {
