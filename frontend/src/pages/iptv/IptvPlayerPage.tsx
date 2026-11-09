@@ -14,7 +14,7 @@ import { cn } from '@/utils'
 import { ChannelLogo, readQueue, rememberQueue, useToggleFavorite } from './ChannelTile'
 import { categoryName, countryName, flag } from './labels'
 import {
-  SOUND_ONLY, describeStream, framesReported, needsConversion, rememberConverted, rememberFramesReported, variantsToDrop, wasConverted,
+  CANNOT_CONVERT, SOUND_ONLY, describeStream, framesReported, needsConversion, rememberConverted, rememberFramesReported, variantsToDrop, wasConverted,
   type Reader,
 } from './picture'
 
@@ -201,7 +201,7 @@ export default function IptvPlayerPage() {
       rememberConverted(channel.id, i, res.convert)
       const n = tries + 1
       const why = res.reason ?? 'failed'
-      if (manual.current) { manual.current = false; if (!res.convert) toast.error(SOUND_ONLY[why]) }
+      if (manual.current) { manual.current = false; if (!res.convert) toast.error(CANNOT_CONVERT[why]) }
       if (res.convert) setRescue({ run, index: i, mode: 'converted', why: null, n })
       else if (how === 'asked') { memo.asked.push(i); setReload((r) => r + 1) }
       else if (how === 'unfit') trace.current.note = `conversion impossible (${why})`
@@ -682,7 +682,9 @@ export default function IptvPlayerPage() {
             </button>
             <input type="range" min={0} max={1} step={0.02} value={muted ? 0 : volume} className="hidden sm:block w-24" style={{ accentColor: 'white' }}
               onChange={(e) => { const v = videoRef.current; if (v) { v.volume = Number(e.target.value); v.muted = v.volume === 0 } }} aria-label="Volume" />
-            <button type="button" className={cn(btn, converted && 'bg-white/20')} onClick={toggleConversion} aria-pressed={converted} disabled={!channel || !!rescuing}
+            {/* Not offered once the channel is given up: the server's conversion was already tried then */}
+            <button type="button" className={cn(btn, converted && 'bg-white/20', 'disabled:opacity-40')} onClick={toggleConversion} aria-pressed={converted}
+              disabled={!channel || !!rescuing || phase === 'error'}
               aria-label={converted ? 'Revenir au flux direct' : 'Image ou son absent : faire convertir la chaîne par le serveur'}
               title={converted ? 'Revenir au flux direct' : 'Image ou son absent ? Convertir par le serveur'}>
               <ServerCog size={19} />

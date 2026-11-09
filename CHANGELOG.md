@@ -4,6 +4,9 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Fixed — IPTV: the conversion button on a channel that cannot be read
+- Owner's screenshots: on a channel whose source refuses access, the button answered « Ce navigateur n’affiche pas son image… », which was not the trouble. It now says why the server does not convert (source not answering or refusing access, radio, ffmpeg missing, server busy), and is not offered once a channel is given up — the conversion was already tried by then
+
 ### Fixed — IPTV: broadcast streams passed on as they are (Gulli, M6…: sound without a picture on iPhone, « Lecture impossible » on a computer)
 - Owner's report with the channel: a source that only starts its stream when asked, and passes broadcast video on as it is. The server now tells the player what each stream holds while it starts (ffprobe through the relay: codecs, interlaced or not), and the player asks for the conversion without waiting for the trouble: interlaced video Safari shows no frame of, Dolby sound (AC-3 / E-AC-3) outside Safari, MPEG-2, 10-bit H.264
 - The conversion always re-encodes: progressive H.264 with a keyframe at the start of each segment and AAC sound (a mere repackaging keeps what the browser could not show)

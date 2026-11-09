@@ -103,6 +103,15 @@ export function rememberFramesReported() {
   try { if (localStorage.getItem(FRAMES) !== '1') localStorage.setItem(FRAMES, '1') } catch { /* private mode */ }
 }
 
+/** Why the server does not convert a channel the viewer asked it to (the button) */
+export const CANNOT_CONVERT: Record<PictureReason, string> = {
+  audio: 'Cette chaîne ne diffuse que du son : il n’y a pas d’image à convertir.',
+  ffmpeg: 'Conversion impossible : ffmpeg n’est pas installé sur le serveur.',
+  busy: 'Le serveur convertit déjà d’autres chaînes. Réessayez dans un moment.',
+  unreadable: 'Le serveur n’arrive pas à lire cette chaîne non plus : sa source ne répond pas ou refuse l’accès.',
+  failed: 'La conversion par le serveur a échoué.',
+}
+
 /** Why a channel is left with its sound only, for the viewer */
 export const SOUND_ONLY: Record<PictureReason, string> = {
   audio: 'Cette chaîne ne diffuse pas d’image, seulement du son.',
