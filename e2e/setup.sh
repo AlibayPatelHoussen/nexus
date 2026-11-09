@@ -141,7 +141,12 @@ PY
 
 # ── 4. Fake metadata APIs ───────────────────────────
 echo "▶ mock metadata"
-MOCK_PORT=$MOCK_PORT node "$ROOT/e2e/mock-metadata.mjs" > "$E2E/mock.log" 2>&1 < /dev/null &
+# A demo HLS stream for the IPTV player (self-generated, so free to play)
+mkdir -p "$E2E/iptv-hls"
+ffmpeg -loglevel error -y -f lavfi -i "testsrc=size=320x180:rate=24" -f lavfi -i "sine=frequency=500" -t 60 \
+  -c:v libx264 -pix_fmt yuv420p -g 48 -c:a aac -shortest -f hls -hls_time 2 -hls_list_size 0 -hls_playlist_type vod \
+  "$E2E/iptv-hls/index.m3u8"
+MOCK_PORT=$MOCK_PORT E2E_DIR=$E2E node "$ROOT/e2e/mock-metadata.mjs" > "$E2E/mock.log" 2>&1 < /dev/null &
 echo $! > "$E2E/mock.pid"
 
 # ── 5. Backend in production mode (serves frontend/dist) ──
@@ -182,6 +187,10 @@ MANGADEX_API_URL=http://localhost:$MOCK_PORT/mangadex
 RATE_LIMIT_MAX=100000
 AUTH_RATE_LIMIT_MAX=1000
 LOG_FILE=$E2E/nexus.log
+IPTV_API_BASE=http://localhost:$MOCK_PORT/iptv-api
+IPTV_PLAYLIST_URL=http://localhost:$MOCK_PORT/iptv/index.m3u
+IPTV_DATA_DIR=$E2E/iptv-data
+IPTV_ALLOW_PRIVATE=1
 EOF
 ( cd "$ROOT/backend"; set -a; . "$E2E/env"; set +a; exec node dist/index.js ) > "$E2E/backend.log" 2>&1 < /dev/null &
 echo $! > "$E2E/backend.pid"

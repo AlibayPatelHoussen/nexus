@@ -1,5 +1,5 @@
 import {
-  Activity, BookOpen, Download, Film, Folder, Gauge, ListPlus, Settings, SquareTerminal, Tv, Wifi, Youtube,
+  Activity, BookOpen, Download, Film, Folder, Gauge, ListPlus, RadioTower, Settings, SquareTerminal, Tv, Wifi, Youtube,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -24,6 +24,7 @@ export const NAV: NavItem[] = [
   { to: '/cinema',    label: 'Films et séries', icon: Film,          section: 'media',  keywords: 'cinéma vidéo' },
   { to: '/animes',    label: 'Animes',         icon: Tv,             section: 'media' },
   { to: '/youtube',   label: 'YouTube',        icon: Youtube,        section: 'media',  keywords: 'vidéos chaînes' },
+  { to: '/iptv',      label: 'IPTV',           icon: RadioTower,     section: 'media',  keywords: 'télévision tv direct live chaînes m3u iptv-org' },
   { to: '/manga',     label: 'Manga',          icon: BookOpen,       section: 'media',  keywords: 'scans webtoon lecture' },
   { to: '/downloads', label: 'Téléchargements', icon: Download,      section: 'media',  adminOnly: true, keywords: 'télécharger anime-sama movix youtube file d’attente' },
   { to: '/settings',  label: 'Réglages',       icon: Settings,       section: 'settings', keywords: 'apparence compte mot de passe' },
@@ -46,7 +47,7 @@ export interface Tab {
 /** Tab Bar (phone). Files, services and network open from "Aperçu"; downloads from "Médias". */
 export const TABS: Tab[] = [
   { to: '/dashboard', label: 'Aperçu',   icon: Gauge,          match: ['/dashboard', '/files', '/services', '/network'] },
-  { to: '/cinema',    label: 'Médias',   icon: Film,           match: ['/cinema', '/animes', '/youtube', '/downloads', '/ma-liste'] },
+  { to: '/cinema',    label: 'Médias',   icon: Film,           match: ['/cinema', '/animes', '/youtube', '/downloads', '/ma-liste', '/iptv'] },
   { to: '/manga',     label: 'Manga',    icon: BookOpen,       match: ['/manga'] },
   { to: '/terminal',  label: 'Terminal', icon: SquareTerminal, match: ['/terminal'], adminOnly: true },
   { to: '/settings',  label: 'Réglages', icon: Settings,       match: ['/settings'] },

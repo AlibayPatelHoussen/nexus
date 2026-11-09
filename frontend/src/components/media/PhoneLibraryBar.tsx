@@ -16,7 +16,7 @@ export const VIDEO_SECTIONS = [
 export function SectionMenu({ value }: { value: string }) {
   const navigate = useNavigate()
   // « Ma liste » too: on iPhone the tab bar has no room for it (desktop: in the sidebar)
-  const sections = [...VIDEO_SECTIONS, { value: 'ma-liste', label: 'Ma liste', to: '/ma-liste' }]
+  const sections = [...VIDEO_SECTIONS, { value: 'iptv', label: 'IPTV', to: '/iptv' }, { value: 'ma-liste', label: 'Ma liste', to: '/ma-liste' }]
   const current = sections.find((s) => s.value === value) ?? sections[0]
   return (
     <PullDownMenu

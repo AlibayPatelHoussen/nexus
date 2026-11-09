@@ -4,6 +4,15 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Added — IPTV: public TV channels (iptv-org)
+- New « IPTV » section (sidebar Médias, and the Médias tab menu on iPhone): Accueil, Toutes les chaînes, Favoris, Pays, Catégories, Langues, Récemment regardées, Paramètres IPTV
+- Catalogue from the public lists of iptv-org (about 12 000 channels): search, country / category / language filters, A→Z / Z→A, « Disponibles » (verified streams), loaded page by page, logos loaded lazily through the image cache
+- Live player: HLS (native on Safari, hls.js elsewhere), play / pause, volume, full screen, picture in picture, previous / next channel, rewind when the stream allows it, falls back to the channel's other streams, clear French message when a stream is down or geo-blocked
+- Favourites per user, reorderable; recently watched; « les plus regardées » from real plays on this server only
+- Streams are relayed by the server (CORS, http streams, Referer / User-Agent) through signed addresses only: no open proxy, local addresses refused, stream addresses never sent to the browser
+- Python module `downloaders/iptv/`: download with cache and mirrors, parsing, merge, careful stream checks (a few at a time, favourites first), XMLTV guide when an address is given (iptv-org publishes none); daily refresh in the background
+- Tests: Python (parser, catalogue, cache, checker, guide), backend (catalogue, filters, favourites, relay safety), E2E (catalogue, filters, favourite, the player plays a demo stream, geo-blocked message)
+
 ### Changed — iPhone: switching tab is instant (tabs stay alive, like iOS)
 - Each tab keeps its screen mounted while another one is shown: coming back to a tab shows it at once, exactly as it was left (no rebuild, no image reloaded, scroll position kept). Measured on a 4× slowed CPU: a return to a tab went from 70–230 ms of frozen screen to none
 - A hidden tab keeps the address it was shown at and pauses its live work (the server stats of « Aperçu »)

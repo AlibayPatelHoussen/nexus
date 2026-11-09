@@ -20,8 +20,11 @@ export const SOURCES: Source[] = ['anisama', 'movix', 'films', 'oxtorrent', 'you
 export const scriptsDir = () => process.env.DOWNLOADERS_DIR || path.resolve(__dirname, '../../../downloaders')
 const python = () => process.env.PYTHON_BIN || 'python3'
 
-const SCRIPT_FILE: Record<Source, string> = {
+/** The download sources, and the IPTV module (catalogue, stream checks, guide) */
+export type ScriptName = Source | 'iptv'
+const SCRIPT_FILE: Record<ScriptName, string> = {
   anisama: 'anisama.py', films: 'films.py', movix: 'movix.py', oxtorrent: 'oxtorrent.py', youtube: 'youtube.py',
+  iptv: 'iptv_cli.py',
 }
 
 /** Id formats produced by the scripts, and the kinds they can have. */
@@ -90,6 +93,7 @@ export function selectionArg(list: unknown): string | null {
 /** Variables the scripts may see (no DB password, no JWT secret…). */
 function scriptEnv(): NodeJS.ProcessEnv {
   const keep = ['PATH', 'HOME', 'LANG', 'LC_ALL', 'TZ', 'USER', 'TMDB_API_KEY', 'PLAYWRIGHT_BROWSERS_PATH', 'OXTORRENT_URL',
+    'IPTV_API_BASE', 'IPTV_PLAYLIST_URL', 'IPTV_DATA_DIR', 'IPTV_ALLOW_PRIVATE',
     'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY', 'http_proxy', 'https_proxy', 'no_proxy']
   const env: NodeJS.ProcessEnv = { PYTHONUNBUFFERED: '1', PYTHONIOENCODING: 'utf-8' }
   for (const k of keep) if (process.env[k]) env[k] = process.env[k]
@@ -118,7 +122,7 @@ process.on('exit', () => {
 })
 
 /** Starts a script with --json and calls onEvent for each JSON line. */
-export function runScript(source: Source, args: string[], onEvent: (e: ScriptEvent) => void, timeoutMs = 0): RunHandle {
+export function runScript(source: ScriptName, args: string[], onEvent: (e: ScriptEvent) => void, timeoutMs = 0): RunHandle {
   const file = path.join(scriptsDir(), SCRIPT_FILE[source])
   const child = spawn(python(), [file, '--json', ...args], {
     cwd: scriptsDir(),
@@ -170,7 +174,7 @@ export function runScript(source: Source, args: string[], onEvent: (e: ScriptEve
 }
 
 /** Runs a short script call (search / details) and collects its events. */
-export async function collect(source: Source, args: string[], timeoutMs: number, onEvent?: (e: ScriptEvent) => void) {
+export async function collect(source: ScriptName, args: string[], timeoutMs: number, onEvent?: (e: ScriptEvent) => void) {
   const events: ScriptEvent[] = []
   const h = runScript(source, args, (e) => { events.push(e); onEvent?.(e) }, timeoutMs)
   const res = await h.done
