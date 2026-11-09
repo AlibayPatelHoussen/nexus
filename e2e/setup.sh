@@ -146,6 +146,14 @@ mkdir -p "$E2E/iptv-hls"
 ffmpeg -loglevel error -y -f lavfi -i "testsrc=size=320x180:rate=24" -f lavfi -i "sine=frequency=500" -t 60 \
   -c:v libx264 -pix_fmt yuv420p -g 48 -c:a aac -shortest -f hls -hls_time 2 -hls_list_size 0 -hls_playlist_type vod \
   "$E2E/iptv-hls/index.m3u8"
+# Streams a browser plays with sound only: MPEG-2 video (the server converts it), a radio, and a
+# playlist whose first variant is sound only (the picture is in the second one)
+ffmpeg -loglevel error -y -f lavfi -i "testsrc=size=320x180:rate=25" -f lavfi -i "sine=frequency=500" -t 12 \
+  -c:v mpeg2video -b:v 600k -g 12 -c:a mp2 -b:a 96k -f hls -hls_time 2 -hls_list_size 0 -hls_playlist_type vod \
+  "$E2E/iptv-hls/old.m3u8"
+ffmpeg -loglevel error -y -f lavfi -i "sine=frequency=500" -t 60 -c:a aac -b:a 64k \
+  -f hls -hls_time 2 -hls_list_size 0 -hls_playlist_type vod "$E2E/iptv-hls/radio.m3u8"
+printf '#EXTM3U\n#EXT-X-STREAM-INF:BANDWIDTH=64000\nradio.m3u8\n#EXT-X-STREAM-INF:BANDWIDTH=400000\nindex.m3u8\n' > "$E2E/iptv-hls/mix.m3u8"
 MOCK_PORT=$MOCK_PORT E2E_DIR=$E2E node "$ROOT/e2e/mock-metadata.mjs" > "$E2E/mock.log" 2>&1 < /dev/null &
 echo $! > "$E2E/mock.pid"
 

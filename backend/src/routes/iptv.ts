@@ -8,6 +8,8 @@ import {
   type ChannelFilters,
 } from '../services/iptv'
 import { relay, signUrl, validUrlSignature } from '../services/iptvProxy'
+import { convertStream, convertedPlaylist, convertedSegment } from '../services/iptvConvert'
+import { AuthService } from '../services/auth'
 
 const router = Router()
 const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : undefined)
@@ -43,6 +45,32 @@ router.get('/play/:id/:s/seg', authenticateStream, asyncHandler(async (req: Requ
   // The headers of the stream (for a page: those found with it; a segment never starts a look-up)
   await relay(req, res, { id, s, url, stream: await playable(stream, false), relayPath: relayPath(req, id, s) })
 }))
+
+// ─── A stream that plays with sound only: its picture converted by the server ─────
+/** What the stream holds; when it has a picture the browser cannot read, its live conversion
+ *  (answers once the converted stream is ready, or says why there is none). */
+router.post('/play/:id/:s/convert', authenticateStream, asyncHandler(async (req: Request, res: Response) => {
+  const { id, s } = playParams(req)
+  if (!(await streamOf(id, s))) throw new NotFoundError('Flux')
+  res.json({ success: true, data: await convertStream(id, s, AuthService.generateStreamToken(req.user!)) })
+}))
+
+router.get('/play/:id/:s/converted/index.m3u8', authenticateStream, asyncHandler(async (req: Request, res: Response) => {
+  const { id, s } = playParams(req)
+  const text = await convertedPlaylist(id, s, typeof req.query.token === 'string' ? req.query.token : '')
+  res.setHeader('Content-Type', 'application/vnd.apple.mpegurl')
+  res.setHeader('Cache-Control', 'no-store')
+  res.send(text)
+}))
+
+router.get('/play/:id/:s/converted/:file', authenticateStream, (req: Request, res: Response) => {
+  const { id, s } = playParams(req)
+  const file = convertedSegment(id, s, req.params.file)
+  if (!file) throw new NotFoundError('Segment')
+  res.setHeader('Content-Type', 'video/mp2t')
+  res.setHeader('Cache-Control', 'no-store')
+  res.sendFile(file)
+})
 
 // ─── Catalogue ───────────────────────────────────────────────────────────────
 router.use(authenticate)

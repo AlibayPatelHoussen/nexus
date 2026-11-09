@@ -488,7 +488,7 @@ test('IPTV: catalogue from iptv-org and Free-TV, priority countries, filters, fa
     if (!summary?.refresh?.running && summary?.total > 0) break
     await sleep(500)
   }
-  eq(summary.total, 9, 'channels imported: 7 from iptv-org (the nsfw one left out) + 2 only Free-TV lists')
+  eq(summary.total, 12, 'channels imported: 10 from iptv-org (the nsfw one left out) + 2 only Free-TV lists')
   eq(summary.refresh.sources, ['iptv-org', 'free-tv'], 'both sources used')
   // The owner's countries first, in their order; Madagascar has no channel in any source and says so
   eq(summary.priority.map((p) => [p.code, p.count]), [['CA', 1], ['FR', 5], ['MG', 0], ['US', 1]], 'priority countries')
@@ -542,6 +542,40 @@ test('IPTV: catalogue from iptv-org and Free-TV, priority countries, filters, fa
   // A geo-blocked stream: a clear message, never a blank player
   await page.goto(`${B}/iptv/watch/Geo.fr`, { waitUntil: 'networkidle' })
   await page.waitForSelector('text=/géo-bloqué/i', { timeout: 30000 })
+  await page.context().close()
+})
+
+test('IPTV: sound without a picture — sound-only variant left out, MPEG-2 converted by the server, a radio said as such', async () => {
+  admin = await login('admin', 'Admin1234')
+  const shows = (min) => page.waitForFunction((t) => { const v = document.querySelector('video'); return !!v && v.videoWidth > 0 && v.currentTime > t }, min, { timeout: 60000 })
+  const page = await newPage(admin)
+  // A playlist whose first variant is sound only: the player keeps the variant with the picture
+  await page.goto(`${B}/iptv/watch/Mix.it`, { waitUntil: 'domcontentloaded' })
+  await playVideo(page)
+  await shows(1)
+  assert(!(await page.textContent('body')).includes('image convertie'), 'the picture is the stream’s own, not converted')
+  // MPEG-2 video: a browser plays its sound only; the server converts the picture to H.264
+  await page.goto(`${B}/iptv/watch/Old.it`, { waitUntil: 'domcontentloaded' })
+  await playVideo(page)
+  await shows(0.5)
+  assert((await page.textContent('body')).includes('image convertie par le serveur'), 'played from the server’s conversion')
+  await page.screenshot({ path: `${SHOTS}/iptv-player-converted.png` })
+  // Opened again: this browser asks for the conversion at once
+  await page.goto(`${B}/iptv/watch/Radio.it`, { waitUntil: 'domcontentloaded' })
+  await page.goto(`${B}/iptv/watch/Old.it`, { waitUntil: 'domcontentloaded' })
+  await page.waitForSelector('text=/Le serveur regarde/', { timeout: 15000 })
+  await playVideo(page)
+  await shows(0.5)
+  // A radio: no picture to convert; the sound goes on, the player says so
+  const radio = await api('/api/iptv/play/Radio.it/0/convert', { token: admin.accessToken, method: 'POST' })
+  eq([radio.json.data.video, radio.json.data.convert, radio.json.data.reason], [null, false, 'audio'], 'a radio has nothing to convert')
+  await page.goto(`${B}/iptv/watch/Radio.it`, { waitUntil: 'domcontentloaded' })
+  await playVideo(page)
+  await page.waitForSelector('text=Son uniquement', { timeout: 30000 })
+  await page.waitForSelector('text=/ne diffuse pas d’image/', { timeout: 5000 })
+  const t = await page.evaluate(() => document.querySelector('video').currentTime)
+  await page.waitForFunction((t0) => document.querySelector('video').currentTime > t0 + 1, t, { timeout: 15000 })
+  await page.screenshot({ path: `${SHOTS}/iptv-player-sound-only.png` })
   await page.context().close()
 })
 
