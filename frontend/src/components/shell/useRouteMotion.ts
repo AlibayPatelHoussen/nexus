@@ -44,7 +44,10 @@ export function useRouteMotion(frame: () => HTMLElement | null, device: Device, 
   const navType = useNavigationType()
   const prev = useRef(location.pathname)
   const scrolls = useRef(new Map<string, number>())
+  /** By page: switching back to a tab finds its page where it was left (iOS) */
+  const byPath = useRef(new Map<string, number>())
   const key = useRef(location.key)
+  const path = useRef(location.pathname)
 
   // Remember where each page was scrolled to
   useEffect(() => {
@@ -53,6 +56,7 @@ export function useRouteMotion(frame: () => HTMLElement | null, device: Device, 
     const onScroll = () => {
       const y = el instanceof Window ? el.scrollY : el.scrollTop
       scrolls.current.set(key.current, y)
+      byPath.current.set(path.current, y)
     }
     el.addEventListener('scroll', onScroll, { passive: true })
     return () => el.removeEventListener('scroll', onScroll)
@@ -63,10 +67,13 @@ export function useRouteMotion(frame: () => HTMLElement | null, device: Device, 
     const to = location.pathname
     prev.current = to
     key.current = location.key
+    path.current = to
     if (from === to) return
 
     const el = scroller()
-    const y = navType === 'POP' ? scrolls.current.get(location.key) ?? 0 : 0
+    const tabSwitch = !to.startsWith('/media/') && !from.startsWith('/media/') && tabFor(from)?.to !== tabFor(to)?.to
+    const y = navType === 'POP' ? scrolls.current.get(location.key) ?? 0
+      : tabSwitch ? byPath.current.get(to) ?? 0 : 0
     if (el instanceof Window) el.scrollTo(0, y)
     else el?.scrollTo(0, y)
 

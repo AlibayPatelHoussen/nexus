@@ -85,6 +85,9 @@
     box-shadow: var(--glass-rim), var(--glass-shadow);
     color: var(--glass-label);
   }
+  /* Floating tab bar (iPhone): the glass plus the light on its thick edge and a deeper
+     shadow, so it reads as an object floating above the content */
+  .glass-float { box-shadow: var(--glass-rim), var(--glass-specular), var(--glass-float-shadow); }
   /* Large UI: sidebar, sheets, menus, popovers */
   .glass-strong {
     background: var(--glass-fill-strong);

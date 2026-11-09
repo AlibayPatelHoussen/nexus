@@ -1,10 +1,11 @@
 import { startTransition, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
-import { motion, useMotionValue, useSpring, useTransform, type MotionValue } from 'framer-motion'
+import { motion, useMotionValue, useReducedMotion, useSpring, useTransform, type MotionValue } from 'framer-motion'
 import { useAuthStore } from '@/stores/authStore'
 import type { LucideIcon } from 'lucide-react'
 import { TABS, tabFor, type Tab } from './nav'
 import { useSectionStore } from './sectionStore'
+import { selectionHaptic } from '@/utils/haptics'
 
 const PAD = 4           // the bar's inner inset (62 pt bar, 54 pt tabs)
 const LENS = 1.45       // lens width, in tabs (Apple Music: ~1.4–1.5)
@@ -31,9 +32,11 @@ const GLIDE_MS = 170
 // Tab the last section page was under. Kept outside the component: the bar is created
 // again when coming back from the full-screen reader / player, and must not forget it
 let lastTab: Tab | undefined
+/** Each tab is its own stack (iOS): switching back to a tab finds the page left in it */
+const lastPathByTab: Record<string, string> = {}
 
 export default function TabBar() {
-  const { pathname } = useLocation()
+  const { pathname, search } = useLocation()
   const navigate = useNavigate()
   const isAdmin = useAuthStore((s) => s.user?.role === 'admin')
   // Title pages (/media/…) stay under the tab they were opened from; opened directly
@@ -44,6 +47,30 @@ export default function TabBar() {
   const current = found ?? lastTab ?? (section ? tabFor(section) : undefined)
   const tabs = TABS.filter((t) => isAdmin || !t.adminOnly)
   const active = tabs.findIndex((t) => t.to === current?.to)
+  useEffect(() => { if (found) lastPathByTab[found.to] = pathname + search }, [found, pathname, search])
+  const reduced = useReducedMotion()
+
+  // Scrolling down a page tucks the bar away into a small capsule with the current tab
+  // (iOS 26 tab bar minimise); scrolling back up, reaching the top or tapping it brings it back
+  const [compact, setCompact] = useState(false)
+  useEffect(() => {
+    let lastY = window.scrollY
+    let run = 0
+    const onScroll = () => {
+      const y = window.scrollY
+      const d = y - lastY
+      lastY = y
+      if (y < 48) { run = 0; setCompact(false); return }
+      // Rubber band at the bottom of the page: not a scroll back up
+      if (d < 0 && y >= document.documentElement.scrollHeight - window.innerHeight - 4) return
+      run = (run >= 0) === (d >= 0) ? run + d : d
+      if (run > 28) setCompact(true)
+      else if (run < -18) setCompact(false)
+    }
+    window.addEventListener('scroll', onScroll, { passive: true })
+    return () => window.removeEventListener('scroll', onScroll)
+  }, [])
+  useEffect(() => { setCompact(false) }, [pathname])
 
   const bar = useRef<HTMLUListElement>(null)
   const rect = useRef<DOMRect | null>(null)
@@ -105,7 +132,7 @@ export default function TabBar() {
       lensScale.jump(0.8); lensScale.set(1)
     }
     finger.set(x)
-    touch.set(1)
+    touch.set(reduced ? 0 : 1)
     setUnder(indexAt(x))
     setPhase('press')
   }
@@ -128,19 +155,26 @@ export default function TabBar() {
     // rendering it meanwhile would steal the frames of the glide
     finger.set(PAD + (i + 0.5) * tabW)
     setPhase('release')
-    navigator.vibrate?.(8)
-    const to = tabs[i]?.to
+    selectionHaptic()
+    // Another tab: the page left in it. The current tab again: back to its root, and when
+    // already there, back to the top of the page (iOS)
+    const tab = tabs[i]
+    const again = i === active
+    const to = !tab ? undefined : again ? (pathname === tab.to ? undefined : tab.to) : lastPathByTab[tab.to] ?? tab.to
     releaseTimer.current = setTimeout(() => {
       releaseTimer.current = null
       setPhase('idle')
       touch.jump(0)
-      if (to) startTransition(() => navigate(to))   // the same tab again goes back to its root
-    }, GLIDE_MS)
+      if (to) startTransition(() => navigate(to))
+      else if (again) window.scrollTo({ top: 0, behavior: reduced ? 'auto' : 'smooth' })
+    }, reduced ? 0 : GLIDE_MS)
   }
   const pill = under ?? active
   // The pill moves instantly when the finger chose the tab (it is hidden under the lens);
   // it slides on a spring only when the tab changes some other way (back, keyboard…)
-  const pillMove = under != null ? { duration: 0 } : SETTLE
+  const pillMove = under != null || reduced ? { duration: 0 } : SETTLE
+  const ActiveIcon = active >= 0 ? tabs[active].icon : undefined
+  const barEase = 'cubic-bezier(0.32, 0.72, 0, 1)'
 
   return (
     <nav
@@ -154,7 +188,14 @@ export default function TabBar() {
     >
       <ul
         ref={bar}
-        className="glass relative pointer-events-auto flex w-full max-w-[460px] h-[var(--tabbar-h)] p-1 rounded-pill touch-none select-none"
+        className="glass glass-float relative pointer-events-auto flex w-full max-w-[460px] h-[var(--tabbar-h)] p-1 rounded-pill touch-none select-none"
+        style={{
+          opacity: compact ? 0 : 1,
+          transform: compact ? 'translateY(12px)' : 'none',
+          pointerEvents: compact ? 'none' : undefined,
+          transition: reduced ? 'opacity 150ms linear' : `opacity 220ms ease-out, transform 420ms ${barEase}`,
+        }}
+        aria-hidden={compact || undefined}
         onPointerDown={onPointerDown}
         onPointerMove={onPointerMove}
         onPointerUp={(e) => end(true, e.clientX)}
@@ -182,7 +223,7 @@ export default function TabBar() {
               className="tab-lens absolute z-20 left-0 rounded-pill pointer-events-none"
               style={{ x: lensX, scale: lensScale, width: lensW, top: -OVERFLOW, bottom: -OVERFLOW,
                 // CSS opacity transition: done by the compositor, smooth even while the new page renders
-                opacity: phase === 'idle' ? 0 : 1, transition: `opacity ${phase === 'idle' ? 160 : 90}ms ease-out` }}
+                opacity: phase === 'idle' || reduced ? 0 : 1, transition: `opacity ${phase === 'idle' ? 160 : 90}ms ease-out` }}
             />
           </>
         )}
@@ -200,6 +241,28 @@ export default function TabBar() {
           />
         ))}
       </ul>
+      {/* Tucked away while scrolling down: the current tab in a small capsule; a tap brings the bar back */}
+      {ActiveIcon && (
+        <button
+          type="button"
+          onClick={() => { selectionHaptic(); setCompact(false) }}
+          tabIndex={compact ? 0 : -1}
+          aria-hidden={!compact || undefined}
+          aria-label={`Afficher les onglets (${tabs[active].label})`}
+          className="glass glass-float absolute pointer-events-auto grid place-items-center rounded-pill w-[var(--tabbar-h)] h-[var(--tabbar-h)]"
+          style={{
+            left: 'max(21px, env(safe-area-inset-left, 0px))',
+            top: 0,
+            opacity: compact ? 1 : 0,
+            transform: compact ? 'none' : 'scale(0.7)',
+            transformOrigin: 'left center',
+            pointerEvents: compact ? 'auto' : 'none',
+            transition: reduced ? 'opacity 150ms linear' : `opacity 200ms ease-out, transform 420ms ${barEase}`,
+          }}
+        >
+          <ActiveIcon size={24} strokeWidth={2.4} aria-hidden="true" className="text-accent" />
+        </button>
+      )}
     </nav>
   )
 }
@@ -222,9 +285,10 @@ function Tab({ to, label, Icon, on, centre, reach, lensCenter, touch }: {
   const accent = useTransform<number, number>([under, touch, sel], ([u, t, o]) => o * (1 - t) + Math.min(1, u * 2.2) * t)
   const plain = useTransform(accent, (a) => 1 - a)
 
-  const body = (
+  // The selected / magnified copy is drawn a bit heavier, like the filled SF Symbol of the active tab
+  const body = (weight: number) => (
     <>
-      <Icon size={23} strokeWidth={2} />
+      <Icon size={23} strokeWidth={weight} />
       <span className="truncate max-w-full px-0.5">{label}</span>
     </>
   )
@@ -237,8 +301,8 @@ function Tab({ to, label, Icon, on, centre, reach, lensCenter, touch }: {
         className="no-press relative flex-1 grid place-items-center rounded-pill text-[10px] leading-3 font-[590]"
       >
         <motion.span className="relative grid place-items-center max-w-full" style={{ scale }}>
-          <motion.span aria-hidden="true" className="col-start-1 row-start-1 flex flex-col items-center gap-px max-w-full text-[color:var(--glass-label)]" style={{ opacity: plain }}>{body}</motion.span>
-          <motion.span className="col-start-1 row-start-1 flex flex-col items-center gap-px max-w-full text-accent" style={{ opacity: accent }}>{body}</motion.span>
+          <motion.span aria-hidden="true" className="col-start-1 row-start-1 flex flex-col items-center gap-px max-w-full text-[color:var(--glass-label)]" style={{ opacity: plain }}>{body(2)}</motion.span>
+          <motion.span className="col-start-1 row-start-1 flex flex-col items-center gap-px max-w-full text-accent" style={{ opacity: accent }}>{body(2.5)}</motion.span>
         </motion.span>
       </Link>
     </li>
