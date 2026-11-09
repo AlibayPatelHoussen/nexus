@@ -4,6 +4,10 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Fixed — no tab selected on a title page (iPhone tab bar, sidebar)
+- A title page (a manga, a film…) is under the tab it was opened from; that was forgotten when the bar was created again (back from the full-screen reader / player) or when the app reopened directly on the page: no tab was blue. The tab is now kept, and a title page opened directly selects its own library (Manga for a manga, Médias / Films et séries for a film…)
+- Sidebar (desktop): same; the selected section is also announced to VoiceOver (`aria-current`) on title pages
+
 ### Changed — « À la une » drawn at random among all the titles
 - The billboard of Films, Séries, Animes (and YouTube) shows titles drawn at random among ALL the titles of that section, a new draw each time the page opens (it stays the same while the page is open). Before: 6 titles in a row among the 300 newest, the same ones all day
 - Titles with a backdrop and a synopsis come first, so the billboard keeps its look; the others fill in when too few have one. New `GET /api/media/featured?type=…&count=…` (up to 20)

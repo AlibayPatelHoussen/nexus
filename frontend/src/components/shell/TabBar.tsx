@@ -3,7 +3,8 @@ import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { motion, useMotionValue, useSpring, useTransform, type MotionValue } from 'framer-motion'
 import { useAuthStore } from '@/stores/authStore'
 import type { LucideIcon } from 'lucide-react'
-import { TABS, tabFor } from './nav'
+import { TABS, tabFor, type Tab } from './nav'
+import { useSectionStore } from './sectionStore'
 
 const PAD = 4           // the bar's inner inset (62 pt bar, 54 pt tabs)
 const LENS = 1.45       // lens width, in tabs (Apple Music: ~1.4–1.5)
@@ -25,15 +26,20 @@ const SETTLE = { type: 'spring', stiffness: 300, damping: 28 } as const
  * motion value; the lens and every icon read it through springs / transforms
  * (compositor-only: transform and opacity).
  */
+// Tab the last section page was under. Kept outside the component: the bar is created
+// again when coming back from the full-screen reader / player, and must not forget it
+let lastTab: Tab | undefined
+
 export default function TabBar() {
   const { pathname } = useLocation()
   const navigate = useNavigate()
   const isAdmin = useAuthStore((s) => s.user?.role === 'admin')
-  // Title pages (/media/…) stay under the tab they were opened from
-  const last = useRef(tabFor(pathname))
+  // Title pages (/media/…) stay under the tab they were opened from; opened directly
+  // (app reopened on it…), under the tab of their library (a manga → Manga)
+  const section = useSectionStore((s) => s.section)
   const found = tabFor(pathname)
-  if (found) last.current = found
-  const current = found ?? last.current
+  if (found) lastTab = found
+  const current = found ?? lastTab ?? (section ? tabFor(section) : undefined)
   const tabs = TABS.filter((t) => isAdmin || !t.adminOnly)
   const active = tabs.findIndex((t) => t.to === current?.to)
 
