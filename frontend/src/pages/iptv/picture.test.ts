@@ -12,6 +12,11 @@ describe('variantsToDrop (sound-only variants of a stream)', () => {
     // The usual case: a 64 kb/s sound-only variant first, no CODECS, RESOLUTION on the others
     expect(variantsToDrop([{ uri: 'audio' }, { uri: 'sd', width: 640 }, { uri: 'hd', width: 1280 }], none)).toEqual([0])
     expect(variantsToDrop([{ uri: 'sd', videoCodec: 'avc1.42c01e' }, { uri: 'audio', width: 0 }], none)).toEqual([1])
+    expect(variantsToDrop([{ uri: 'audio', bitrate: 64_000 }, { uri: 'sd', width: 640, bitrate: 800_000 }], none)).toEqual([0])
+  })
+
+  it('keeps a variant that says nothing but is as large as those with a picture', () => {
+    expect(variantsToDrop([{ uri: 'sd', width: 640, bitrate: 800_000 }, { uri: 'x', bitrate: 900_000 }], none)).toEqual([])
   })
 
   it('drops the variants found to carry sound only, highest index first', () => {

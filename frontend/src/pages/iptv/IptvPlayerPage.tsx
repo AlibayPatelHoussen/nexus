@@ -22,6 +22,8 @@ type Phase = 'loading' | 'playing' | 'paused' | 'error'
 /** hls.js: the browser cannot decode what the stream holds (HEVC without support, for instance) */
 const CODEC_ERRORS = new Set(['bufferAddCodecError', 'bufferIncompatibleCodecsError', 'manifestIncompatibleCodecsError'])
 const NO_CODEC = 'Ce navigateur ne lit pas le format vidéo de cette chaîne, et le serveur n’a pas pu le convertir.'
+/** Video formats Safari plays by itself */
+const SAFARI_READS = new Set(['h264', 'hevc'])
 
 /** The site of a « page » stream (the live of a YouTube / Twitch / Dailymotion page) */
 function siteName(page: string | null | undefined): string | null {
@@ -45,6 +47,8 @@ function siteName(page: string | null | undefined): string | null {
  * Sound without a picture (see ./picture): sound-only variants of a stream are left out; a stream
  * that still shows nothing gives way to the channel's next one; when none has a picture the server
  * converts the first one (MPEG-2, HEVC… to H.264), or the channel is said to be sound only.
+ * Safari (iPhone) reads streams itself and sometimes plays the sound of a stream it could show
+ * without its picture, until the stream is loaded again: that is tried first there.
  */
 export default function IptvPlayerPage() {
   const { id = '' } = useParams<{ id: string }>()
@@ -76,8 +80,9 @@ export default function IptvPlayerPage() {
   /** The video element shows a picture */
   const [picture, setPicture] = useState(false)
   /** Streams of this attempt that gave sound but no picture, in the order they were tried
-   *  (`codec`: one of them in a format the browser refuses altogether) */
-  const silentStreams = useRef<{ run: string; list: number[]; codec: boolean }>({ run, list: [], codec: false })
+   *  (`codec`: one of them in a format the browser refuses altogether; `again`: those already
+   *  loaded a second time for their picture) */
+  const silentStreams = useRef<{ run: string; list: number[]; codec: boolean; again: number[] }>({ run, list: [], codec: false, again: [] })
   /** Bumped to load the current stream again as it is */
   const [reload, setReload] = useState(0)
   const [phase, setPhase] = useState<Phase>('loading')
@@ -145,7 +150,7 @@ export default function IptvPlayerPage() {
     const v = videoRef.current
     if (!v || !channel || !token) return
     let cancelled = false
-    if (silentStreams.current.run !== run) silentStreams.current = { run, list: [], codec: false }
+    if (silentStreams.current.run !== run) silentStreams.current = { run, list: [], codec: false, again: [] }
     const memo = silentStreams.current
     const mode = saved?.mode ?? 'direct'
     const tries = saved?.n ?? 0
@@ -215,8 +220,7 @@ export default function IptvPlayerPage() {
     // Variants of this stream found to carry sound only (hls.js)
     const silent = new Set<string>()
     let restarts = 0
-    // Playback that runs for a few seconds without any picture is a stream with sound only.
-    // Safari reads playlists itself and may start on a sound-only variant before it moves up: longer.
+    // Playback that runs for a few seconds without any picture is a stream with sound only
     const native = NATIVE_HLS && !!v.canPlayType('application/vnd.apple.mpegurl')
     let from: number | null = null
     const watch = setInterval(() => {
@@ -226,8 +230,21 @@ export default function IptvPlayerPage() {
       const levels = hlsRef.current?.levels
       // hls.js already saw that no variant has a picture: no need to wait as long
       const known = !!levels?.length && levels.every((l) => silent.has(l.uri))
-      if (v.currentTime - from >= (known ? 1.5 : native ? 8 : 4)) noPicture(true)
+      if (v.currentTime - from < (known ? 1.5 : native ? 3 : 4)) return
+      clearInterval(watch)
+      if (native && mode === 'direct' && !memo.again.includes(idx)) void loadAgain()
+      else noPicture(true)
     }, 500)
+    /** Safari, sound without a picture: when the stream holds a picture Safari reads, loading it
+     *  again brings it (once per stream); otherwise it is handled like anywhere else. */
+    const loadAgain = async () => {
+      memo.again.push(idx)
+      let res: PictureAnswer | null = null
+      try { res = await iptvService.convert(channel.id, idx, true) } catch { /* not known: tried anyway */ }
+      if (cancelled) return
+      if (res?.video ? SAFARI_READS.has(res.video) : res?.reason !== 'audio') setReload((r) => r + 1)
+      else noPicture(true)
+    }
 
     if (native) {
       v.src = url
@@ -419,8 +436,16 @@ export default function IptvPlayerPage() {
           </div>
         </div>
       )}
+      {/* Paused (or the browser refused to start by itself): one large button to start */}
+      {phase === 'paused' && !error && !isError && !rescuing && (
+        <div className="absolute inset-0 grid place-items-center pointer-events-none">
+          <button type="button" className="pointer-events-auto w-[72px] h-[72px] grid place-items-center rounded-full glass-media active:scale-95 transition-transform" onClick={togglePlay} aria-label="Lecture">
+            <Play size={30} fill="white" strokeWidth={0} style={{ marginLeft: 3 }} aria-hidden="true" />
+          </button>
+        </div>
+      )}
       {/* Sound without a picture: said as such, the sound goes on */}
-      {quietWhy && !picture && !error && !rescuing && phase !== 'loading' && (
+      {quietWhy && !picture && !error && !rescuing && phase === 'playing' && (
         <div className="absolute inset-0 grid place-items-center px-6 pointer-events-none" role="status" aria-live="polite">
           <div className="max-w-[380px] text-center flex flex-col items-center gap-3">
             {channel && <ChannelLogo channel={channel} className="w-40 h-24 rounded-card" />}

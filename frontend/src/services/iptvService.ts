@@ -84,7 +84,9 @@ export const iptvService = {
   /** Playlist relayed by the server (stream token in the URL: media elements send no header) */
   playUrl: (id: string, stream: number, token: string) => `/api/iptv/play/${enc(id)}/${stream}/index.m3u8?token=${enc(token)}`,
   /** A stream that plays with sound only: what it holds; its picture converted by the server when
-   *  it can be (answers once the converted stream is ready: up to a minute) */
-  convert: (id: string, stream: number) => data<PictureAnswer>(api.post(`/iptv/play/${enc(id)}/${stream}/convert`, undefined, { timeout: 90_000 })),
+   *  it can be (answers once the converted stream is ready: up to a minute).
+   *  `probe`: only what it holds (`video` / `audio`), nothing is converted */
+  convert: (id: string, stream: number, probe = false) => data<PictureAnswer>(
+    api.post(`/iptv/play/${enc(id)}/${stream}/convert`, undefined, { timeout: 90_000, params: probe ? { probe: 1 } : undefined })),
   convertedUrl: (id: string, stream: number, token: string) => `/api/iptv/play/${enc(id)}/${stream}/converted/index.m3u8?token=${enc(token)}`,
 }

@@ -48,11 +48,12 @@ router.get('/play/:id/:s/seg', authenticateStream, asyncHandler(async (req: Requ
 
 // ─── A stream that plays with sound only: its picture converted by the server ─────
 /** What the stream holds; when it has a picture the browser cannot read, its live conversion
- *  (answers once the converted stream is ready, or says why there is none). */
+ *  (answers once the converted stream is ready, or says why there is none).
+ *  ?probe=1: only what it holds, nothing is started. */
 router.post('/play/:id/:s/convert', authenticateStream, asyncHandler(async (req: Request, res: Response) => {
   const { id, s } = playParams(req)
   if (!(await streamOf(id, s))) throw new NotFoundError('Flux')
-  res.json({ success: true, data: await convertStream(id, s, AuthService.generateStreamToken(req.user!)) })
+  res.json({ success: true, data: await convertStream(id, s, AuthService.generateStreamToken(req.user!), req.query.probe !== '1') })
 }))
 
 router.get('/play/:id/:s/converted/index.m3u8', authenticateStream, asyncHandler(async (req: Request, res: Response) => {
