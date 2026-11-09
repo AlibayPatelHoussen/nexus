@@ -537,7 +537,12 @@ describe('A job of several episodes / chapters', () => {
     await startDownloadWorker()          // stopped by the restart test above
     process.env.DOWNLOADS_RESCAN_DELAY_MS = '300'
     const scans: number[] = []
+    // Scans are instant here: on CI, earlier tests' real scans look titles up online and can
+    // still be running, and a scan waits for the one in progress
     const spy = jest.spyOn(MediaScanner, 'scanManga').mockImplementation(async () => { scans.push(Date.now()); return 0 })
+    const others = (['scanFilms', 'scanSeries', 'scanAnimes', 'scanYoutube'] as const)
+      .map((m) => jest.spyOn(MediaScanner, m).mockResolvedValue(0))
+    await waitFor(async () => !MediaScanner.isRunning(), 90_000)
     try {
       // The fake script finishes chapter 1, then stays busy (60 s) until it is cancelled
       const res = await request(app).post('/api/downloads').set(admin)
@@ -560,7 +565,8 @@ describe('A job of several episodes / chapters', () => {
       await waitFor(async () => scans.length > before, 25_000)
     } finally {
       spy.mockRestore()
+      for (const o of others) o.mockRestore()
       delete process.env.DOWNLOADS_RESCAN_DELAY_MS
     }
-  }, 120_000)
+  }, 240_000)
 })
