@@ -7,7 +7,8 @@ import { scriptsDir } from './downloadScripts'
  * - MangaDex often has a French description (description.fr): used first;
  * - anime-sama's catalogue (downloaders/data/catalogue.json) keeps the French synopsis of
  *   every title whose page was opened (search, download): used next;
- * - MangaDex tags (genres) are only in English: translated here.
+ * - for animes, TMDB's French synopsis comes first (scanner);
+ * - MangaDex tags and AniList genres are only in English: translated here.
  */
 
 const norm = (t: string) => t.toLowerCase().normalize('NFKD').replace(/[̀-ͯ]/g, '')
@@ -62,5 +63,7 @@ const TAGS_FR: Record<string, string> = {
   Gyaru: 'Gyaru', Incest: 'Inceste', Loli: 'Loli', Shota: 'Shota', Sexual: 'Sexuel', Gore: 'Gore',
   'Sexual Violence': 'Violence sexuelle', 'Traditional Games': 'Jeux traditionnels', 'Virtual Reality': 'Réalité virtuelle',
   Crossdressing: 'Travestissement', 'Genderswap': 'Échange de genre',
+  // AniList genres (animes)
+  Ecchi: 'Ecchi', Hentai: 'Hentai', 'Mahou Shoujo': 'Magical girls',
 }
 export const tagFr = (tag: string) => TAGS_FR[tag] ?? tag
