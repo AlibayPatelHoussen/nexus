@@ -4,6 +4,14 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Changed — iPhone tab bar closer to Apple Music (iOS 26)
+- Glass: the light caught by the edge of a thick glass slab (bright top, shaded bottom, brighter curved ends like a lens) and a deeper shadow, so the bar reads as an object floating above the content
+- Scrolling down a page tucks the bar away into a small capsule with the current tab (accent); scrolling back up, reaching the top or tapping the capsule brings it back
+- Each tab is its own stack: switching back to a tab finds the page left in it (and its scroll position); tapping the current tab goes back to its root, and from there scrolls to the top
+- Selection haptic on iPhone too (iOS 18+), where there was none
+- The selected / magnified icon is drawn heavier, like the filled symbol of the active tab
+- « Réduire les animations »: no lens, the selection changes at once
+
 ### Fixed — tab bar lens stuttering on iPhone after a tap
 - The lens no longer shrinks when the finger lifts (Safari redrew its blur at every frame while the new page rendered: ~10 fps). It glides onto the chosen tab and fades out (a CSS opacity transition, done by the compositor), and the page changes right after the glide instead of during it
 
