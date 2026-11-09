@@ -84,8 +84,10 @@ export class MediaService {
   /**
    * « À la une »: titles drawn at random among ALL the titles of this type (not only the
    * newest), those with a backdrop and a synopsis first so the billboard looks right.
+   * One draw per hour: the order comes from a hash of each title's id with the hour, so
+   * every visit within the hour shows the same titles, and the next hour others.
    */
-  static async getFeatured(type: string, count = 8) {
+  static async getFeatured(type: string, count = 8, hour = Math.floor(Date.now() / 3_600_000)) {
     const n = Math.min(Math.max(Math.trunc(count) || 8, 1), 20)
     const { rows } = await query(
       `SELECT id, type, title, original_title, poster_path, backdrop_path,
@@ -96,8 +98,8 @@ export class MediaService {
         WHERE type = $1
         ORDER BY (backdrop_path IS NOT NULL AND COALESCE(overview, '') <> '') DESC,
                  (poster_path IS NOT NULL OR backdrop_path IS NOT NULL) DESC,
-                 random()
-        LIMIT $2`, [type, n])
+                 md5(id::text || ':' || $3::text)
+        LIMIT $2`, [type, n, hour])
     return rows.map(mapMedia)
   }
 

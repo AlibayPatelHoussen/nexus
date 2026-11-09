@@ -122,8 +122,8 @@ export default function MediaBrowser({ title, tabs, yearFilter, emptyIcon, video
   const items = useMemo(() => catalog?.items ?? [], [catalog])
   const favorites = useFavorites()
   const myList = useMemo(() => favorites.items.filter((m) => m.type === type || (books && m.type === 'webtoon')), [favorites.items, type, books])
-  // « À la une »: a new random draw among ALL the titles of this type each time the page
-  // opens (not only the newest ones); it stays the same while the page is open
+  // « À la une »: drawn by the server among ALL the titles of this type (not only the
+  // newest), a new draw each hour; it stays the same while the page is open
   const { data: featuredData } = useQuery({
     queryKey: ['featured', type], queryFn: () => mediaService.getFeatured(type),
     enabled: !books, staleTime: Infinity, gcTime: 0, refetchOnWindowFocus: false,

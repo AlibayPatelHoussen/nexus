@@ -348,6 +348,9 @@ function applyEvent(p: Record<string, unknown>, e: ScriptEvent) {
 async function launch(row: DownloadRow) {
   const progress: Record<string, unknown> = {}
   let lastSave = 0
+  // Saves one after the other: two UPDATEs sent together on different pool connections
+  // could land in the wrong order (« chapter 1 started » over « chapter 1 done »)
+  let saving: Promise<unknown> = Promise.resolve()
   const state: Running = { handle: null as unknown as RunHandle, stopAs: null, progress }
   const handle = runScript(row.source_script, argsFor(row), (e) => {
     applyEvent(progress, e)
@@ -357,7 +360,8 @@ async function launch(row: DownloadRow) {
     emit('download:progress', { id: row.id, progress })
     if (Date.now() - lastSave > 2000 || e.type !== 'progress') {
       lastSave = Date.now()
-      query('UPDATE downloads SET progress = $2::jsonb, updated_at = NOW() WHERE id = $1', [row.id, JSON.stringify(progress)])
+      const json = JSON.stringify(progress)
+      saving = saving.then(() => query('UPDATE downloads SET progress = $2::jsonb, updated_at = NOW() WHERE id = $1', [row.id, json]))
         .catch(() => {})
     }
   })
@@ -365,6 +369,7 @@ async function launch(row: DownloadRow) {
   running.set(row.id, state)
 
   const { code, log } = await handle.done
+  await saving                 // a late progress save must not land after the final status
   running.delete(row.id)
   let status: Status
   let error: string | null = null
