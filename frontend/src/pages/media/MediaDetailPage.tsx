@@ -1,4 +1,5 @@
 import FollowGroup from '@/components/downloads/FollowGroup'
+import { useSection } from '@/components/shell/sectionStore'
 import DetailSheet from '@/pages/downloads/DetailSheet'
 import type { SearchResult } from '@/services/downloadsService'
 import { downloadKind, targetResult, useDownloadTarget } from '@/hooks/useDownloadTarget'
@@ -75,6 +76,8 @@ export default function MediaDetailPage() {
     enabled:  !!id,
   })
 
+  // Tab bar / sidebar: this title's library stays selected (Manga for a manga…)
+  useSection(media ? libraryOf(media.type).to.split('?')[0] : null)
   const dlKind = isAdmin ? downloadKind(media?.type) : null
   const dlTarget = useDownloadTarget(id, !!dlKind)
   // Tapped before the title was found on the site: open as soon as it is (or say why not)

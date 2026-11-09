@@ -1,10 +1,11 @@
-import { NavLink, useLocation } from 'react-router-dom'
+import { Link, useLocation } from 'react-router-dom'
 import { motion, LayoutGroup } from 'framer-motion'
 import { LogOut, Search } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 import { spring } from '@/design/motion'
 import { cn } from '@/utils'
 import { NAV, SECTIONS, type NavItem } from './nav'
+import { useSectionStore } from './sectionStore'
 
 interface SidebarProps {
   onSearch: () => void
@@ -20,19 +21,26 @@ interface SidebarProps {
  * secondary section headers); the selection is a capsule that slides on a
  * spring to the chosen row.
  */
+// Section of the last library page (title pages keep it selected, even after the
+// full-screen reader / player)
+let lastNav: string | undefined
+
 export default function Sidebar({ onSearch, onLogout, onNavigate }: SidebarProps) {
   const user = useAuthStore((s) => s.user)
   const { pathname } = useLocation()
   const isAdmin = user?.role === 'admin'
   const visible = (i: NavItem) => isAdmin || !i.adminOnly
   const isMac = /Mac|iPhone|iPad/.test(navigator.platform)
-  // Title pages (/media/…, /player/…) keep their library selected
-  const activeTo = NAV.find((i) => pathname === i.to || pathname.startsWith(`${i.to}/`))?.to
+  // Title pages (/media/…) keep the library they were opened from selected, else their own
+  const section = useSectionStore((s) => s.section)
+  const found = NAV.find((i) => pathname === i.to || pathname.startsWith(`${i.to}/`))?.to
+  if (found) lastNav = found
+  const activeTo = found ?? lastNav ?? (section ? NAV.find((i) => i.to === section)?.to : undefined)
 
   const link = (item: NavItem) => {
     const on = activeTo === item.to
     return (
-      <NavLink
+      <Link
         key={item.to}
         to={item.to}
         onClick={onNavigate}
@@ -54,7 +62,7 @@ export default function Sidebar({ onSearch, onLogout, onNavigate }: SidebarProps
           <item.icon size={16} strokeWidth={1.75} className="text-accent" aria-hidden="true" />
         </span>
         <span className="relative truncate">{item.label}</span>
-      </NavLink>
+      </Link>
     )
   }
 
