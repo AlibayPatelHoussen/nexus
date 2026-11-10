@@ -134,9 +134,9 @@ def get_page(path, retry_portal=True):
             r = SESSION.get(base + path, timeout=25, headers={"Referer": base + "/"})
             if r.status_code == 200:
                 return r.text, base
-            print(f"{base + path} -> {r.status_code}")
+            print(f"{base + path} -> {r.status_code}", file=sys.stderr)
         except requests.RequestException as e:
-            print(f"{base + path} -> {e}")
+            print(f"{base + path} -> {e}", file=sys.stderr)
         if attempt == 0 and retry_portal:
             base = site_base(refresh=True)      # the domain may have moved: ask the portal again
     return None, base
