@@ -202,7 +202,13 @@ export default function IptvPlayerPage() {
       const n = tries + 1
       const why = res.reason ?? 'failed'
       if (manual.current) { manual.current = false; if (!res.convert) toast.error(CANNOT_CONVERT[why]) }
-      if (res.convert) setRescue({ run, index: i, mode: 'converted', why: null, n })
+      if (res.convert) {
+        // Why, for the playback details (the « unfit » path already said it)
+        if (!trace.current.next) {
+          trace.current.next = `converti : ${{ silent: 'image non affichée', unfit: 'format mal lu', failed: 'lecture directe impossible', asked: 'demandé' }[how]}`
+        }
+        setRescue({ run, index: i, mode: 'converted', why: null, n })
+      }
       else if (how === 'asked') { memo.asked.push(i); setReload((r) => r + 1) }
       else if (how === 'unfit') trace.current.note = `conversion impossible (${why})`
       else if (how === 'failed') void noStream()

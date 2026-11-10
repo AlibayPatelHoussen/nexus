@@ -1,7 +1,7 @@
 import { Router, Request, Response } from 'express'
 import asyncHandler from 'express-async-handler'
 import { authenticate, requireAdmin } from '../middleware/auth'
-import { syncImdb } from '../services/imdb'
+import { enrichNewTitles, syncImdb } from '../services/imdb'
 import { indexLibrarySoon } from '../services/keyframeIndexer'
 import { logger } from '../utils/logger'
 import { MediaService } from '../services/media'
@@ -128,7 +128,7 @@ router.post('/scan/:type/auto', asyncHandler(async (req: Request, res: Response)
       await MediaScanner.pruneDeleted(scan[0])
       return scan[1]()
     })
-    if (['films', 'series', 'animes'].includes(type)) indexLibrarySoon()
+    if (['films', 'series', 'animes'].includes(type)) { indexLibrarySoon(); void enrichNewTitles() }
     res.json({ success: true, data: { scanned } })
   } catch (err) {
     if (err instanceof ConflictError) { res.json({ success: true, data: { skipped: 'running' } }); return }
