@@ -4,6 +4,9 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Changed — films.py: says why the films site is unreachable
+- « Site de films inaccessible » now comes with the reason seen from the server: domain not found, no answer, connection refused, page not found (404), another HTTP error, anti-robot protection (Cloudflare), or a redirect to another address
+
 ### Changed — films.py: new site address
 - The films script now reads `https://tiprov.com/fc3e940/home/tiprov` (the site moved from wadrox.com); the downloads screen names the site « tiprov »
 
