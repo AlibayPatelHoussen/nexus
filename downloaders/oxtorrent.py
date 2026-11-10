@@ -69,7 +69,7 @@ from bs4 import BeautifulSoup
 HERE = Path(__file__).resolve().parent
 DATA = HERE / "data"
 PORTAL = "https://ww1.click/oxtorrent/"
-DEFAULT_BASE = "https://ww4-oxtorrent.officiel.cc"
+DEFAULT_BASE = "https://ww4-oxtorrent.officiel.co"
 BASE_FILE = DATA / "oxtorrent.json"
 
 FILMS_DIR = os.environ.get("FILMS_PATH") or "/media/films"
