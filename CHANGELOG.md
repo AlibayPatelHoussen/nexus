@@ -4,6 +4,9 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Fixed — films.py: tiprov « erreur réseau (ContentDecodingError) »
+- The site announces a compression its pages are not in. The page is now asked again without compression, and decoded by hand (gzip, deflate, brotli, zstd, else as it is) when it still comes labelled wrongly
+
 ### Changed — films.py: says why the films site is unreachable
 - « Site de films inaccessible » now comes with the reason seen from the server: domain not found, no answer, connection refused, page not found (404), another HTTP error, anti-robot protection (Cloudflare), or a redirect to another address
 
