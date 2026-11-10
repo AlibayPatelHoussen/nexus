@@ -4,6 +4,9 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Changed — films.py: new site address
+- The films script now reads `https://tiprov.com/fc3e940/home/tiprov` (the site moved from wadrox.com); the downloads screen names the site « tiprov »
+
 ### Fixed — Manga: pages reduced to a faint outline (Bleach chapter 1)
 - Scan pages saved as 16-bit greyscale lost almost everything when the chapter PDF was built: Pillow clips such pages instead of scaling them, so all but the darkest lines turned white. Pages are now scaled to 8 bits first; transparent pages are laid on white
 - Chapters already downloaded keep their damaged pages: delete them and download them again
