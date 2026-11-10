@@ -83,13 +83,58 @@ SESSION.headers.update({
     "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
 })
 
+def _decode_body(raw, encodings):
+    """Bytes of a page whose Content-Encoding could not be undone as announced (Nexus): each
+    known compression is tried, the bytes as they are last."""
+    import gzip
+    import zlib
+    tries = [gzip.decompress, zlib.decompress, lambda b: zlib.decompress(b, -zlib.MAX_WBITS)]
+    try:
+        import brotli
+        tries.append(brotli.decompress)
+    except ImportError:
+        pass
+    try:
+        import zstandard
+        tries.append(lambda b: zstandard.ZstdDecompressor().decompressobj().decompress(b))
+    except ImportError:
+        pass
+    for decode in tries:
+        try:
+            return decode(raw)
+        except Exception:
+            continue
+    return raw
+
+
+def _request(method, url, data=None):
+    """One request. Some sites announce a compression their page is not in (« Content-Encoding:
+    gzip » on plain HTML, a double encoding…): requests then fails with ContentDecodingError.
+    The page is asked again without compression, and decoded by hand if it still comes labelled
+    wrongly (Nexus)."""
+    send = SESSION.post if method == "POST" else SESSION.get
+    try:
+        return send(url, data=data, timeout=20) if method == "POST" else send(url, timeout=20)
+    except requests.exceptions.ContentDecodingError:
+        pass
+    plain = {"Accept-Encoding": "identity"}
+    kwargs = {"data": data} if method == "POST" else {}
+    try:
+        return send(url, timeout=20, headers=plain, **kwargs)
+    except requests.exceptions.ContentDecodingError:
+        pass
+    r = send(url, timeout=20, headers=plain, stream=True, **kwargs)
+    raw = r.raw.read(decode_content=False)
+    r._content = _decode_body(raw, r.headers.get("Content-Encoding", ""))
+    r._content_consumed = True
+    r.headers.pop("Content-Encoding", None)
+    return r
+
+
 def get_page(url, method="GET", data=None):
     for attempt in range(3):
         try:
-            if method == "POST":
-                r = SESSION.post(url, data=data, timeout=20)
-            else:
-                r = SESSION.get(url, timeout=20)
+            r = _request(method, url, data)
             if r.status_code == 404:
                 return None
             r.raise_for_status()
@@ -605,7 +650,7 @@ def _why_unreachable(url):
     """Why the films site does not answer, in plain French (Nexus): one plain request, its outcome."""
     host = urlparse(url).hostname or url
     try:
-        r = SESSION.get(url, timeout=20, allow_redirects=True)
+        r = _request("GET", url)
     except requests.exceptions.SSLError:
         return f"certificat HTTPS refusé pour {host}"
     except requests.exceptions.ConnectionError as e:
