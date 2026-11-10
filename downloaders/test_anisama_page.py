@@ -161,3 +161,35 @@ class EditionsTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class PageRgbTest(unittest.TestCase):
+    """Scan pages of any kind become faithful 8-bit RGB before they go into the chapter PDF."""
+
+    def setUp(self):
+        try:
+            from PIL import Image
+        except ImportError:
+            self.skipTest("Pillow not installed")
+        self.Image = Image
+        self.page_rgb = _load("page_rgb")
+
+    def test_16_bit_greyscale_is_scaled_not_clipped(self):
+        # A 16-bit page: black ink, dark grey (a coat), mid grey, white paper
+        img = self.Image.new("I;16", (4, 1))
+        img.putdata([0, 8000, 32768, 65535])
+        self.assertEqual([p[0] for p in self.page_rgb(img).getdata()], [0, 31, 127, 255])
+        # Pillow alone turns everything but the ink white: the outline-only page of the report
+        self.assertEqual([p[0] for p in img.convert("RGB").getdata()], [0, 255, 255, 255])
+
+    def test_transparent_pages_are_laid_on_white(self):
+        img = self.Image.new("RGBA", (2, 1))
+        img.putdata([(0, 0, 0, 255), (0, 0, 0, 0)])
+        self.assertEqual(list(self.page_rgb(img).getdata()), [(0, 0, 0), (255, 255, 255)])
+
+    def test_usual_pages_are_untouched(self):
+        img = self.Image.new("L", (2, 1))
+        img.putdata([10, 200])
+        self.assertEqual(list(self.page_rgb(img).getdata()), [(10, 10, 10), (200, 200, 200)])
+        self.assertEqual(self.page_rgb(self.Image.new("RGB", (1, 1), (1, 2, 3))).getpixel((0, 0)), (1, 2, 3))
+

@@ -4,6 +4,10 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Fixed — Manga: pages reduced to a faint outline (Bleach chapter 1)
+- Scan pages saved as 16-bit greyscale lost almost everything when the chapter PDF was built: Pillow clips such pages instead of scaling them, so all but the darkest lines turned white. Pages are now scaled to 8 bits first; transparent pages are laid on white
+- Chapters already downloaded keep their damaged pages: delete them and download them again
+
 ### Fixed — IPTV: the conversion button on a channel that cannot be read
 - Owner's screenshots: on a channel whose source refuses access, the button answered « Ce navigateur n’affiche pas son image… », which was not the trouble. It now says why the server does not convert (source not answering or refusing access, radio, ffmpeg missing, server busy), and is not offered once a channel is given up — the conversion was already tried by then
 
