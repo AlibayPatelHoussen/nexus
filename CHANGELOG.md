@@ -4,6 +4,11 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Fixed — A downloaded film without its Apple TV artwork (Harry Potter)
+- A title added by a download, or found by the automatic scan when a library opens, waited for the daily enrichment: meanwhile it showed its poster with the title written on it and its name in plain letters. Its title logo, textless key art and IMDb id are now fetched as soon as it is added (no IMDb dataset download for that)
+- The daily enrichment fetches the artwork first, and an unreachable IMDb dataset no longer skips it
+- IPTV playback details always say why a stream was converted
+
 ### Fixed — films.py: tiprov « erreur réseau (ContentDecodingError) »
 - The site announces a compression its pages are not in. The page is now asked again without compression, and decoded by hand (gzip, deflate, brotli, zstd, else as it is) when it still comes labelled wrongly
 

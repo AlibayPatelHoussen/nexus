@@ -686,7 +686,9 @@ test('IPTV on iPhone (Safari reads the stream itself): sound without a picture �
   await black.waitForFunction(() => { const v = document.querySelector('video'); return (v.currentSrc || '').includes('/converted/') && v.videoWidth > 0 && v.currentTime > 0.5 }, null, { timeout: 90000 })
   for (let i = 0; i < 3; i++) await black.click('text=EN DIRECT')
   await black.waitForSelector('text=/h264 entrelacé · son ac3/', { timeout: 10000 })
-  await black.waitForSelector('text=/converti : vidéo entrelacée/', { timeout: 10000 })
+  // Converted either at once (the server said the video is interlaced) or after the stream was
+  // loaded again without a picture shown: whichever came first, the details say why
+  await black.waitForSelector('text=/converti : (vidéo entrelacée|image non affichée)/', { timeout: 10000 })
   await black.context().close()
   // The same stream where Safari does show it: left as it is
   const fine = await newPage(admin)

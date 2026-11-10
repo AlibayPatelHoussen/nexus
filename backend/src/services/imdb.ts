@@ -81,20 +81,47 @@ export async function refreshImdbRatings(): Promise<number> {
 }
 
 let running: Promise<{ linked: number; rated: number; artwork: number }> | null = null
+/** One step of the enrichment: its failure (IMDb dataset unreachable…) never stops the others. */
+const step = async (name: string, run: () => Promise<number>) => {
+  try { return await run() } catch (err) { logger.warn(`${name} failed: ${err}`); return 0 }
+}
 /** Enrichment after scans and once a day: IMDb ids + ratings, Apple TV-style artwork. One run at a time. */
 export function syncImdb() {
   if (running) return running
   running = (async () => {
     // Animes not linked to TMDB yet first: they then get IMDb ratings and artwork in this run
-    const animes = await linkAnimesToTmdb().catch((err) => { logger.warn(`Anime TMDB link failed: ${err}`); return 0 })
+    const animes = await step('Anime TMDB link', linkAnimesToTmdb)
     if (animes) logger.info(`TMDB: ${animes} animes linked`)
-    const linked = await linkImdbIds()
-    const rated = await refreshImdbRatings()
-    const artwork = await linkArtwork()
+    // Artwork first: it is what a new title looks wrong without (poster with its text, title in plain letters)
+    const artwork = await step('Artwork', () => linkArtwork())
+    const linked = await step('IMDb ids', () => linkImdbIds())
+    const rated = await step('IMDb ratings', refreshImdbRatings)
     logger.info(`IMDb: ${linked} new ids, ${rated} ratings updated; artwork for ${artwork} titles`)
     return { linked, rated, artwork }
   })().finally(() => { running = null })
   return running
+}
+
+let light: Promise<number> | null = null
+let again = false
+/**
+ * A title just added (download finished, automatic scan): its artwork and IMDb id now, not at
+ * the next daily run. Light — no IMDb dataset download; only titles never looked at are
+ * fetched. Asked during a run, it runs once more after it (the new title may have come too late).
+ */
+export function enrichNewTitles(): Promise<number> {
+  if (process.env.IMDB_SYNC === 'off') return Promise.resolve(0)
+  if (light) { again = true; return light }
+  light = (async () => {
+    let total = 0
+    do {
+      again = false
+      total += await step('Artwork', () => linkArtwork())
+      await step('IMDb ids', () => linkImdbIds())
+    } while (again)
+    return total
+  })().finally(() => { light = null })
+  return light
 }
 
 let timer: NodeJS.Timeout | null = null

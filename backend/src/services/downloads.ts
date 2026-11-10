@@ -8,6 +8,7 @@ import { AppError, ConflictError, NotFoundError, ValidationError } from '../util
 import { signedImage } from './images'
 import { MediaScanner, hintFor } from './scanner'
 import { indexLibrarySoon } from './keyframeIndexer'
+import { enrichNewTitles } from './imdb'
 import {
   LANG_RE, SEASON_RE, SOURCES, collect, destFor, parseSourceId, runScript, selectionArg,
   type Kind, type RunHandle, type ScriptEvent, type Source,
@@ -612,6 +613,8 @@ function rescanLibrary(kind: Kind, attempt = 0): Promise<void> {
   return MediaScanner.quickly(scan[0], scan[1])
     .then((n) => {
       logger.info(`Library rescan after download (${kind}): ${n}`)
+      // The new title gets its title logo and textless poster now, like the others
+      if (kind !== 'manga' && kind !== 'youtube') void enrichNewTitles()
       // MKV → MP4 once the file has settled (a file written less than a minute ago is skipped)
       setTimeout(indexLibrarySoon, 90_000).unref()
     })
