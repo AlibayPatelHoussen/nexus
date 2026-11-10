@@ -103,7 +103,7 @@ export function originalImage(url: string | null | undefined): string | null {
 export const SOURCE_INFO: Record<DownloadSource, { site: string; script: string }> = {
   anisama: { site: 'anime-sama', script: 'anisama.py' },
   movix:   { site: 'movix', script: 'movix.py' },
-  films:   { site: 'wadrox', script: 'films.py' },
+  films:   { site: 'tiprov', script: 'films.py' },
   oxtorrent: { site: 'OxTorrent', script: 'oxtorrent.py' },
   youtube: { site: 'YouTube', script: 'youtube.py' },
 }

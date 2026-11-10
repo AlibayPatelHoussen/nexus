@@ -452,7 +452,7 @@ async def main():
     print(c("  ╚══════════════════════════════════════════════════╝", CY))
     print()
 
-    BASE_URL = "https://wadrox.com/99c7f65/home/wadrox"
+    BASE_URL = "https://tiprov.com/fc3e940/home/tiprov"
 
     print(f"  {c('[1]', B, CY)} Rechercher un film sur le site")
     print(f"  {c('[2]', B, CY)} Télécharger avec un lien direct")
@@ -538,7 +538,7 @@ async def main():
 import base64
 import json
 
-FILMS_BASE_URL = "https://wadrox.com/99c7f65/home/wadrox"   # same site as main()
+FILMS_BASE_URL = "https://tiprov.com/fc3e940/home/tiprov"   # same site as main()
 TMDB_IMG = "https://image.tmdb.org/t/p/w342"
 _parse_films_original = parse_films_from_page
 
