@@ -83,7 +83,11 @@ KEEP_EXTS = VIDEO_EXTS + (".srt", ".ass", ".ssa", ".sub", ".idx", ".vtt")
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
 SESSION = requests.Session()
-SESSION.headers.update({"User-Agent": UA, "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8"})
+SESSION.headers.update({
+    "User-Agent": UA,
+    "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
+    "Accept-Encoding": "gzip, deflate"
+})
 
 R = "\033[0m"; B = "\033[1m"; DIM = "\033[2m"; CY = "\033[96m"; GR = "\033[92m"; YE = "\033[93m"; RE = "\033[91m"
 
@@ -130,9 +134,9 @@ def get_page(path, retry_portal=True):
             r = SESSION.get(base + path, timeout=25, headers={"Referer": base + "/"})
             if r.status_code == 200:
                 return r.text, base
-            print(f"{base + path} -> {r.status_code}")
+            print(f"{base + path} -> {r.status_code}", file=sys.stderr)
         except requests.RequestException as e:
-            print(f"{base + path} -> {e}")
+            print(f"{base + path} -> {e}", file=sys.stderr)
         if attempt == 0 and retry_portal:
             base = site_base(refresh=True)      # the domain may have moved: ask the portal again
     return None, base
