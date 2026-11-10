@@ -601,12 +601,45 @@ def _tmdb_poster(title, year):
     return None, None
 
 
+def _why_unreachable(url):
+    """Why the films site does not answer, in plain French (Nexus): one plain request, its outcome."""
+    host = urlparse(url).hostname or url
+    try:
+        r = SESSION.get(url, timeout=20, allow_redirects=True)
+    except requests.exceptions.SSLError:
+        return f"certificat HTTPS refusé pour {host}"
+    except requests.exceptions.ConnectionError as e:
+        text = str(e).lower()
+        if any(k in text for k in ("name or service not known", "nodename nor servname", "getaddrinfo", "name resolution", "no address")):
+            return f"adresse {host} introuvable (le nom de domaine ne répond pas depuis le serveur)"
+        if "refused" in text:
+            return f"connexion refusée par {host}"
+        return f"{host} injoignable depuis le serveur"
+    except requests.exceptions.Timeout:
+        return f"{host} ne répond pas (délai dépassé)"
+    except requests.RequestException as e:
+        return f"erreur réseau ({type(e).__name__})"
+    final = urlparse(r.url).hostname or host
+    moved = f" (redirigé vers {final})" if final != host else ""
+    body = (r.text or "")[:4000].lower()
+    cloudflare = "cloudflare" in r.headers.get("server", "").lower() or "cf-ray" in r.headers
+    protected = cloudflare and (
+        r.status_code in (403, 429, 503) or "just a moment" in body or "challenge" in body)
+    if protected:
+        return f"{final} bloque les robots (protection Cloudflare, HTTP {r.status_code}){moved}"
+    if r.status_code == 404:
+        return f"page introuvable (HTTP 404) à cette adresse{moved} : le lien a peut-être changé"
+    if r.status_code >= 400:
+        return f"le site répond HTTP {r.status_code}{moved}"
+    return f"le site répond, mais sa page n'a pas pu être lue{moved}"
+
+
 def json_search(query, limit):
     global parse_films_from_page
     parse_films_from_page = _parse_films_with_posters
     config = detect_site_config(FILMS_BASE_URL)
     if not config:
-        nexus_cli.fail("Site de films inaccessible")
+        nexus_cli.fail(f"Site de films inaccessible : {_why_unreachable(FILMS_BASE_URL)}")
     films = search_online(config, query)
     q = query.lower()
     films.sort(key=lambda f: (q not in f["title"].lower(), f["title"].lower()))
