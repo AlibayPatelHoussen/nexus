@@ -69,7 +69,7 @@ from bs4 import BeautifulSoup
 HERE = Path(__file__).resolve().parent
 DATA = HERE / "data"
 PORTAL = "https://ww1.click/oxtorrent/"
-DEFAULT_BASE = "https://ww4-oxtorrent.officiel.co"
+DEFAULT_BASE = "https://ww4-oxtorrent.officiel.cc"
 BASE_FILE = DATA / "oxtorrent.json"
 
 FILMS_DIR = os.environ.get("FILMS_PATH") or "/media/films"
@@ -83,7 +83,11 @@ KEEP_EXTS = VIDEO_EXTS + (".srt", ".ass", ".ssa", ".sub", ".idx", ".vtt")
 UA = ("Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 "
       "(KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36")
 SESSION = requests.Session()
-SESSION.headers.update({"User-Agent": UA, "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8"})
+SESSION.headers.update({
+    "User-Agent": UA,
+    "Accept-Language": "fr-FR,fr;q=0.9,en;q=0.8",
+    "Accept-Encoding": "gzip, deflate"
+})
 
 R = "\033[0m"; B = "\033[1m"; DIM = "\033[2m"; CY = "\033[96m"; GR = "\033[92m"; YE = "\033[93m"; RE = "\033[91m"
 
