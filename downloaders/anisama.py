@@ -154,6 +154,27 @@ def get(url, silent_404=False, **kwargs):
             time.sleep(1.5)
 
 
+def page_rgb(img):
+    """A scan page as plain 8-bit RGB, whatever it was saved as (Nexus).
+    Pillow's own convert("RGB") clips 16-bit greyscale pages (I;16, some PNG scans) instead of
+    scaling them: everything above 255 of 65535 turns white, only the darkest lines stay — a
+    page that looks like a faint outline. Transparent pages are laid on white, like paper."""
+    from PIL import Image as PILImage
+    if img.mode in ("I;16", "I;16L", "I;16B", "I;16N", "I", "F"):
+        low, high = img.getextrema()
+        # 16-bit pages use the whole range; a page that fits in 8 bits is kept as it is
+        scale = 255.0 / 65535.0 if high > 255 else 1.0
+        if img.mode == "F" and high <= 1.0:
+            scale = 255.0
+        return img.point(lambda v: v * scale).convert("L").convert("RGB")
+    if img.mode in ("RGBA", "LA", "PA") or (img.mode == "P" and "transparency" in img.info):
+        rgba = img.convert("RGBA")
+        paper = PILImage.new("RGB", rgba.size, (255, 255, 255))
+        paper.paste(rgba, mask=rgba.getchannel("A"))
+        return paper
+    return img.convert("RGB")
+
+
 def slugify(text: str) -> str:
     text = re.sub(r'[<>:"/\\|?*]', '', text)
     return re.sub(r'\s+', ' ', text).strip()
@@ -858,7 +879,7 @@ def download_chapter(chapter: dict, title: str, lang: str):
         pil_images = []
         for img_path in images:
             try:
-                img = PILImage.open(img_path).convert("RGB")
+                img = page_rgb(PILImage.open(img_path))
                 pil_images.append(img)
             except Exception:
                 pass
@@ -1666,7 +1687,7 @@ def _download_chapter_json(ch, title, folder, index, total):
                      and not p.name.startswith(".part-")), key=lambda p: p.name)
     try:
         from PIL import Image as PILImage
-        imgs = [PILImage.open(p).convert("RGB") for p in images]
+        imgs = [page_rgb(PILImage.open(p)) for p in images]
         part = nexus_cli.part_path(pdf)
         imgs[0].save(part, format="PDF", save_all=True, append_images=imgs[1:])
         nexus_cli.finish(part, pdf)
