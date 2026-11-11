@@ -152,6 +152,13 @@ export default function MediaBrowser({ title, tabs, yearFilter, emptyIcon, video
       .map(([g]) => ({ genre: g, items: items.filter((i) => i.genres?.includes(g)).slice(0, 24) }))
   }, [items])
 
+  // Manga page: its manhwa, manhua and webtoons on shelves of their own
+  const kindRows = useMemo(() => !books ? [] : [
+    { title: 'Manhwa', items: items.filter((i) => i.origin === 'manhwa') },
+    { title: 'Manhua', items: items.filter((i) => i.origin === 'manhua') },
+    { title: 'Webtoons', items: items.filter((i) => i.webtoon) },
+  ].filter((r) => r.items.length > 0), [items, books])
+
   async function scan() {
     setScanning(true)
     try {
@@ -315,6 +322,7 @@ export default function MediaBrowser({ title, tabs, yearFilter, emptyIcon, video
         {myList.length > 0 && <MediaRow title="Ma liste" items={myList} onSeeAll={() => navigate('/ma-liste')} kind={shelf} />}
         <MediaRow title={books ? 'Nouveautés' : 'Ajouts récents'} items={items.slice(0, 24)} isLoading={isLoading} kind={shelf} />
         {topRated.length >= 3 && <MediaRow title={books ? 'Les mieux notés' : 'Top 10'} items={topRated} kind={books ? 'book' : 'top10'} />}
+        {kindRows.map((r) => <MediaRow key={r.title} title={r.title} items={r.items.slice(0, 24)} kind={shelf} />)}
         {genreRows.map((r) => <MediaRow key={r.genre} title={r.genre} items={r.items} onSeeAll={() => showGenre(r.genre)} kind={shelf} />)}
       </>
     )

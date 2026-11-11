@@ -23,6 +23,9 @@ function mapMedia(row: Record<string, any>) {
     tmdbId:        row['tmdb_id'],
     anilistId:     row['anilist_id'],
     mangadexId:    row['mangadex_id'],
+    // Manga: 'manga' | 'manhwa' | 'manhua' (null: unknown), and whether it reads as a long strip
+    origin:        row['origin'] ?? null,
+    webtoon:       !!row['webtoon'],
     overview:      row['overview'],
     // Remote artwork goes through the backend image proxy / cache
     posterPath:    proxied('media', row['id'], 'poster', row['poster_path']),
@@ -93,7 +96,7 @@ export class MediaService {
       `SELECT id, type, title, original_title, poster_path, backdrop_path,
               genres, year, rating, vote_count, status, overview, duration,
               file_path, file_size, created_at, channel, imdb_id, imdb_rating, imdb_votes,
-              key_art_path, logo_path, hero_backdrop_path
+              key_art_path, logo_path, hero_backdrop_path, origin, webtoon
          FROM media_items
         WHERE type = $1
         ORDER BY (backdrop_path IS NOT NULL AND COALESCE(overview, '') <> '') DESC,
@@ -134,7 +137,7 @@ export class MediaService {
         `SELECT id, type, title, original_title, poster_path, backdrop_path,
                 genres, year, rating, vote_count, status, overview, duration,
                 file_path, file_size, created_at, channel, imdb_id, imdb_rating, imdb_votes,
-                key_art_path, logo_path, hero_backdrop_path
+                key_art_path, logo_path, hero_backdrop_path, origin, webtoon
                FROM media_items
          ${where}
          ORDER BY ${validSort} ${validDir} NULLS LAST

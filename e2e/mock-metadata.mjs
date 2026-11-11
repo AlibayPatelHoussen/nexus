@@ -216,6 +216,7 @@ http.createServer((req, res) => {
         // Like AniList: covers on a different host than the API (s4.anilist.co)
         coverImage: { large: `${IMG}/anilist/cover_${hash(search)}.png`, extraLarge: `${IMG}/anilist/cover_${hash(search)}.png` },
         bannerImage: `${IMG}/anilist/banner_${hash(search)}.png`, genres: ['Action', 'Aventure'], averageScore: 85, status: 'FINISHED', startDate: { year: 1999 },
+        countryOfOrigin: /oneshot/i.test(search) ? 'CN' : 'JP',
       } } })
     }
 
@@ -224,8 +225,10 @@ http.createServer((req, res) => {
       const q = url.searchParams.get('title') || ''
       return json(res, { data: [{
         id: `md-${hash(q)}`,
+        // Solo Leveling: a Korean webtoon. « Oneshot »: MangaDex does not say where it comes from (AniList does).
         attributes: { title: { en: title(q) }, description: { en: `Manga ${q}` }, status: 'ongoing',
-          tags: [{ attributes: { name: { en: 'Action' } } }] },
+          ...(/solo leveling/i.test(q) ? { originalLanguage: 'ko' } : /oneshot/i.test(q) ? {} : { originalLanguage: 'ja' }),
+          tags: [{ attributes: { name: { en: 'Action' } } }, ...(/solo leveling/i.test(q) ? [{ attributes: { name: { en: 'Long Strip' } } }] : [])] },
         relationships: [{ type: 'cover_art', attributes: { fileName: 'cover.jpg' } }],
       }] })
     }

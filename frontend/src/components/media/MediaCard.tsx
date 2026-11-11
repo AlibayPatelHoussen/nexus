@@ -11,6 +11,7 @@ import { useContextMenu } from '@/components/ui/useContextMenu'
 import { spring } from '@/design/motion'
 import { useMediaActions } from './mediaActions'
 import Artwork from './Artwork'
+import { mangaPills } from './mangaKind'
 
 interface MediaCardProps {
   item:       MediaItem
@@ -47,6 +48,7 @@ export default function MediaCard({ item, progress, duration, subtitle, shape = 
   const grid = showTitle ?? (variant === 'grid' || book)
   const remaining = duration && progress ? Math.max(0, Math.round((duration - progress) / 60)) : null
   const qc = useQueryClient()
+  const pills = wide ? [] : mangaPills(item)
 
   // « Reprendre » cards: « Retirer de Reprendre » (the progress is kept; watching again brings it back)
   const removeFromContinue = async () => {
@@ -99,7 +101,7 @@ export default function MediaCard({ item, progress, duration, subtitle, shape = 
         whileFocus={{ scale: 1.045 }}
         whileTap={{ scale: 0.97 }}
         transition={spring.lift}
-        aria-label={[item.title, subtitle].filter(Boolean).join(', ')}
+        aria-label={[item.title, subtitle, ...(wide ? [] : mangaPills(item))].filter(Boolean).join(', ')}
         {...menu.bind(menuItems(), item.title)}
       >
         <Artwork
@@ -124,6 +126,14 @@ export default function MediaCard({ item, progress, duration, subtitle, shape = 
             style={{ background: 'radial-gradient(circle at var(--mx, 50%) var(--my, 0%), rgba(255,255,255,0.28), rgba(255,255,255,0.06) 38%, transparent 62%)' }}
             aria-hidden="true"
           />
+          {pills.length > 0 && (
+            // Manhwa / Manhua / Webtoon, over the top of the cover
+            <span className="absolute left-1.5 top-1.5 right-1.5 flex flex-wrap gap-1 pointer-events-none">
+              {pills.map((p) => (
+                <span key={p} className="h-[18px] px-1.5 rounded-pill bg-black/65 text-white text-[10px] font-semibold leading-[18px] tracking-wide">{p}</span>
+              ))}
+            </span>
+          )}
           {rank != null && (
             <span className="absolute left-2.5 top-1 text-[40px] font-bold leading-none text-white tabular [text-shadow:0_2px_12px_rgba(0,0,0,0.45)]" aria-hidden="true">{rank}</span>
           )}

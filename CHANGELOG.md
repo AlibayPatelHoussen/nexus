@@ -4,6 +4,11 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Added — Manga: « Manhwa », « Manhua » and « Webtoon » pills
+- Each title of the Manga library is filed by where it comes from and how it reads: manhwa (Korea), manhua (China), webtoon (long vertical strip). Told by MangaDex (original language, « Long Strip » / « Web Comic » tags), else by AniList (country of origin); nothing is guessed from the name
+- Pills on the covers, the kind on the title page (« Manhwa · Webtoon · 179 chapitres »), and shelves « Manhwa », « Manhua », « Webtoons » on the Manga page
+- Titles already in the library are looked up once more for it at the next scan (opening the Manga page is enough)
+
 ### Fixed — A downloaded film without its Apple TV artwork (Harry Potter)
 - A title added by a download, or found by the automatic scan when a library opens, waited for the daily enrichment: meanwhile it showed its poster with the title written on it and its name in plain letters. Its title logo, textless key art and IMDb id are now fetched as soon as it is added (no IMDb dataset download for that)
 - The daily enrichment fetches the artwork first, and an unreachable IMDb dataset no longer skips it

@@ -41,6 +41,8 @@ CREATE TABLE IF NOT EXISTS media_items (
   tmdb_id         INTEGER,
   anilist_id      INTEGER,
   mangadex_id     VARCHAR(100),
+  origin          VARCHAR(10),     -- manga: 'manga' | 'manhwa' | 'manhua' (NULL: not looked up yet)
+  webtoon         BOOLEAN NOT NULL DEFAULT FALSE,   -- manga read as a long vertical strip
   mal_id          INTEGER,
   imdb_id         VARCHAR(16),     -- from TMDB external_ids
 
