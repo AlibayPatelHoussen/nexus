@@ -25,7 +25,7 @@ fs.mkdirSync(OUT, { recursive: true })
 const PAGES = {
   dashboard: '/dashboard', cinema: '/cinema', animes: '/animes', manga: '/manga', youtube: '/youtube',
   downloads: '/downloads', files: '/files', terminal: '/terminal', services: '/services', network: '/network',
-  settings: '/settings', login: '/login',
+  settings: '/settings', login: '/login', jarvis: '/jarvis',
 }
 const wanted = process.argv.slice(2).filter((a) => !a.startsWith('-'))
 // "name=/path" captures any page (e.g. serie=/media/<id>)
