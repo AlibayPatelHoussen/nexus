@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { Link } from 'react-router-dom'
-import { Activity, Folder, Wifi, WifiOff } from 'lucide-react'
+import { Activity, Bot, Folder, Wifi, WifiOff } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 import { useSystemStats } from '@/hooks/useSocket'
 import { usePageActive } from '@/components/shell/shellContext'
@@ -143,6 +143,7 @@ function PhoneOverview({ stats, history, services, servicesError }: OverviewProp
       </Group>
 
       <Group header="Serveur">
+        <ListRow to="/jarvis" icon={<Bot strokeWidth={1.75} />} iconTone="accent" title="Jarvis" detail="Assistant" accessory="chevron" />
         {isAdmin && <ListRow to="/files" icon={<Folder strokeWidth={1.75} />} iconTone="accent" title="Fichiers" accessory="chevron" />}
         <ListRow to="/services" icon={<Activity strokeWidth={1.75} />} iconTone="accent" title="Services"
           detail={servicesError ? 'Indisponible' : services ? (stopped ? `${stopped} arrêté${stopped > 1 ? 's' : ''}` : 'Tous actifs') : ''} accessory="chevron" />

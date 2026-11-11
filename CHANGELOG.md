@@ -4,6 +4,14 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Added — Jarvis, the personal assistant, in Nexus
+- New page « Jarvis » (sidebar: Serveur, above Fichiers; iPhone: Aperçu › Jarvis): a conversation with Jarvis, the assistant that runs as its own service on the server (repository jarvis-backend, local model, free). Answers appear as they are written, with the tools Jarvis uses (server state, Docker, files, tasks, reminders, web…)
+- Sensitive actions (command, container restart, file write) show « Autoriser / Refuser »; actions asked from another app (phone…) wait here for approval
+- Microphone (speech recognition of the browser) and answers read aloud (speaker button), nothing to install
+- Jarvis reminders and approval requests arrive as Nexus notifications on the phone
+- Every account gets its own Jarvis with its Nexus role (terminal, files, Docker and services stay admin-only); the account named in `JARVIS_OWNER` shares the memory of the Jarvis terminal
+- The Nexus backend relays every call (`/api/jarvis/*`): the Jarvis key (`JARVIS_API_KEY`) never reaches the browser
+
 ### Fixed — An anime film downloaded with anisama.py showed another title (« Your Name »)
 - AniList's first search result for « Your Name » is a 2016 Suntory advert with the film's characters: the library showed « Suntory Minami Alps no Tennen Mizu ». The scanner now takes the result named like the folder (romaji, English, native or synonym), the best known one first; else AniList's first result
 - An anime film (AniList format « Movie », or a folder holding only « Film » folders as anisama.py saves them) is looked up among TMDB films: the series search found an unrelated animated series (« In Your Name, Allah »), whose poster and backdrop were shown. Its artwork and IMDb id come from the TMDB film (`media_items.tmdb_kind`)
