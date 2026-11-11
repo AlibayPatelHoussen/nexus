@@ -4,6 +4,11 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Added — Automatic deployment from a private repository
+- `sudo bash scripts/auto-deploy.sh set-token` saves a read-only GitHub token (checked at once); `deploy.sh` and `auto-deploy.sh` then pull `main` and read the CI result with it (`scripts/github-auth.sh`, token in environment variables only)
+- A pull refused by GitHub now says so and how to fix it, instead of « no Internet? »
+- CI artifacts (coverage, build) are kept 7 days instead of 90 (storage is limited for private repositories)
+
 ### Added — Manga: « Manhwa », « Manhua » and « Webtoon » pills
 - Each title of the Manga library is filed by where it comes from and how it reads: manhwa (Korea), manhua (China), webtoon (long vertical strip). Told by MangaDex (original language, « Long Strip » / « Web Comic » tags), else by AniList (country of origin); nothing is guessed from the name
 - Pills on the covers, the kind on the title page (« Manhwa · Webtoon · 179 chapitres »), and shelves « Manhwa », « Manhua », « Webtoons » on the Manga page

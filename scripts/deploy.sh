@@ -33,7 +33,15 @@ if ! getent hosts github.com >/dev/null 2>&1; then
   echo "   Its state / last repairs:                          sudo bash scripts/wifi-watchdog.sh status"
   exit 1
 fi
+# Private repository: the token saved by « sudo bash scripts/auto-deploy.sh set-token »
+# shellcheck source=scripts/github-auth.sh
+. "$NEXUS_DIR/scripts/github-auth.sh"
 before=$(git rev-parse HEAD)
+if ! git fetch -q origin main; then
+  echo "❌ git cannot read the repository on GitHub."
+  echo "   Private repository? Save a read-only token: sudo bash scripts/auto-deploy.sh set-token"
+  exit 1
+fi
 git pull --ff-only origin main
 # git replaces deploy.sh by a new file: bash would go on reading the OLD one, so the new
 # steps of this very update (e.g. installing deno) would only run at the next deploy.
