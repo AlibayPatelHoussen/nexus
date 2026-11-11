@@ -180,6 +180,16 @@ keeps working); commits merged during a deployment are deployed right after.
 `bash scripts/auto-deploy.sh status` shows the running version, GitHub's, the
 last webhook and the last deployments (log: `logs/auto-deploy.log`).
 
+**Private repository:** the server then needs a read-only token to pull `main`
+and read the CI result. Create a fine-grained token on GitHub (*Settings →
+Developer settings → Fine-grained tokens*, this repository only, permissions
+**Contents** and **Checks** read-only), then run
+`sudo bash scripts/auto-deploy.sh set-token` (it checks the token right away).
+The token is kept in `/etc/default/nexus-auto-deploy` (root and the Nexus user
+only) and given to git through environment variables, never on a command line
+nor in `.git/config`. Save it **before** making the repository private, and
+again when it expires.
+
 ### Wi-Fi watchdog (USB dongle)
 
 `sudo bash scripts/wifi-watchdog.sh install` repairs a USB Wi-Fi dongle that

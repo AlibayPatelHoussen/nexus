@@ -13,11 +13,12 @@
 #  bash scripts/auto-deploy.sh status           state + last deployments
 #  bash scripts/auto-deploy.sh run              check / deploy now
 #  sudo bash scripts/auto-deploy.sh uninstall   remove
+#  sudo bash scripts/auto-deploy.sh set-token   save the GitHub token (private repository)
 #
 #  Options (/etc/default/nexus-auto-deploy):
 #    REQUIRE_CI=1      wait for a green CI before deploying (0: deploy at once)
 #    INTERVAL=10min    safety-net check interval (install-time)
-#    GITHUB_TOKEN=…    only if the repository becomes private
+#    GITHUB_TOKEN=…    private repository only: read-only token (use set-token)
 # ══════════════════════════════════════════════════════════════════════
 set -u
 
@@ -27,6 +28,9 @@ CONF=/etc/default/$NAME
 # shellcheck disable=SC1090
 [ -r "$CONF" ] && . "$CONF"
 REQUIRE_CI=${REQUIRE_CI:-1}
+# Private repository: git and the GitHub API use GITHUB_TOKEN
+# shellcheck source=scripts/github-auth.sh
+. "$DIR/scripts/github-auth.sh"
 MAX_ATTEMPTS=3
 NO_CI_WAIT=900          # no CI run seen for a commit after 15 min → deploy anyway
 LOG="$DIR/logs/auto-deploy.log"
@@ -72,7 +76,7 @@ run_once() {
   flock -n 9 || return 1
 
   if ! git fetch -q origin main 2>/dev/null; then
-    log_once "fetch-$(date +%F-%H)" "⚠️  git fetch failed (no Internet?) — retrying later"
+    log_once "fetch-$(date +%F-%H)" "⚠️  git fetch failed (no Internet? private repository without a valid token: sudo bash scripts/auto-deploy.sh set-token) — retrying later"
     return 1
   fi
   local head remote
@@ -213,12 +217,37 @@ do_status() {
     local r; r=$(git rev-parse origin/main)
     if [ "$r" = "$(git rev-parse HEAD)" ]; then echo "GitHub main     : same ✅"
     else echo "GitHub main     : $(git log -1 --format='%h %s' "$r" | cut -c1-90)  (CI: $(ci_state "$r"))"; fi
-  else echo "GitHub main     : unreachable (no Internet?)"; fi
+  elif [ -z "${GITHUB_TOKEN:-}" ]; then echo "GitHub main     : unreachable (no Internet? private repository: sudo bash scripts/auto-deploy.sh set-token)"
+  else echo "GitHub main     : unreachable (no Internet? token expired or without access: sudo bash scripts/auto-deploy.sh set-token)"; fi
   systemctl list-timers $NAME.timer --no-pager 2>/dev/null | head -2
   if [ -s "$DIR/logs/.deploy-request" ]; then echo "Last webhook    : $(cat "$DIR/logs/.deploy-request")"
   else echo "Last webhook    : none received yet (check the webhook on GitHub)"; fi
   echo ""; echo "Last events:"
   grep -E '🚀|✅|❌|⏳|⚠️' "$LOG" 2>/dev/null | tail -10 || echo "(none yet)"
+}
+
+# Private repository: save a read-only token in $CONF (root + the Nexus user only)
+do_set_token() {
+  need_root set-token
+  local user token tmp
+  user=$(stat -c %U "$DIR")
+  echo "Token GitHub en lecture seule pour $(repo_slug) (github.com → Settings → Developer settings"
+  echo "→ Fine-grained tokens : ce dépôt seulement, Contents et Checks en lecture seule)."
+  echo "Laisser vide pour retirer le token."
+  read -r -s -p "Token : " token; echo
+  token=$(printf '%s' "$token" | tr -d "\"' \r")
+  tmp=$(mktemp)
+  grep -v '^GITHUB_TOKEN=' "$CONF" 2>/dev/null > "$tmp" || true
+  [ -n "$token" ] && printf 'GITHUB_TOKEN=%s\n' "$token" >> "$tmp"
+  install -m 640 -o root -g "$(id -gn "$user")" "$tmp" "$CONF"
+  rm -f "$tmp"
+  if [ -z "$token" ]; then echo "Token retiré."; return; fi
+  if sudo -u "$user" bash -c ". '$DIR/scripts/github-auth.sh' && git -C '$DIR' ls-remote -q origin main" >/dev/null 2>&1; then
+    echo "✅ Token enregistré : le serveur lit le dépôt (vérifier : bash scripts/auto-deploy.sh status)"
+  else
+    echo "❌ Token enregistré mais GitHub refuse l'accès : vérifier le dépôt choisi et la permission Contents"
+    exit 1
+  fi
 }
 
 do_uninstall() {
@@ -234,5 +263,6 @@ case "${1:-}" in
   uninstall) do_uninstall ;;
   run)       do_run ;;
   status)    do_status ;;
-  *) sed -n '3,19p' "$0" | sed 's/^# \{0,2\}//'; exit 1 ;;
+  set-token) do_set_token ;;
+  *) sed -n '3,21p' "$0" | sed 's/^# \{0,2\}//'; exit 1 ;;
 esac
