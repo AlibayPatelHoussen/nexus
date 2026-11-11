@@ -39,7 +39,9 @@ CREATE TABLE IF NOT EXISTS media_items (
 
   -- External API IDs
   tmdb_id         INTEGER,
+  tmdb_kind       VARCHAR(5),      -- 'movie' | 'tv': TMDB catalogue of tmdb_id (NULL: by type; an anime film is 'movie')
   anilist_id      INTEGER,
+  meta_checked_at TIMESTAMPTZ,     -- anime: last AniList / TMDB match by the scanner (NULL: to look up again)
   mangadex_id     VARCHAR(100),
   origin          VARCHAR(10),     -- manga: 'manga' | 'manhwa' | 'manhua' (NULL: not looked up yet)
   webtoon         BOOLEAN NOT NULL DEFAULT FALSE,   -- manga read as a long vertical strip
