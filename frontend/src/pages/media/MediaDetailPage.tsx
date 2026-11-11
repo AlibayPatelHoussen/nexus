@@ -12,6 +12,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query'
 import { AlertTriangle, Check, Download, Play, Plus, RotateCw, Star, Tv } from 'lucide-react'
 import MediaRow from '@/components/media/MediaRow'
 import DetailHero from '@/components/media/DetailHero'
+import { mangaPills } from '@/components/media/mangaKind'
 import Artwork from '@/components/media/Artwork'
 import Skeleton from '@/components/ui/Skeleton'
 import ChaptersSection from '@/components/media/ChaptersSection'
@@ -200,8 +201,10 @@ export default function MediaDetailPage() {
   }
 
   const seasonsCount = seasons.length
+  // A manhwa / manhua is named as such instead of « Manga »; « Webtoon » comes with it
+  const pills = mangaPills(media)
   const metaBits = [
-    typeLabel[media.type],
+    ...(pills.length ? pills : [typeLabel[media.type]]),
     media.year ? String(media.year) : null,
     isShow && seasonsCount ? `${seasonsCount} saison${seasonsCount > 1 ? 's' : ''}` : null,
     isShow && episodes.length ? `${episodes.length} épisode${episodes.length > 1 ? 's' : ''}` : null,

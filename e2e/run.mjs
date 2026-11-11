@@ -1003,6 +1003,27 @@ test('detail page: artwork is whole (contain), 2:3, and never covered by the tex
   }
 })
 
+test('manga: manhwa / manhua / webtoon told by MangaDex (else AniList), shown as pills and shelves', async () => {
+  const kind = (name) => sql(`SELECT coalesce(origin, '-') || '|' || webtoon FROM media_items WHERE type='manga' AND file_path LIKE '%/${name}'`)
+  eq(kind('Solo Leveling'), 'manhwa|true', 'a Korean long strip (MangaDex)')
+  eq(kind('Oneshot Manga'), 'manhua|false', 'MangaDex does not say: AniList\'s country of origin')
+  eq(kind('Nested Manga'), 'manga|false', 'a Japanese manga')
+  const items = (await api('/api/media?type=manga&limit=50', { token: admin.accessToken })).json.data.items
+  const solo = items.find((m) => m.title === 'Solo Leveling')
+  eq([solo.origin, solo.webtoon], ['manhwa', true], 'given by the API')
+  const page = await newPage(admin)
+  await page.goto(`${B}/manga`, { waitUntil: 'networkidle' })
+  // Its own shelves, and the pills on the cover
+  await page.waitForSelector('h2:has-text("Manhwa")', { timeout: 15000 })
+  await page.waitForSelector('h2:has-text("Webtoons")', { timeout: 5000 })
+  await page.waitForSelector('button[aria-label="Solo Leveling, Manhwa, Webtoon"]', { timeout: 5000 })
+  await page.screenshot({ path: `${SHOTS}/manga-pills.png` })
+  await page.goto(`${B}/media/${solo.id}`, { waitUntil: 'networkidle' })
+  await page.locator('text=/Manhwa · Webtoon · 2 chapitres/ >> visible=true').first().waitFor({ timeout: 10000 })
+  await page.screenshot({ path: `${SHOTS}/manga-pills-detail.png` })
+  await page.context().close()
+})
+
 test('manga chapters: every folder layout is found and sorted', async () => {
   const chapters = (like) => sql(`SELECT string_agg(c.chapter_number::text || ':' || regexp_replace(c.folder_path, '^.*/', ''), ',' ORDER BY c.chapter_number) FROM chapters c JOIN media_items m ON m.id=c.media_item_id WHERE m.file_path LIKE '%/${like}'`)
   eq(chapters('Vinland Saga'), '1.0:Vinland Saga - Chapter 001.cbz,2.0:Vinland Saga - Chapter 002.cbz,10.0:Vinland Saga - Chapter 010.cbz', 'CBZ at the root')

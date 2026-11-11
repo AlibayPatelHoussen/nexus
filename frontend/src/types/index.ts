@@ -104,6 +104,9 @@ export interface MediaItem {
   tmdbId:        number | null
   anilistId:     number | null
   mangadexId:    string | null
+  /** Manga: where it comes from (null: unknown) and whether it reads as a long vertical strip */
+  origin?:       'manga' | 'manhwa' | 'manhua' | null
+  webtoon?:      boolean
   overview:      string | null
   posterPath:    string | null
   backdropPath:  string | null

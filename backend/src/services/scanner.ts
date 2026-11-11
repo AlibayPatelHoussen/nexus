@@ -52,6 +52,8 @@ export interface MangaDexResult {
     altTitles?: Record<string, string>[]
     description?: Record<string, string>
     status?: string
+    /** Language the work was first written in: ja, ko, zh, zh-hk… */
+    originalLanguage?: string
     tags?: { attributes?: { name?: Record<string, string> } }[]
   }
   relationships?: MangaDexRelationship[]
@@ -68,6 +70,8 @@ interface AniListResult {
   status?: string
   startDate?: { year?: number }
   format?: string
+  /** ISO country the work comes from: JP, KR, CN, TW… */
+  countryOfOrigin?: string
 }
 
 // ─── Parse chapter number from a folder / PDF name ───
@@ -407,7 +411,7 @@ async function searchAniList(title: string, type: 'ANIME' | 'MANGA' = 'ANIME'): 
         id title { romaji english native }
         description coverImage { large extraLarge }
         bannerImage genres averageScore episodes
-        status startDate { year } format
+        status startDate { year } format countryOfOrigin
       }
     }
   `
@@ -420,6 +424,29 @@ async function searchAniList(title: string, type: 'ANIME' | 'MANGA' = 'ANIME'): 
   } catch {
     return null
   }
+}
+
+// ─── Manga, manhwa, manhua, webtoon ──────────────────
+/** When each known title without an origin was last looked up (quick scans) */
+const originTried = new Map<string, number>()
+export type MangaOrigin = 'manga' | 'manhwa' | 'manhua'
+const ORIGIN_BY_LANGUAGE: Record<string, MangaOrigin> = { ja: 'manga', ko: 'manhwa', zh: 'manhua', 'zh-hk': 'manhua' }
+const ORIGIN_BY_COUNTRY: Record<string, MangaOrigin> = { JP: 'manga', KR: 'manhwa', CN: 'manhua', TW: 'manhua', HK: 'manhua' }
+
+/**
+ * Where a title comes from and how it reads, from what the catalogues say (nothing is guessed
+ * from its name): MangaDex's original language first, else AniList's country of origin.
+ * `origin` null: neither says. A webtoon is a long vertical strip (MangaDex tags it so).
+ */
+export function mangaKind(mdx: Pick<MangaDexResult, 'attributes'> | null | undefined, anilist?: Pick<AniListResult, 'countryOfOrigin'> | null):
+  { origin: MangaOrigin | null; webtoon: boolean } {
+  const a = mdx?.attributes
+  const tags = (a?.tags ?? []).map((t) => t.attributes?.name?.en?.toLowerCase() ?? '')
+  const origin = ORIGIN_BY_LANGUAGE[(a?.originalLanguage ?? '').toLowerCase()]
+    ?? ORIGIN_BY_COUNTRY[(anilist?.countryOfOrigin ?? '').toUpperCase()]
+    // A work MangaDex knows in another language (a French or English comic) is filed with the manga
+    ?? (a?.originalLanguage ? 'manga' : null)
+  return { origin, webtoon: tags.includes('long strip') || tags.includes('web comic') }
 }
 
 // ─── MangaDex search ─────────────────────────────────
@@ -914,8 +941,11 @@ export class MediaScanner {
         try {
 
         if (MediaScanner.quick) {
-          const known = await query('SELECT 1 FROM media_items WHERE file_path = $1', [mangaPath])
-          if (known.rows[0]) {
+          const known = await query<{ origin: string | null }>('SELECT origin FROM media_items WHERE file_path = $1', [mangaPath])
+          // A title from before the manhwa / webtoon pills is looked up once more for them
+          // (at most every 6 hours while the catalogues do not answer)
+          const again = known.rows[0] && known.rows[0].origin == null && Date.now() - (originTried.get(mangaPath) ?? 0) > 6 * 3_600_000
+          if (known.rows[0] && !again) {
             await MediaScanner.scanChapters(mangaPath, entry.name)
             await query('UPDATE media_items SET file_size = $1, last_scanned = NOW() WHERE file_path = $2', [await getDirSize(mangaPath), mangaPath])
             count++
@@ -923,7 +953,11 @@ export class MediaScanner {
           }
         }
 
+        originTried.set(mangaPath, Date.now())
         const mdx = await searchMangaDex(title)
+        // Manga, manhwa or manhua; webtoon or not. AniList is only asked when MangaDex does not say.
+        let kind = mangaKind(mdx)
+        if (!kind.origin) kind = { ...kind, origin: mangaKind(mdx, await searchAniList(title, 'MANGA')).origin }
         // French first: MangaDex's own French text, else anime-sama's synopsis, else English
         const a = mdx?.attributes
         const frTitle = a?.title?.fr || a?.altTitles?.find((t) => t.fr)?.fr
@@ -934,8 +968,8 @@ export class MediaScanner {
         await query(
           `INSERT INTO media_items
            (type, title, original_title, file_path, mangadex_id,
-            overview, poster_path, genres, status, last_scanned)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,NOW())
+            overview, poster_path, genres, status, origin, webtoon, last_scanned)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$11,$12,NOW())
            ON CONFLICT (file_path) DO UPDATE SET
              -- A new match (better search) replaces a wrong one; when MangaDex
              -- does not answer ($5 null) the stored data is kept
@@ -952,6 +986,8 @@ export class MediaScanner {
                                 WHEN cardinality(media_items.genres) > 0 THEN media_items.genres ELSE EXCLUDED.genres END,
              status         = CASE WHEN $5::text IS NULL THEN media_items.status ELSE COALESCE(EXCLUDED.status, media_items.status) END,
              mangadex_id    = COALESCE($5::text, media_items.mangadex_id),
+             origin         = COALESCE(EXCLUDED.origin, media_items.origin),
+             webtoon        = CASE WHEN $5::text IS NULL THEN media_items.webtoon ELSE EXCLUDED.webtoon END,
              last_scanned   = NOW()`,
           [
             'manga',
@@ -964,6 +1000,8 @@ export class MediaScanner {
             a?.tags?.map((t) => t.attributes?.name?.['en']).filter((n): n is string => !!n).map(tagFr) || [],
             a?.status || null,
             !!frOverview,
+            kind.origin,
+            kind.webtoon,
           ],
         )
 
