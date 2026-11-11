@@ -98,14 +98,15 @@ export async function tmdbImages(kind: 'movie' | 'tv', tmdbId: number) {
 /** Fetches the artwork of titles not checked yet (or checked more than 30 days ago). */
 export async function linkArtwork(limit = 300): Promise<number> {
   if (!hasTmdbKey()) return 0
-  const { rows } = await query<{ id: string; type: string; tmdb_id: number }>(
-    `SELECT id, type, tmdb_id FROM media_items
+  const { rows } = await query<{ id: string; type: string; tmdb_id: number; tmdb_kind: string | null }>(
+    `SELECT id, type, tmdb_id, tmdb_kind FROM media_items
       WHERE tmdb_id IS NOT NULL AND type IN ('film', 'serie', 'anime')
         AND (artwork_checked_at IS NULL OR artwork_checked_at < NOW() - INTERVAL '30 days')
       ORDER BY created_at DESC LIMIT $1`, [limit])
   let found = 0
   for (const r of rows) {
-    const kind = r.type === 'film' ? 'movie' : 'tv'
+    // An anime film (« Your Name ») is a TMDB film
+    const kind = r.type === 'film' || r.tmdb_kind === 'movie' ? 'movie' : 'tv'
     try {
       const data = await tmdbImages(kind, r.tmdb_id)
       const a = pickArtwork(data)

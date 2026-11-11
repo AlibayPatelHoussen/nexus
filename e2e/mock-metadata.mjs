@@ -210,14 +210,15 @@ http.createServer((req, res) => {
     // ── AniList (GraphQL) ──
     if (p === '/anilist') {
       const search = (JSON.parse(body || '{}').variables || {}).search || ''
-      return json(res, { data: { Media: {
-        id: hash(search), title: { romaji: title(search), english: title(search), native: '日本' },
+      // Like AniList: a page of results (the scanner picks the one named like the folder)
+      return json(res, { data: { Page: { media: [{
+        id: hash(search), popularity: 1000, title: { romaji: title(search), english: title(search), native: '日本' },
         description: `<b>Anime</b> ${search}`,
         // Like AniList: covers on a different host than the API (s4.anilist.co)
         coverImage: { large: `${IMG}/anilist/cover_${hash(search)}.png`, extraLarge: `${IMG}/anilist/cover_${hash(search)}.png` },
         bannerImage: `${IMG}/anilist/banner_${hash(search)}.png`, genres: ['Action', 'Aventure'], averageScore: 85, status: 'FINISHED', startDate: { year: 1999 },
         countryOfOrigin: /oneshot/i.test(search) ? 'CN' : 'JP',
-      } } })
+      }] } } })
     }
 
     // ── MangaDex ──

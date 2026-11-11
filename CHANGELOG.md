@@ -4,6 +4,11 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Fixed — An anime film downloaded with anisama.py showed another title (« Your Name »)
+- AniList's first search result for « Your Name » is a 2016 Suntory advert with the film's characters: the library showed « Suntory Minami Alps no Tennen Mizu ». The scanner now takes the result named like the folder (romaji, English, native or synonym), the best known one first; else AniList's first result
+- An anime film (AniList format « Movie », or a folder holding only « Film » folders as anisama.py saves them) is looked up among TMDB films: the series search found an unrelated animated series (« In Your Name, Allah »), whose poster and backdrop were shown. Its artwork and IMDb id come from the TMDB film (`media_items.tmdb_kind`)
+- Animes already in the library are looked up once more with the new matching (migration 016): opening the Animes page is enough; a better match replaces the old title, year and pictures
+
 ### Added — Automatic deployment from a private repository
 - `sudo bash scripts/auto-deploy.sh set-token` saves a read-only GitHub token (checked at once); `deploy.sh` and `auto-deploy.sh` then pull `main` and read the CI result with it (`scripts/github-auth.sh`, token in environment variables only)
 - A pull refused by GitHub now says so and how to fix it, instead of « no Internet? »

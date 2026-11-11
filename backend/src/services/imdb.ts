@@ -26,14 +26,15 @@ const hasTmdbKey = () => !!TMDB_KEY && !/your_|_here|changeme|^x+$/i.test(TMDB_K
 /** Looks up missing IMDb ids on TMDB. Returns how many were found. */
 export async function linkImdbIds(limit = 500): Promise<number> {
   if (!hasTmdbKey()) return 0
-  const { rows } = await query<{ id: string; type: string; tmdb_id: number }>(
-    `SELECT id, type, tmdb_id FROM media_items
+  const { rows } = await query<{ id: string; type: string; tmdb_id: number; tmdb_kind: string | null }>(
+    `SELECT id, type, tmdb_id, tmdb_kind FROM media_items
       WHERE tmdb_id IS NOT NULL AND imdb_id IS NULL AND type IN ('film', 'serie', 'anime')
         AND (imdb_checked_at IS NULL OR imdb_checked_at < NOW() - INTERVAL '30 days')
       ORDER BY created_at DESC LIMIT $1`, [limit])
   let found = 0
   for (const r of rows) {
-    const kind = r.type === 'film' ? 'movie' : 'tv'
+    // An anime film (« Your Name ») is a TMDB film
+    const kind = r.type === 'film' || r.tmdb_kind === 'movie' ? 'movie' : 'tv'
     let imdb: string | null = null
     try {
       const { data } = await axios.get(`${TMDB_BASE}/${kind}/${r.tmdb_id}/external_ids`, { params: { api_key: TMDB_KEY }, timeout: 10_000 })

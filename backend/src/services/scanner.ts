@@ -39,6 +39,9 @@ interface TmdbResult {
   popularity?: number
 }
 
+/** Which TMDB catalogue a title is in: films or series. */
+export type TmdbKind = 'movie' | 'tv'
+
 interface MangaDexRelationship {
   type: string
   attributes?: { fileName?: string }
@@ -72,6 +75,8 @@ interface AniListResult {
   format?: string
   /** ISO country the work comes from: JP, KR, CN, TW… */
   countryOfOrigin?: string
+  synonyms?: string[]
+  popularity?: number
 }
 
 // ─── Parse chapter number from a folder / PDF name ───
@@ -151,14 +156,14 @@ async function searchTMDB(title: string, year?: number, type: 'movie' | 'tv' = '
 const TMDB_ANIMATION = 16
 
 /**
- * Among TMDB search results: an animated series from the AniList year (± 1), and among
+ * Among TMDB search results: an animated series (or film) from the AniList year (± 1), and among
  * those the best known one (most votes): « Attack on Titan » (2013, thousands of votes),
  * never its spin-off « Attack on Titan: Chibi Theater » (2013 too, a handful of votes).
  */
 export function pickAnimeResult(results: TmdbResult[], year?: number | null): TmdbResult | null {
   const animated = results.filter((r) => r.genre_ids?.includes(TMDB_ANIMATION))
   if (!animated.length) return null
-  const yearOf = (r: TmdbResult) => parseInt((r.first_air_date ?? '').slice(0, 4)) || null
+  const yearOf = (r: TmdbResult) => parseInt((r.first_air_date ?? r.release_date ?? '').slice(0, 4)) || null
   const close = year ? animated.filter((r) => { const y = yearOf(r); return y != null && Math.abs(y - year) <= 1 }) : []
   const pool = close.length ? close : animated
   const known = (r: TmdbResult) => (r.vote_count ?? 0) * 1000 + (r.popularity ?? 0)
@@ -190,11 +195,15 @@ export function animeSearchNames(names: (string | null | undefined)[]): string[]
   return out
 }
 
-export async function findAnimeOnTMDB(names: (string | null | undefined)[], year?: number | null): Promise<TmdbResult | null> {
+/**
+ * kind 'movie': an anime film (« Your Name », AniList format MOVIE or only « Film » folders) is
+ * looked up among TMDB films; a series search would find an unrelated animated series.
+ */
+export async function findAnimeOnTMDB(names: (string | null | undefined)[], year?: number | null, kind: TmdbKind = 'tv'): Promise<TmdbResult | null> {
   if (!hasTmdbKey()) return null
   for (const name of animeSearchNames(names)) {
     try {
-      const { data } = await axios.get(`${TMDB_BASE}/search/tv`, { params: { api_key: TMDB_KEY!, query: name, language: 'fr-FR' }, timeout: HTTP_TIMEOUT })
+      const { data } = await axios.get(`${TMDB_BASE}/search/${kind}`, { params: { api_key: TMDB_KEY!, query: name, language: 'fr-FR' }, timeout: HTTP_TIMEOUT })
       const hit = pickAnimeResult((data.results ?? []) as TmdbResult[], year)
       if (hit) return hit
     } catch (err) {
@@ -212,12 +221,14 @@ export async function findAnimeOnTMDB(names: (string | null | undefined)[], year
  */
 export async function linkAnimesToTmdb(limit = 100): Promise<number> {
   if (!hasTmdbKey()) return 0
-  const { rows } = await query<{ id: string; title: string; file_path: string; year: number | null }>(
-    `SELECT id, title, file_path, year FROM media_items WHERE type = 'anime' AND tmdb_id IS NULL ORDER BY created_at DESC LIMIT $1`, [limit])
+  // Only titles the scanner has matched on AniList (meta_checked_at): the TMDB search uses its title and year
+  const { rows } = await query<{ id: string; title: string; file_path: string; year: number | null; tmdb_kind: string | null }>(
+    `SELECT id, title, file_path, year, tmdb_kind FROM media_items
+      WHERE type = 'anime' AND tmdb_id IS NULL AND meta_checked_at IS NOT NULL ORDER BY created_at DESC LIMIT $1`, [limit])
   let linked = 0
   for (const r of rows) {
     const folder = parseFilename(path.basename(r.file_path)).title
-    const tmdb = await findAnimeOnTMDB([folder, r.title], r.year)
+    const tmdb = await findAnimeOnTMDB([folder, r.title], r.year, r.tmdb_kind === 'movie' ? 'movie' : 'tv')
     if (!tmdb?.id) continue
     await query(
       `UPDATE media_items SET tmdb_id = $2,
@@ -404,14 +415,31 @@ export async function scanShowEpisodes(showPath: string, mediaItemId: string, tm
 }
 
 // ─── AniList search ──────────────────────────────────
+/**
+ * The AniList entry of a title among its search results. AniList's own first result can be
+ * a side work: « Your Name » gave a 2016 Suntory advert with the film's characters. A result
+ * whose title (romaji, English, native or a synonym) is the searched one wins, the best known
+ * of them (« Your Name. », hundreds of thousands of users); else AniList's first result.
+ */
+export function pickAniListResult(results: AniListResult[], search: string): AniListResult | null {
+  if (!results.length) return null
+  const want = normTitle(search)
+  const names = (r: AniListResult) => [r.title?.romaji, r.title?.english, r.title?.native, ...(r.synonyms ?? [])]
+  const exact = results.filter((r) => names(r).some((n) => !!n && normTitle(n) === want))
+  if (!exact.length) return results[0]
+  return exact.reduce((a, b) => ((b.popularity ?? 0) > (a.popularity ?? 0) ? b : a))
+}
+
 async function searchAniList(title: string, type: 'ANIME' | 'MANGA' = 'ANIME'): Promise<AniListResult | null> {
   const query_gql = `
     query ($search: String, $type: MediaType) {
-      Media(search: $search, type: $type, sort: SEARCH_MATCH) {
-        id title { romaji english native }
-        description coverImage { large extraLarge }
-        bannerImage genres averageScore episodes
-        status startDate { year } format countryOfOrigin
+      Page(perPage: 10) {
+        media(search: $search, type: $type, sort: SEARCH_MATCH) {
+          id title { romaji english native } synonyms popularity
+          description coverImage { large extraLarge }
+          bannerImage genres averageScore episodes
+          status startDate { year } format countryOfOrigin
+        }
       }
     }
   `
@@ -420,9 +448,19 @@ async function searchAniList(title: string, type: 'ANIME' | 'MANGA' = 'ANIME'): 
       query: query_gql,
       variables: { search: title, type },
     }, { timeout: HTTP_TIMEOUT })
-    return (data.data?.Media as AniListResult) || null
+    return pickAniListResult((data.data?.Page?.media ?? []) as AniListResult[], title)
   } catch {
     return null
+  }
+}
+
+/** An anime folder holding only films (« Film — VOSTFR », « Film2 — VF »), as anisama.py saves them. */
+export async function isFilmFolder(animePath: string): Promise<boolean> {
+  try {
+    const dirs = (await fs.readdir(animePath, { withFileTypes: true })).filter((e) => e.isDirectory() && !e.name.startsWith('.'))
+    return dirs.length > 0 && dirs.every((d) => /^film\d*\b/i.test(d.name))
+  } catch {
+    return false
   }
 }
 
@@ -853,8 +891,9 @@ export class MediaScanner {
         const { title } = parseFilename(entry.name)
 
         if (MediaScanner.quick) {
-          const known = await query<{ id: string }>('SELECT id FROM media_items WHERE file_path = $1', [animePath])
-          if (known.rows[0]) {
+          const known = await query<{ id: string; meta_checked_at: Date | null }>('SELECT id, meta_checked_at FROM media_items WHERE file_path = $1', [animePath])
+          // A title not matched by the current AniList / TMDB look-up yet (migration 016) is looked up again, once
+          if (known.rows[0]?.meta_checked_at) {
             await scanShowEpisodes(animePath, known.rows[0].id)
             count++
             continue
@@ -862,14 +901,17 @@ export class MediaScanner {
         }
 
         const anilist = await searchAniList(title, 'ANIME')
-        // The TMDB series (poster with the title, logo, key art), looked up once
-        const known = await query<{ tmdb_id: number | null }>('SELECT tmdb_id FROM media_items WHERE file_path = $1', [animePath])
+        // An anime film (« Your Name ») is looked up among TMDB films, a series among series
+        const kind: TmdbKind = anilist?.format === 'MOVIE' || await isFilmFolder(animePath) ? 'movie' : 'tv'
+        // The TMDB series / film (poster with the title, logo, key art), looked up once
+        const known = await query<{ tmdb_id: number | null; tmdb_kind: string | null }>('SELECT tmdb_id, tmdb_kind FROM media_items WHERE file_path = $1', [animePath])
         // The folder name first (AniList may have matched a movie / OVA / one season of it)
         const tmdb = known.rows[0]?.tmdb_id ? null
-          : await findAnimeOnTMDB([title, anilist?.title?.english, anilist?.title?.romaji], anilist?.startDate?.year)
+          : await findAnimeOnTMDB([title, anilist?.title?.english, anilist?.title?.romaji], anilist?.startDate?.year, kind)
         // French first: TMDB's French synopsis (asked in fr-FR, empty when it has none), else
         // anime-sama's, else AniList's English one
-        const tmdbFr = tmdb ?? (known.rows[0]?.tmdb_id ? await getTMDBDetails(known.rows[0].tmdb_id, 'tv') : null)
+        const tmdbFr = tmdb ?? (known.rows[0]?.tmdb_id
+          ? await getTMDBDetails(known.rows[0].tmdb_id, known.rows[0].tmdb_kind === 'movie' ? 'movie' : 'tv') : null)
         const frOverview = tmdbFr?.overview?.trim()
           || await catalogueSynopsis(title, anilist?.title?.romaji, anilist?.title?.english)
         const overview = frOverview || anilist?.description?.replace(/<[^>]*>/g, '').trim() || null
@@ -877,24 +919,33 @@ export class MediaScanner {
         const { rows } = await query(
           `INSERT INTO media_items
            (type, title, original_title, file_path, anilist_id, overview,
-            poster_path, backdrop_path, genres, year, rating, status, tmdb_id, last_scanned)
-           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,NOW())
+            poster_path, backdrop_path, genres, year, rating, status, tmdb_id, tmdb_kind, meta_checked_at, last_scanned)
+           VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$16,NOW(),NOW())
            ON CONFLICT (file_path) DO UPDATE SET
-             anilist_id    = COALESCE(media_items.anilist_id,    EXCLUDED.anilist_id),
+             -- First look-up since migration 016 (better AniList match): its title, year… replace the old ones
+             title          = CASE WHEN media_items.meta_checked_at IS NULL AND EXCLUDED.anilist_id IS NOT NULL THEN EXCLUDED.title ELSE media_items.title END,
+             original_title = CASE WHEN media_items.meta_checked_at IS NULL AND EXCLUDED.anilist_id IS NOT NULL THEN EXCLUDED.original_title ELSE media_items.original_title END,
+             anilist_id     = CASE WHEN media_items.meta_checked_at IS NULL THEN COALESCE(EXCLUDED.anilist_id, media_items.anilist_id)
+                                   ELSE COALESCE(media_items.anilist_id, EXCLUDED.anilist_id) END,
              tmdb_id       = COALESCE(media_items.tmdb_id,       EXCLUDED.tmdb_id),
+             tmdb_kind     = CASE WHEN media_items.tmdb_id IS NULL THEN EXCLUDED.tmdb_kind ELSE media_items.tmdb_kind END,
+             meta_checked_at = NOW(),
              -- a French synopsis replaces the English one stored by earlier scans
              overview      = CASE WHEN $15::boolean AND EXCLUDED.overview IS NOT NULL THEN EXCLUDED.overview
                                   ELSE COALESCE(media_items.overview, EXCLUDED.overview) END,
              -- A TMDB poster (with the title) replaces an AniList cover (textless)
-             poster_path   = CASE WHEN EXCLUDED.poster_path LIKE $14 || '%' AND COALESCE(media_items.poster_path, '') NOT LIKE $14 || '%'
+             -- (a new match: its pictures replace those of the old one)
+             poster_path   = CASE WHEN media_items.meta_checked_at IS NULL AND EXCLUDED.poster_path IS NOT NULL THEN EXCLUDED.poster_path
+                                  WHEN EXCLUDED.poster_path LIKE $14 || '%' AND COALESCE(media_items.poster_path, '') NOT LIKE $14 || '%'
                                   THEN EXCLUDED.poster_path ELSE COALESCE(media_items.poster_path, EXCLUDED.poster_path) END,
-             backdrop_path = CASE WHEN EXCLUDED.backdrop_path LIKE $14 || '%' AND COALESCE(media_items.backdrop_path, '') NOT LIKE $14 || '%'
+             backdrop_path = CASE WHEN media_items.meta_checked_at IS NULL AND EXCLUDED.backdrop_path IS NOT NULL THEN EXCLUDED.backdrop_path
+                                  WHEN EXCLUDED.backdrop_path LIKE $14 || '%' AND COALESCE(media_items.backdrop_path, '') NOT LIKE $14 || '%'
                                   THEN EXCLUDED.backdrop_path ELSE COALESCE(media_items.backdrop_path, EXCLUDED.backdrop_path) END,
              -- genres come from AniList (now in French): taken again when it answers
              genres        = CASE WHEN cardinality(EXCLUDED.genres) > 0 THEN EXCLUDED.genres ELSE media_items.genres END,
-             year          = COALESCE(media_items.year,   EXCLUDED.year),
-             rating        = COALESCE(media_items.rating, EXCLUDED.rating),
-             status        = COALESCE(media_items.status, EXCLUDED.status),
+             year          = CASE WHEN media_items.meta_checked_at IS NULL AND EXCLUDED.anilist_id IS NOT NULL THEN EXCLUDED.year   ELSE COALESCE(media_items.year,   EXCLUDED.year)   END,
+             rating        = CASE WHEN media_items.meta_checked_at IS NULL AND EXCLUDED.anilist_id IS NOT NULL THEN EXCLUDED.rating ELSE COALESCE(media_items.rating, EXCLUDED.rating) END,
+             status        = CASE WHEN media_items.meta_checked_at IS NULL AND EXCLUDED.anilist_id IS NOT NULL THEN EXCLUDED.status ELSE COALESCE(media_items.status, EXCLUDED.status) END,
              last_scanned  = NOW()
            RETURNING id`,
           [
@@ -913,6 +964,7 @@ export class MediaScanner {
             tmdb?.id || null,
             TMDB_IMG,
             !!frOverview,
+            (tmdb?.id || kind === 'movie') ? kind : null,
           ],
         )
 
