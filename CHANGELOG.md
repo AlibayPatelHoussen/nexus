@@ -4,6 +4,14 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Added — Jarvis can act in Nexus: downloads, library, IPTV
+- Nexus lends its actions to Jarvis (`services/jarvisTools.ts`), so you can ask it in plain words: « télécharge les épisodes 1 à 12 de la saison 1 de One Piece en VOSTFR », « télécharge les chapitres 1100 à 1110 de One Piece », « télécharge Dune », « où en sont mes téléchargements ? », « mets France 24 », « analyse la bibliothèque des films », « fais le point sur ma bibliothèque », « supprime ce film » (with your approval)
+- Jarvis searches every download source (anime-sama, movix, tiprov, OxTorrent, YouTube), picks the season, language, episodes or chapters, and queues them like the « Téléchargements » page; a torrent film gets the best version (1080p, shared, reasonable size)
+- The library report counts titles, episodes and chapters, lists unrecognised titles and recent additions, and gives the free disk space; « Analyser » (films, series, animes, manga, YouTube) is now shared by the button and Jarvis (`services/libraryScan.ts`)
+- Channels open in the Nexus player from a link in Jarvis' answer (links to Nexus pages are clickable); favourites can be added or removed
+- Same rights as the interface: downloads and deletions stay admin-only, a title is deleted only after « Autoriser »
+- Jarvis reads the list of actions itself (`GET /api/jarvis/tools/manifest`) and calls them (`POST /api/jarvis/tools/:name`) with the shared secret `JARVIS_TOOLS_SECRET` (`JARVIS_HOST_SECRET` on the Jarvis side): a new Nexus action needs no change in Jarvis
+
 ### Added — Jarvis, the personal assistant, in Nexus
 - New page « Jarvis » (sidebar: Serveur, above Fichiers; iPhone: Aperçu › Jarvis): a conversation with Jarvis, the assistant that runs as its own service on the server (repository jarvis-backend, local model, free). Answers appear as they are written, with the tools Jarvis uses (server state, Docker, files, tasks, reminders, web…)
 - Sensitive actions (command, container restart, file write) show « Autoriser / Refuser »; actions asked from another app (phone…) wait here for approval

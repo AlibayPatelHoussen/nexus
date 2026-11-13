@@ -57,3 +57,23 @@ describe('describeAction', () => {
     expect(describeAction('texte libre')).toEqual({ name: 'texte libre', detail: '' })
   })
 })
+
+describe('splitLinks', () => {
+  it('turns markdown links and bare Nexus paths into links', async () => {
+    const { splitLinks } = await import('./jarvisService')
+    expect(splitLinks('Voici : [Regarder TF1](/iptv/watch/TF1.fr). Bon film !')).toEqual([
+      'Voici : ', { label: 'Regarder TF1', href: '/iptv/watch/TF1.fr', internal: true }, '. Bon film !',
+    ])
+    expect(splitLinks('Lien : /iptv/watch/France24.fr.')).toEqual([
+      'Lien : ', { label: '/iptv/watch/France24.fr', href: '/iptv/watch/France24.fr', internal: true }, '.',
+    ])
+    expect(splitLinks('[site](https://jellyfin.org)')).toEqual([{ label: 'site', href: 'https://jellyfin.org', internal: false }])
+  })
+
+  it('never links other schemes', async () => {
+    const { splitLinks } = await import('./jarvisService')
+    expect(splitLinks('[clic](javascript:alert(1))')).toEqual(['[clic](javascript:alert(1))'])
+    expect(splitLinks('[x](//evil.com)')).toEqual(['[x](//evil.com)'])
+    expect(splitLinks('pas de lien ici')).toEqual(['pas de lien ici'])
+  })
+})

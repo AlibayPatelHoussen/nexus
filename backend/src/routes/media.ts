@@ -7,6 +7,7 @@ import { logger } from '../utils/logger'
 import { MediaService } from '../services/media'
 import { deleteMediaEverywhere } from '../services/libraryDelete'
 import { MediaScanner, hasTmdbKey } from '../services/scanner'
+import { isLibraryType, scanLibrary } from '../services/libraryScan'
 import { ConflictError } from '../utils/errors'
 
 const router = Router()
@@ -137,30 +138,9 @@ router.post('/scan/:type/auto', asyncHandler(async (req: Request, res: Response)
 }))
 
 router.post('/scan/:type', asyncHandler(async (req: Request, res: Response) => {
-  const typeMap: Record<string, string> = {
-    films: 'film', series: 'serie', animes: 'anime', manga: 'manga', youtube: 'youtube',
-  }
-  const map: Record<string, () => Promise<number>> = {
-    films: () => MediaScanner.scanFilms(),
-    series: () => MediaScanner.scanSeries(),
-    animes: () => MediaScanner.scanAnimes(),
-    manga: () => MediaScanner.scanManga(),
-    youtube: () => MediaScanner.scanYoutube(),
-  }
-  const fn = map[req.params.type]
-  if (!fn) { res.status(400).json({ success: false, error: 'Unknown type' }); return }
-  const dbType = typeMap[req.params.type]
-  const count = await MediaScanner.exclusive(req.params.type, async () => {
-    await MediaScanner.pruneDeleted(dbType)
-    return fn()
-  })
-  // New titles get their IMDb rating and artwork in the background
-  if (['films', 'series', 'animes'].includes(req.params.type) && process.env.IMDB_SYNC !== 'off') {
-    void syncImdb().catch((err) => logger.warn(`Enrichment after scan failed: ${err}`))
-  }
-  // MKV films / episodes get their keyframe index (start at once, whole film) in the background
-  if (['films', 'series', 'animes'].includes(req.params.type)) indexLibrarySoon()
-  res.json({ success: true, data: { scanned: count } })
+  const type = req.params.type
+  if (!isLibraryType(type)) { res.status(400).json({ success: false, error: 'Unknown type' }); return }
+  res.json({ success: true, data: { scanned: await scanLibrary(type) } })
 }))
 
 // Deletes the title everywhere: files on the disk, library, downloads, follow (services/libraryDelete.ts)

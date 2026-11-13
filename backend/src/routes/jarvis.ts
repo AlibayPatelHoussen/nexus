@@ -1,8 +1,10 @@
-import { Router, Request, Response } from 'express'
+import crypto from 'crypto'
+import { Router, Request, Response, NextFunction } from 'express'
 import asyncHandler from 'express-async-handler'
 import { authenticate } from '../middleware/auth'
-import { ValidationError } from '../utils/errors'
+import { AppError, UnauthorizedError, ValidationError } from '../utils/errors'
 import { jarvisFetch, jarvisJson, jarvisStatus } from '../services/jarvis'
+import { manifest, runTool } from '../services/jarvisTools'
 
 /**
  * Relay to the Jarvis API for the logged-in user (see services/jarvis.ts).
@@ -10,6 +12,33 @@ import { jarvisFetch, jarvisJson, jarvisStatus } from '../services/jarvis'
  * its Nexus role (terminal, files, Docker and services: admins only).
  */
 const router = Router()
+
+// ─── Nexus actions offered to Jarvis (services/jarvisTools.ts) ───────────────
+// Called by the Jarvis server itself (not by a browser), with the shared secret
+// JARVIS_TOOLS_SECRET (same value as JARVIS_HOST_SECRET on the Jarvis side).
+
+function requireJarvisSecret(req: Request, _res: Response, next: NextFunction): void {
+  const secret = (process.env.JARVIS_TOOLS_SECRET || '').trim()
+  if (!secret) throw new AppError('Outils Nexus pour Jarvis désactivés (JARVIS_TOOLS_SECRET).', 503)
+  const given = req.get('x-jarvis-secret') || ''
+  const a = crypto.createHash('sha256').update(given).digest()
+  const b = crypto.createHash('sha256').update(secret).digest()
+  if (!given || !crypto.timingSafeEqual(a, b)) throw new UnauthorizedError('Secret Jarvis invalide')
+  next()
+}
+
+router.get('/tools/manifest', requireJarvisSecret, (_req: Request, res: Response) => {
+  res.json(manifest())
+})
+
+router.post('/tools/:name', requireJarvisSecret, asyncHandler(async (req: Request, res: Response) => {
+  const name = req.params.name
+  if (!/^nexus_[a-z_]{2,60}$/.test(name)) throw new ValidationError('Outil invalide')
+  const result = await runTool(name, req.body?.arguments, req.body?.user?.id)
+  res.json({ result })
+}))
+
+// ─── Relay for the logged-in user ────────────────────────────────────────────
 router.use(authenticate)
 
 router.get('/status', asyncHandler(async (_req: Request, res: Response) => {

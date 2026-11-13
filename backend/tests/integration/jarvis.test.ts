@@ -157,3 +157,36 @@ describe('Jarvis relay', () => {
     expect(seen[1].url).toBe('/api/conversation/clear')
   })
 })
+
+describe('Nexus tools for Jarvis', () => {
+  afterEach(() => { delete process.env.JARVIS_TOOLS_SECRET })
+
+  it('are off without JARVIS_TOOLS_SECRET', async () => {
+    const res = await request(app).get('/api/jarvis/tools/manifest').set('X-Jarvis-Secret', 'x')
+    expect(res.status).toBe(503)
+  })
+
+  it('need the shared secret, not a Nexus session', async () => {
+    process.env.JARVIS_TOOLS_SECRET = 'secret-partage'
+    expect((await request(app).get('/api/jarvis/tools/manifest')).status).toBe(401)
+    expect((await request(app).get('/api/jarvis/tools/manifest').set('X-Jarvis-Secret', 'faux')).status).toBe(401)
+    expect((await request(app).get('/api/jarvis/tools/manifest').set('Authorization', auth())).status).toBe(401)
+    const ok = await request(app).get('/api/jarvis/tools/manifest').set('X-Jarvis-Secret', 'secret-partage')
+    expect(ok.status).toBe(200)
+    expect(ok.body.name).toBe('Nexus')
+    expect(ok.body.tools.map((t: { name: string }) => t.name)).toContain('nexus_telecharger')
+  })
+
+  it('check the tool name and the Jarvis user', async () => {
+    process.env.JARVIS_TOOLS_SECRET = 'secret-partage'
+    const bad = await request(app).post('/api/jarvis/tools/rm -rf').set('X-Jarvis-Secret', 'secret-partage').send({})
+    expect(bad.status).toBe(422)
+    const unknown = await request(app).post('/api/jarvis/tools/nexus_inconnu').set('X-Jarvis-Secret', 'secret-partage')
+      .send({ arguments: {}, user: { id: 'owner' } })
+    expect(unknown.status).toBe(404)
+    const unlinked = await request(app).post('/api/jarvis/tools/nexus_bibliotheque').set('X-Jarvis-Secret', 'secret-partage')
+      .send({ arguments: {}, user: { id: 'owner' } })
+    expect(unlinked.status).toBe(403)
+    expect(unlinked.body.error).toMatch(/JARVIS_OWNER/)
+  })
+})
