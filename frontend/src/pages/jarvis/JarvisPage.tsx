@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
+import { Link } from 'react-router-dom'
 import { motion } from 'framer-motion'
 import { ArrowUp, Bot, Mic, ShieldCheck, SquarePen, Volume2, VolumeX, Wrench } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -13,7 +14,7 @@ import { cn } from '@/utils'
 import { serverError } from '@/utils/errorToast'
 import { useAuthStore } from '@/stores/authStore'
 import {
-  describeAction, jarvisService, speechText, type JarvisApproval, type JarvisEvent,
+  describeAction, jarvisService, speechText, splitLinks, type JarvisApproval, type JarvisEvent,
 } from '@/services/jarvisService'
 
 /** One line of the conversation as shown on screen. */
@@ -89,7 +90,10 @@ function RichText({ text }: { text: string }) {
               if (piece.startsWith('**') && piece.endsWith('**') && piece.length > 4) {
                 return <strong key={j} className="font-semibold">{piece.slice(2, -2)}</strong>
               }
-              return piece
+              return splitLinks(piece).map((p, k) => typeof p === 'string' ? p
+                : p.internal
+                  ? <Link key={`${j}-${k}`} to={p.href} className="text-accent-text font-medium underline underline-offset-2">{p.label}</Link>
+                  : <a key={`${j}-${k}`} href={p.href} target="_blank" rel="noopener noreferrer" className="text-accent-text underline underline-offset-2">{p.label}</a>)
             })}
           </span>
         )
@@ -427,7 +431,7 @@ function Line({ item, onConfirm }: {
       return (
         <motion.div {...appear} className="self-start inline-flex items-center gap-1.5 max-w-[85%] px-3 py-1 rounded-pill bg-fill text-caption text-label2">
           <Wrench size={12} strokeWidth={2} aria-hidden="true" className="flex-none" />
-          <span className="truncate"><span className="font-medium">{item.name.replace(/_/g, ' ')}</span>{args && ` · ${args}`}</span>
+          <span className="truncate"><span className="font-medium">{item.name.replace(/^nexus_/, '').replace(/_/g, ' ')}</span>{args && ` · ${args}`}</span>
         </motion.div>
       )
     }

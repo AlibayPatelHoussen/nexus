@@ -169,7 +169,13 @@ cd /opt/jarvis && sudo -u jarvis .venv/bin/python start.py cles ajouter nexus --
 JARVIS_URL=http://127.0.0.1:8765
 JARVIS_API_KEY=jv_...
 JARVIS_OWNER=houssen   # this Nexus account shares the memory of the Jarvis terminal
+JARVIS_TOOLS_SECRET=…  # lets Jarvis download, scan the library, open IPTV channels
 ```
+
+With `JARVIS_TOOLS_SECRET` set (and the same value as `JARVIS_HOST_SECRET` plus
+`JARVIS_HOST_TOOLS_URL=http://127.0.0.1:3001/api/jarvis/tools` in Jarvis' `.env`),
+Jarvis can act in Nexus: downloads, library report and scans, IPTV channels —
+with the rights of the Nexus account it talks for.
 
 ## Production Deployment
 

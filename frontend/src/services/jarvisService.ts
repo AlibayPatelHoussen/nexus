@@ -71,11 +71,44 @@ export function speechText(markdown: string): string {
     .trim()
 }
 
+export type TextPart = string | { label: string; href: string; internal: boolean }
+
+/**
+ * Links in an answer: markdown [label](href) and bare Nexus paths (/iptv/watch/…,
+ * /media/…, /player/…, /reader/…). Only Nexus paths and https addresses become links
+ * (never javascript: or other schemes).
+ */
+export function splitLinks(text: string): TextPart[] {
+  const out: TextPart[] = []
+  const re = /\[([^\]\n]{1,200})\]\(([^)\s]{1,2000})\)|((?<![\w/])\/(?:iptv\/watch|media|player|reader)\/[^\s)\]]+)/g
+  let last = 0
+  for (const m of text.matchAll(re)) {
+    const href = m[2] ?? m[3]
+    const label = m[1] ?? m[3]
+    const internal = href.startsWith('/') && !href.startsWith('//')
+    if (!internal && !/^https:\/\//i.test(href)) continue   // left as plain text
+    if (m.index! > last) out.push(text.slice(last, m.index))
+    if (m[3]) {
+      // Bare path: the punctuation that ends the sentence is not part of it
+      const clean = href.replace(/[.,;:!?]+$/, '')
+      out.push({ label: clean, href: clean, internal })
+      last = m.index! + clean.length
+    } else {
+      out.push({ label, href, internal })
+      last = m.index! + m[0].length
+    }
+  }
+  if (last < text.length) out.push(text.slice(last))
+  return out
+}
+
 /** Sensitive Jarvis tools, as the user should read them. */
 const ACTION_LABELS: Record<string, string> = {
   executer_commande:    'exécuter une commande',
   redemarrer_conteneur: 'redémarrer un conteneur',
   ecrire_fichier:       'écrire un fichier',
+  supprimer_fichier:    'supprimer un fichier',
+  nexus_supprimer_media: 'supprimer un titre de la bibliothèque',
 }
 
 /** "executer_commande(commande='ls')" → readable action name + detail. */
