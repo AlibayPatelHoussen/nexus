@@ -920,7 +920,7 @@ test('accounts: what each opens — « IPTV seulement » at the IPTV address, «
     await sheet.locator('input[maxlength="50"]').fill('tele')
     await sheet.locator('input[type="email"]').fill('tele@example.com')
     await sheet.locator('input[autocomplete="new-password"]').fill('Tele12345')
-    await sheet.locator('[role="radiogroup"][aria-label="Accès"] >> text=IPTV').click()
+    await sheet.locator('[role="radiogroup"][aria-label="Accès"] >> text="IPTV"').click()
     await page.waitForSelector('[role="dialog"] >> text=L’IPTV seulement')
     await page.click('[role="dialog"] button[type="submit"]:visible')
     await page.waitForSelector('text=Compte « tele » créé')
@@ -952,7 +952,7 @@ test('accounts: what each opens — « IPTV seulement » at the IPTV address, «
     // Changed at once to « Médias »: the IPTV closes for it
     await page.reload({ waitUntil: 'networkidle' })
     await page.click('section[aria-labelledby="utilisateurs-h"] button:has-text("tele")')
-    await page.click('[role="dialog"] [role="radiogroup"][aria-label="Accès"] >> text=Médias')
+    await page.click('[role="dialog"] [role="radiogroup"][aria-label="Accès"] >> text="Médias"')
     await page.waitForSelector('text=Accès : Médias')
     eq(sql(`SELECT can_media::text || ',' || can_iptv::text FROM users WHERE username = 'tele'`), 'true,false', 'media only')
     eq((await api('/api/iptv/summary', { token: tele.accessToken })).json?.code, 'NO_IPTV_ACCESS', 'the IPTV is closed at once')
