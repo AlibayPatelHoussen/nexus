@@ -37,7 +37,8 @@ npm workspaces (`frontend`, `backend`); run from the repo root unless noted.
   title, owned by whoever switched it on), their own settings (appearance, name, password) and the storage (stats
   reduced to `disk` + `mediaStorage`); the frontend hides the rest (`adminOnly` in `components/shell/nav.ts`,
   `AdminOnly` routes). Admin accounts are only made / deleted in the terminal (`scripts/create-admin.sh`,
-  `scripts/delete-account.sh`, which keeps the last admin); `/api/users` makes `user` accounts, optionally with
+  `scripts/delete-account.sh`, which keeps the last admin; both are out of Git on purpose — `.gitignore`, kept on the
+  server by `deploy.sh` and in the backups — never add them back); `/api/users` makes `user` accounts, optionally with
   `expires_at`, and manages the sign-in journal. Each sign-in opens a device session (`refresh_tokens`: device, IP, place
   from Cloudflare headers via `utils/device.ts`) and is journaled (`login_events`). Tokens carry the session
   (`sid`) and the account's `session_version` (`sv`); `services/sessions.ts` checks them on every request, stream

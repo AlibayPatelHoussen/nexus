@@ -4,6 +4,9 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Changed — Admin account scripts off GitHub
+- `scripts/create-admin.sh` and `scripts/delete-account.sh` leave the repository (`.gitignore`): they stay on the server only. `deploy.sh` puts them back once, from the last commit that had them (the update that removes them from Git would otherwise delete them there too), and the nightly backup (`scripts/backup.sh`) saves them
+
 ### Security — audit of the checklist
 - **File manager**: secrets (`.env` and its copies, SSH / GnuPG / VPN keys, Nexus' Web Push keys, `/etc/default/nexus-*`, `/etc/shadow`…) are never read, downloaded, streamed, written, renamed, moved, deleted or uploaded from the browser, even through a symlink (`PROTECTED_FILE`); the Nexus folder (code, `.git`, `.gitignore`) and the folders holding it are read-only there. Uploads: 500 files at most at once
 - **Sign-in**: an unknown name takes as long as a wrong password (same answer, same time); only strings are accepted; passwords 8 to 72 characters (bcrypt reads 72 bytes), in the interface, the server and `create-admin.sh`; the rate-limit message is in French
