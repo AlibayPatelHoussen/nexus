@@ -109,6 +109,8 @@ app.get('/api/health',   (_req, res) => res.json({
   // Lets the UI detect a backend that was not rebuilt / restarted after a deploy
   build:     BUILD_INFO,
   startedAt: STARTED_AT,
+  // The server's time zone: the UI shows the server's events (start, sign-ins…) in it
+  timeZone:  Intl.DateTimeFormat().resolvedOptions().timeZone,
 }))
 
 // Unknown API routes are real 404s (never the SPA's index.html)

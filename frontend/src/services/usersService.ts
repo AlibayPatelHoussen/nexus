@@ -1,4 +1,5 @@
 import { api } from './api'
+import { addDays, dayKey, serverTimeZone, zonedInstant } from './serverClock'
 
 /** Réglages › Utilisateurs, Appareils connectés, Journal des connexions (admins). */
 
@@ -86,16 +87,12 @@ export const DURATIONS = [
 ] as const
 export type Duration = typeof DURATIONS[number]['value']
 
-const pad = (n: number) => String(n).padStart(2, '0')
-/** « 2026-11-16 »: a local day, as a date field takes it. */
-export const dayValue = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
-/** The first day a chosen end date may be: tomorrow. */
-export const firstEndDay = (now = new Date()) => dayValue(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1))
-/** A chosen end day → its end (23:59:59, local time) as ISO; null when empty or not after today. */
-export function endOfDay(day: string, now = new Date()): string | null {
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || day < firstEndDay(now)) return null
-  const [y, m, d] = day.split('-').map(Number)
-  return new Date(y, m - 1, d, 23, 59, 59).toISOString()
+/** The first day a chosen end date may be: tomorrow, at the server (« 2026-11-16 », as a date field takes it). */
+export const firstEndDay = (now = new Date(), tz = serverTimeZone()) => addDays(dayKey(now, tz), 1)
+/** A chosen end day → its end (23:59:59 at the server) as ISO; null when empty or not after today. */
+export function endOfDay(day: string, now = new Date(), tz = serverTimeZone()): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || day < firstEndDay(now, tz)) return null
+  return zonedInstant(day, 23, 59, 59, tz).toISOString()
 }
 
 /** The end date of a duration starting now (or from `from`), as ISO; null for no limit. */

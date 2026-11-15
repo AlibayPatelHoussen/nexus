@@ -21,7 +21,7 @@ import { Group, ListRow } from '@/components/ui/GroupedList'
 import { useDebounce } from '@/hooks/useDebounce'
 import { useAuthStore } from '@/stores/authStore'
 import { spring } from '@/design/motion'
-import { cn } from '@/utils'
+import { cn, formatDateTime } from '@/utils'
 import { serverError } from '@/utils/errorToast'
 import { iptvService, type ChannelSort, type IptvChannel, type IptvSettings, type IptvSummary } from '@/services/iptvService'
 import { CHANNEL_GRID, ChannelLogo, ChannelTile, useInfiniteTrigger, useOpenChannel } from './ChannelTile'
@@ -290,7 +290,7 @@ function HomeSkeleton() {
 }
 
 function SourceNote({ summary }: { summary: IptvSummary }) {
-  const at = summary.refresh.at ? new Date(summary.refresh.at).toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' }) : null
+  const at = summary.refresh.at ? formatDateTime(summary.refresh.at) : null
   const freeTv = summary.refresh.sources.includes('free-tv')
   return (
     <p className="text-caption text-label2 max-w-[70ch]">
@@ -540,7 +540,7 @@ function SettingsView() {
   const refresh = useRefresh()
   if (!data) return <Skeleton className="h-64 rounded-group" />
   const { settings, refresh: state } = data
-  const at = state.at ? new Date(state.at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : 'jamais'
+  const at = state.at ? formatDateTime(state.at, 'short') : 'jamais'
   const typed = countries ?? settings.priorityCountries.join(', ')
   const codes = [...new Set(typed.toUpperCase().split(/[\s,;]+/).filter((c) => /^[A-Z]{2}$/.test(c)))]
   return (
