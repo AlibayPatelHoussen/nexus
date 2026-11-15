@@ -1,6 +1,6 @@
 import fs from 'fs'
 import path from 'path'
-import axios from 'axios'
+import axios, { type AxiosRequestConfig } from 'axios'
 import { query } from '../../src/config/database'
 
 // Animes: TMDB's French synopsis first, else anime-sama's, else AniList's English one; genres in French
@@ -26,8 +26,8 @@ beforeAll(() => {
         description: '<b>Humans</b> fight the titans.', genres: ['Action', 'Drama', 'Mahou Shoujo'], startDate: { year: 2013 } }]
     return { data: { data: { Page: { media } } } }
   })
-  jest.spyOn(axios, 'get').mockImplementation(async (url: string, opts?: { params?: { query?: string } }) => {
-    const q = opts?.params?.query ?? ''
+  jest.spyOn(axios, 'get').mockImplementation(async (url: string, opts?: AxiosRequestConfig) => {
+    const q = String((opts?.params as { query?: string } | undefined)?.query ?? '')
     if (url.includes('/search/tv') && /your name/i.test(q)) return { data: { results: [{ id: 90000, name: 'In Your Name, Allah', first_air_date: '2019-05-06', genre_ids: [16] }] } }
     if (url.includes('/search/movie') && /your name/i.test(q)) return { data: { results: [{ id: 372058, title: 'Your Name.', release_date: '2016-08-26', genre_ids: [16, 18], overview: 'Mitsuha et Taki…', poster_path: '/yn.jpg' }] } }
     if (url.includes('/search/tv')) return { data: { results: [{ id: 1429, name: 'L’Attaque des Titans', first_air_date: '2013-04-07', genre_ids: [16], overview: tmdbFr }] } }
