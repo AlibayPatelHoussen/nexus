@@ -807,8 +807,9 @@ test('UI: change password (and back) — the other devices are signed out, this 
 test('UI: « user » account — médias, manga and its downloads; Aperçu shows the storage only; Réglages without the server', async () => {
   const page = await newPage(alice)
   await page.goto(`${B}/dashboard`, { waitUntil: 'networkidle' })
-  const tabs = await page.locator('nav[aria-label="Onglets"] a').allTextContents()
-  eq(tabs.map((t) => t.trim()), ['Aperçu', 'Médias', 'Manga', 'Réglages'], 'tabs')
+  // Each tab draws its label twice (plain and tinted, cross-faded): the visible name is the one not hidden
+  const tabs = await page.locator('nav[aria-label="Onglets"] a').evaluateAll((as) => as.map((a) => a.querySelector('span:not([aria-hidden]) > span:not([aria-hidden]) span')?.textContent?.trim() ?? a.textContent))
+  eq(tabs, ['Aperçu', 'Médias', 'Manga', 'Réglages'], 'tabs')
   await page.waitForSelector('text=Stockage')
   await page.waitForSelector('text=Films')                       // Bibliothèque: every library's size
   for (const hidden of ['Processeur', 'Mémoire', 'Jarvis', 'Services', 'Système']) {
@@ -834,9 +835,10 @@ test('accounts: an admin creates an account for 1 year, sees its device and plac
   const page = await newPage(admin, { width: 1280, height: 860 })
   await page.goto(`${B}/settings`, { waitUntil: 'networkidle' })
   await page.click('text=Ajouter un utilisateur…')
-  await page.fill('input[autocomplete="off"][maxlength="50"]', 'invite')
-  await page.fill('input[type="email"]', 'invite@example.com')
-  await page.fill('input[autocomplete="new-password"]', 'Invite123')
+  const sheet = page.locator('[role="dialog"]')
+  await sheet.locator('input[maxlength="50"]').fill('invite')
+  await sheet.locator('input[type="email"]').fill('invite@example.com')
+  await sheet.locator('input[autocomplete="new-password"]').fill('Invite123')
   await page.click('[role="radiogroup"][aria-label="Durée du compte"] >> text=1 an')
   await page.click('[role="dialog"] button[type="submit"]:visible')
   await page.waitForSelector('text=Compte « invite » créé')
@@ -857,9 +859,10 @@ test('accounts: an admin creates an account for 1 year, sees its device and plac
   eq((await api('/api/auth/me', { token: invite.accessToken })).status, 200, 'signed in')
 
   await page.reload({ waitUntil: 'networkidle' })
-  const row = page.locator('section[aria-labelledby="appareils-h"] [role="listitem"]', { hasText: 'invite · iPhone · Safari' })
+  // « iPhone · Safari », then « invite · Lyon, France · à l’instant »
+  const row = page.locator('section[aria-labelledby="appareils-h"] [role="listitem"]', { hasText: 'invite · Lyon, France' })
   await row.waitFor()
-  assert((await row.textContent()).includes('Lyon, France'), `place shown: ${await row.textContent()}`)
+  assert((await row.textContent()).includes('iPhone · Safari'), `device shown: ${await row.textContent()}`)
   await page.waitForSelector('section[aria-labelledby="journal-h"] >> text=invite · iPhone · Safari')
   await row.locator('button:has-text("Déconnecter")').click()
   await page.click('[role="alertdialog"] button:has-text("Déconnecter")')

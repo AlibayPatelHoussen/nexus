@@ -36,7 +36,7 @@ export default function DashboardPage() {
   const subtitle = !stats
     ? connected ? 'Réception des mesures…' : 'Connexion au serveur…'
     : isAdmin ? `${stats.os.hostname} · en ligne depuis ${formatUptime(stats.uptime)}`
-      : `${formatBytes(stats.disk.free)} disponibles`
+      : 'Stockage du serveur'
 
   return (
     <Page title={phone ? 'Aperçu' : 'Vue d’ensemble'} subtitle={subtitle}>

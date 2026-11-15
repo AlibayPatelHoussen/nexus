@@ -295,8 +295,10 @@ function DeviceRow({ s, withName = true }: { s: DeviceSession; withName?: boolea
     <ListRow
       icon={<Icon strokeWidth={1.75} />}
       iconTone="gray"
-      title={withName ? `${s.username} · ${s.device}` : s.device}
-      subtitle={`${placeOf(s)} · ${s.current ? 'cet appareil' : formatWhen(s.lastActiveAt)}`}
+      // The device on the first line (fits beside the button), who and where below (wraps)
+      title={s.device}
+      subtitle={[withName ? s.username : null, placeOf(s), s.current ? null : formatWhen(s.lastActiveAt)].filter(Boolean).join(' · ')}
+      wrap
       aria-label={`${withName ? `${s.username}, ` : ''}${s.device}, ${placeOf(s)}`}
     >
       {s.current
@@ -326,14 +328,16 @@ export function DevicesGroup() {
 /* ── Journal des connexions ──────────────────────────────────────────────── */
 
 function SignInRow({ e, withName = true }: { e: SignInEvent; withName?: boolean }) {
+  // What happened first on the second line (wraps): « Mot de passe incorrect · Lyon, France · hier à 21:04 »
   const what = e.success ? (e.newDevice ? 'Nouvel appareil' : null) : SIGN_IN_REASON[e.reason]
   return (
     <ListRow
       icon={e.success ? <CheckCircle2 strokeWidth={1.75} /> : <XCircle strokeWidth={1.75} />}
       iconTone={e.success ? 'green' : 'red'}
       title={withName ? `${e.username} · ${e.device}` : e.device}
-      subtitle={`${placeOf(e)} · ${formatWhen(e.at)}`}
-      detail={what}
+      subtitle={<>{what && <span className={e.success ? 'text-accent-text' : 'text-danger-text'}>{what} · </span>}{placeOf(e)} · {formatWhen(e.at)}</>}
+      wrap
+      aria-label={`${withName ? `${e.username}, ` : ''}${e.device}, ${what ?? 'connecté'}, ${placeOf(e)}, ${formatWhen(e.at)}`}
     />
   )
 }

@@ -6,6 +6,8 @@
  *   node e2e/shots.mjs cinema settings      only these pages
  *   node e2e/shots.mjs serie=/media/<id>    any page
  *   THEMES=dark node e2e/shots.mjs cinema   one theme
+ *   AS=alice:User12345 node e2e/shots.mjs dashboard   as another account (files end in -alice)
+ *   FULL=1 node e2e/shots.mjs settings      the whole page, not only the screen
  *
  * Needs the E2E environment (bash e2e/setup.sh); after a frontend change,
  * `npm run build -w frontend` is enough (the backend serves frontend/dist).
@@ -37,8 +39,10 @@ const VIEWPORTS = [
   { name: '390', options: { ...devices['iPhone 13'], viewport: { width: 390, height: 844 } } },
 ]
 
+const [asUser, asPassword] = (process.env.AS || 'admin:Admin1234').split(/:(.*)/s)
+const suffix = asUser === 'admin' ? '' : `-${asUser}`
 const res = await fetch(`${cfg.base}/api/auth/login`, {
-  method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: 'admin', password: 'Admin1234' }),
+  method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ username: asUser, password: asPassword }),
 })
 const session = (await res.json()).data
 
@@ -55,8 +59,8 @@ for (const vp of VIEWPORTS) {
       if (name === 'login') await ctx.clearCookies()
       await page.goto(cfg.base + path, { waitUntil: 'networkidle' }).catch(() => {})
       await page.waitForTimeout(900)             // entrance animations
-      const file = `${OUT}/${name}-${vp.name}-${theme}.png`
-      await page.screenshot({ path: file })
+      const file = `${OUT}/${name}-${vp.name}-${theme}${suffix}.png`
+      await page.screenshot({ path: file, fullPage: process.env.FULL === '1' })
       console.log(file)
       if (process.env.SCROLL) {   // a second image further down (rows, lists)
         await page.evaluate((y) => { const m = document.getElementById('main'); if (m && m.scrollHeight > m.clientHeight) m.scrollTo(0, y); else window.scrollTo(0, y) }, Number(process.env.SCROLL))

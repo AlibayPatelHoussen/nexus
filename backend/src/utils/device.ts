@@ -36,7 +36,7 @@ const BROWSERS: [RegExp, string][] = [
   [/Version\/[\d.]+.*Safari\//, 'Safari'],
   [/curl\//, 'curl'],
   [/python-requests|python-urllib/i, 'Python'],
-  [/node-fetch|undici|axios/i, 'Node.js'],
+  [/node-fetch|undici|axios|^node$/i, 'Node.js'],
 ]
 
 /** « iPhone · Safari », « Windows · Chrome », « Mac · Firefox »… (« Appareil inconnu » when it says nothing). */
