@@ -56,6 +56,10 @@ Thumbs.db
 *.pem
 *.key
 *.p12
+# Admin account scripts: kept on the server only, never on GitHub (deploy.sh keeps them there)
+scripts/create-admin.sh
+scripts/delete-account.sh
+
 # Backups (scripts/backup.sh) and database dumps
 *.dump
 *.sql.gz

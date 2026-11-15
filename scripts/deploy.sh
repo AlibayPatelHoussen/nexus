@@ -52,6 +52,27 @@ if [ -z "${NEXUS_DEPLOY_REEXEC:-}" ] && ! git diff --quiet "$before" HEAD -- scr
   exec bash "$NEXUS_DIR/scripts/deploy.sh" "$@"
 fi
 
+# ── Admin account scripts: on this server only, out of Git (.gitignore) ──
+# The update that took them out of the repository removed them here too: put them back
+# from the last commit that had them (once; Git leaves them alone afterwards)
+for f in scripts/create-admin.sh scripts/delete-account.sh; do
+  [ -e "$f" ] && continue
+  src=""
+  if git cat-file -e "ORIG_HEAD:$f" 2>/dev/null; then
+    src=ORIG_HEAD
+  else
+    gone=$(git log --diff-filter=D -1 --format=%H -- "$f" 2>/dev/null || true)
+    if [ -n "$gone" ] && git cat-file -e "$gone^:$f" 2>/dev/null; then src="$gone^"; fi
+  fi
+  if [ -n "$src" ] && git show "$src:$f" > "$f.tmp"; then
+    mv "$f.tmp" "$f"; chmod 750 "$f"
+    echo "🔒 $f kept on this server (out of Git from now on)"
+  else
+    rm -f "$f.tmp"
+    echo "⚠️  $f is missing: copy it back from a backup of the server"
+  fi
+done
+
 # ── ffmpeg is needed to convert videos the browser cannot read ──
 if ! command -v ffmpeg &> /dev/null || ! command -v ffprobe &> /dev/null; then
   echo "⚠️  ffmpeg is not installed: MKV/AVI/HEVC videos will not play in the browser."
