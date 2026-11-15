@@ -29,10 +29,12 @@ import { startCatalogueRefresher } from './services/catalogue'
 import { startImdbSync } from './services/imdb'
 import { startYtDlpUpdater } from './services/ytdlp'
 import { startKeyframeIndexer } from './services/keyframeIndexer'
+import { startJarvisNotifier } from './services/jarvis'
 import terminalRoutes from './routes/terminal'
 import imagesRoutes   from './routes/images'
 import castRoutes     from './routes/cast'
 import iptvRoutes     from './routes/iptv'
+import jarvisRoutes   from './routes/jarvis'
 import { startIptvWorker } from './services/iptv'
 import { registerSocketHandlers } from './socket'
 
@@ -97,6 +99,7 @@ app.use('/api/downloads', downloadsRoutes)
 app.use('/api/push', pushRoutes)
 app.use('/api/cast', castRoutes)
 app.use('/api/iptv', iptvRoutes)
+app.use('/api/jarvis', jarvisRoutes)
 app.use('/api/terminal', terminalRoutes)
 app.get('/api/health',   (_req, res) => res.json({
   status:    'ok',
@@ -158,6 +161,7 @@ if (require.main === module) {
     startImdbSync()
     startYtDlpUpdater()
     startKeyframeIndexer()
+    startJarvisNotifier()
   })
 }
 

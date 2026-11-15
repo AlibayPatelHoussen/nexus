@@ -1,5 +1,5 @@
 import {
-  Activity, BookOpen, Download, Film, Folder, Gauge, ListPlus, RadioTower, Settings, SquareTerminal, Tv, Wifi, Youtube,
+  Activity, BookOpen, Bot, Download, Film, Folder, Gauge, ListPlus, RadioTower, Settings, SquareTerminal, Tv, Wifi, Youtube,
   type LucideIcon,
 } from 'lucide-react'
 
@@ -16,6 +16,7 @@ export interface NavItem {
 /** Sidebar (desktop / tablet): every destination, grouped. */
 export const NAV: NavItem[] = [
   { to: '/dashboard', label: 'Vue d’ensemble', icon: Gauge,          section: 'server', keywords: 'accueil aperçu processeur mémoire disque' },
+  { to: '/jarvis',    label: 'Jarvis',         icon: Bot,            section: 'server', keywords: 'assistant ia intelligence artificielle chat aide vocal' },
   { to: '/files',     label: 'Fichiers',       icon: Folder,         section: 'server', adminOnly: true, keywords: 'dossiers explorateur' },
   { to: '/terminal',  label: 'Terminal',       icon: SquareTerminal, section: 'server', adminOnly: true, keywords: 'shell console bash ssh' },
   { to: '/services',  label: 'Services',       icon: Activity,       section: 'server', keywords: 'systemd démarrer arrêter' },
@@ -44,9 +45,9 @@ export interface Tab {
   adminOnly?: boolean
 }
 
-/** Tab Bar (phone). Files, services and network open from "Aperçu"; downloads from "Médias". */
+/** Tab Bar (phone). Jarvis, files, services and network open from "Aperçu"; downloads from "Médias". */
 export const TABS: Tab[] = [
-  { to: '/dashboard', label: 'Aperçu',   icon: Gauge,          match: ['/dashboard', '/files', '/services', '/network'] },
+  { to: '/dashboard', label: 'Aperçu',   icon: Gauge,          match: ['/dashboard', '/jarvis', '/files', '/services', '/network'] },
   { to: '/cinema',    label: 'Médias',   icon: Film,           match: ['/cinema', '/animes', '/youtube', '/downloads', '/ma-liste', '/iptv'] },
   { to: '/manga',     label: 'Manga',    icon: BookOpen,       match: ['/manga'] },
   { to: '/terminal',  label: 'Terminal', icon: SquareTerminal, match: ['/terminal'], adminOnly: true },
@@ -55,6 +56,7 @@ export const TABS: Tab[] = [
 
 /** Phone: pages pushed inside a tab get a "‹ back" button to the tab root. */
 export const PHONE_PARENT: Record<string, { to: string; label: string }> = {
+  '/jarvis':   { to: '/dashboard', label: 'Aperçu' },
   '/files':    { to: '/dashboard', label: 'Aperçu' },
   '/services': { to: '/dashboard', label: 'Aperçu' },
   '/network':  { to: '/dashboard', label: 'Aperçu' },

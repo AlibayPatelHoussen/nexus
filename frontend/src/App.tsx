@@ -8,6 +8,7 @@ import NotFoundPage  from '@/pages/NotFoundPage'
 import Spinner       from '@/components/ui/Spinner'
 
 const FilesPage = lazy(() => import('@/pages/files/FilesPage'))
+const JarvisPage = lazy(() => import('@/pages/jarvis/JarvisPage'))
 const TerminalPage = lazy(() => import('@/pages/terminal/TerminalPage'))
 const CinemaPage = lazy(() => import('@/pages/cinema/CinemaPage'))
 const AnimesPage = lazy(() => import('@/pages/animes/AnimesPage'))
@@ -77,6 +78,7 @@ export default function App() {
         <Route path="/" element={<Guard><AppShell /></Guard>}>
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<DashboardPage />} />
+          <Route path="jarvis"    element={<S><JarvisPage   /></S>} />
           <Route path="files"     element={<S><FilesPage    /></S>} />
           <Route path="terminal"  element={<S><TerminalPage /></S>} />
           <Route path="cinema"    element={<S><CinemaPage   /></S>} />

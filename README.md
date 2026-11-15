@@ -13,6 +13,7 @@
 - **Media center** — films, series, animes, manga/webtoon with metadata from TMDB & AniList
 - **Custom video player** — resume, favorites, history; plays every format in the browser (MKV, AVI, HEVC… converted on the fly with ffmpeg, like Jellyfin)
 - **Manga/Webtoon reader** — vertical scroll & page mode
+- **Jarvis assistant** — chat (voice too) with the local AI assistant running on the server ([jarvis-backend](https://github.com/AlibayPatelHoussen/jarvis-backend)), relayed by Nexus
 - **Real-time stats** — CPU, RAM, disk, temperature via WebSocket
 - **Dark/Light theme**
 - **JWT authentication** with bcrypt hashing
@@ -145,7 +146,36 @@ PATCH  /api/services/:name/toggle
 GET    /api/services/:name/logs
 
 GET    /api/terminal (WebSocket)
+
+GET    /api/jarvis/status
+GET    /api/jarvis/history
+POST   /api/jarvis/chat          (Server-Sent Events)
+POST   /api/jarvis/chat/confirm
+GET    /api/jarvis/approvals
+POST   /api/jarvis/approvals/:id
+POST   /api/jarvis/clear
 ```
+
+### Jarvis
+
+Jarvis runs as its own service on the server (see the jarvis-backend repository,
+`docs/SERVEUR.md`). Create its key for Nexus, then set it in `backend/.env`:
+
+```bash
+cd /opt/jarvis && sudo -u jarvis .venv/bin/python start.py cles ajouter nexus --role admin --confiance
+```
+
+```
+JARVIS_URL=http://127.0.0.1:8765
+JARVIS_API_KEY=jv_...
+JARVIS_OWNER=houssen   # this Nexus account shares the memory of the Jarvis terminal
+JARVIS_TOOLS_SECRET=…  # lets Jarvis download, scan the library, open IPTV channels
+```
+
+With `JARVIS_TOOLS_SECRET` set (and the same value as `JARVIS_HOST_SECRET` plus
+`JARVIS_HOST_TOOLS_URL=http://127.0.0.1:3001/api/jarvis/tools` in Jarvis' `.env`),
+Jarvis can act in Nexus: downloads, library report and scans, IPTV channels —
+with the rights of the Nexus account it talks for.
 
 ## Production Deployment
 
