@@ -783,17 +783,96 @@ test('UI: settings shows matching interface/server versions', async () => {
   await page.context().close()
 })
 
-test('UI: change password (and back)', async () => {
-  const s = await login('alice', 'User12345')
+test('UI: change password (and back) — the other devices are signed out, this one stays', async () => {
+  const s = await login('admin', 'Admin1234')
   const page = await newPage(s, { width: 1280, height: 800 })
   await page.goto(`${B}/settings`, { waitUntil: 'networkidle' })
-  const inputs = page.locator('form input[type="password"]')
-  await inputs.nth(0).fill('User12345'); await inputs.nth(1).fill('NewPass123'); await inputs.nth(2).fill('NewPass123')
-  await page.click('form button[type="submit"]')
+  const inputs = page.locator('form[aria-labelledby="password-h"] input[type="password"]')
+  await inputs.nth(0).fill('Admin1234'); await inputs.nth(1).fill('NewPass123'); await inputs.nth(2).fill('NewPass123')
+  await page.click('form[aria-labelledby="password-h"] button[type="submit"]')
   await page.waitForSelector('text=Mot de passe mis à jour', { timeout: 10000 })
-  const s2 = await login('alice', 'NewPass123')
-  await api('/api/auth/password', { method: 'PATCH', token: s2.accessToken, body: { currentPassword: 'NewPass123', newPassword: 'User12345' } })
-  alice = await login('alice', 'User12345')
+  // Another device (the tests' admin session) is signed out at once
+  eq((await api('/api/auth/me', { token: admin.accessToken })).status, 401, 'other device signed out')
+  eq((await api('/api/auth/refresh', { method: 'POST', body: { refreshToken: admin.refreshToken } })).status, 401, 'other device refresh')
+  // This one goes on (new tokens kept by the page)
+  await page.reload({ waitUntil: 'networkidle' })
+  await page.waitForSelector('text=Utilisateurs')
+  assert(page.url().endsWith('/settings'), `still signed in: ${page.url()}`)
+  const s2 = await login('admin', 'NewPass123')
+  await api('/api/auth/password', { method: 'PATCH', token: s2.accessToken, body: { currentPassword: 'NewPass123', newPassword: 'Admin1234' } })
+  admin = await login('admin', 'Admin1234')
+  await page.context().close()
+})
+
+test('UI: « user » account — médias, manga and its downloads; Aperçu shows the storage only; Réglages without the server', async () => {
+  const page = await newPage(alice)
+  await page.goto(`${B}/dashboard`, { waitUntil: 'networkidle' })
+  const tabs = await page.locator('nav[aria-label="Onglets"] a').allTextContents()
+  eq(tabs.map((t) => t.trim()), ['Aperçu', 'Médias', 'Manga', 'Réglages'], 'tabs')
+  await page.waitForSelector('text=Stockage')
+  await page.waitForSelector('text=Films')                       // Bibliothèque: every library's size
+  for (const hidden of ['Processeur', 'Mémoire', 'Jarvis', 'Services', 'Système']) {
+    eq(await page.locator(`main >> text="${hidden}"`).count(), 0, `${hidden} hidden on Aperçu`)
+  }
+  for (const p of ['/jarvis', '/services', '/network', '/files', '/terminal']) {
+    await page.goto(B + p, { waitUntil: 'networkidle' })
+    assert(page.url().endsWith('/dashboard'), `${p} sends a user back to Aperçu (${page.url()})`)
+  }
+  await page.goto(`${B}/settings`, { waitUntil: 'networkidle' })
+  await page.waitForSelector('text=Bibliothèque')
+  await page.waitForSelector('text=Notifications')
+  for (const hidden of ['Version', 'Utilisateurs', 'Appareils connectés', 'Journal des connexions', 'Mot de passe', 'Apparence']) {
+    eq(await page.locator(`h2:text-is("${hidden}")`).count(), 0, `${hidden} hidden in Réglages`)
+  }
+  await page.goto(`${B}/downloads`, { waitUntil: 'networkidle' })
+  assert(page.url().includes('/downloads'), 'downloads open to users')
+  await page.context().close()
+})
+
+test('accounts: an admin creates an account for 1 year, sees its device and place, disconnects it', async () => {
+  sql(`DELETE FROM users WHERE username = 'invite'`)
+  const page = await newPage(admin, { width: 1280, height: 860 })
+  await page.goto(`${B}/settings`, { waitUntil: 'networkidle' })
+  await page.click('text=Ajouter un utilisateur…')
+  await page.fill('input[autocomplete="off"][maxlength="50"]', 'invite')
+  await page.fill('input[type="email"]', 'invite@example.com')
+  await page.fill('input[autocomplete="new-password"]', 'Invite123')
+  await page.click('[role="radiogroup"][aria-label="Durée du compte"] >> text=1 an')
+  await page.click('[role="dialog"] button[type="submit"]:visible')
+  await page.waitForSelector('text=Compte « invite » créé')
+  const end = sql(`SELECT to_char(expires_at, 'YYYY-MM-DD') FROM users WHERE username = 'invite'`)
+  eq(end.slice(0, 4), String(new Date().getFullYear() + 1), 'one year')
+  eq(sql(`SELECT role FROM users WHERE username = 'invite'`), 'user', 'a user account')
+
+  // The new account signs in from an iPhone in Lyon (through Cloudflare)
+  const r = await fetch(`${B}/api/auth/login`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json', 'CF-Connecting-IP': '203.0.113.7', 'CF-IPCountry': 'FR', 'CF-IPCity': 'Lyon',
+      'User-Agent': 'Mozilla/5.0 (iPhone; CPU iPhone OS 18_1 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Mobile/15E148 Safari/604.1',
+    },
+    body: JSON.stringify({ username: 'invite', password: 'Invite123' }),
+  })
+  const invite = (await r.json()).data
+  eq((await api('/api/auth/me', { token: invite.accessToken })).status, 200, 'signed in')
+
+  await page.reload({ waitUntil: 'networkidle' })
+  const row = page.locator('section[aria-labelledby="appareils-h"] [role="listitem"]', { hasText: 'invite · iPhone · Safari' })
+  await row.waitFor()
+  assert((await row.textContent()).includes('Lyon, France'), `place shown: ${await row.textContent()}`)
+  await page.waitForSelector('section[aria-labelledby="journal-h"] >> text=invite · iPhone · Safari')
+  await row.locator('button:has-text("Déconnecter")').click()
+  await page.click('[role="alertdialog"] button:has-text("Déconnecter")')
+  await page.waitForSelector('text=Appareil déconnecté')
+  eq((await api('/api/auth/me', { token: invite.accessToken })).status, 401, 'the device is signed out')
+  eq((await api('/api/auth/refresh', { method: 'POST', body: { refreshToken: invite.refreshToken } })).status, 401, 'and stays out')
+
+  // The account: delete it
+  await page.click('section[aria-labelledby="utilisateurs-h"] button:has-text("invite")')
+  await page.click('text=Supprimer le compte…')
+  await page.click('[role="alertdialog"] button:has-text("Supprimer")')
+  await page.waitForSelector('text=Compte « invite » supprimé')
+  eq(sql(`SELECT count(*) FROM users WHERE username = 'invite'`), '0', 'deleted')
   await page.context().close()
 })
 

@@ -14,6 +14,8 @@ import Button from '@/components/ui/Button'
 import { useConfirm } from '@/components/ui/useConfirm'
 import type { Appearance } from '@/types'
 import NotificationsGroup from './NotificationsGroup'
+import { DevicesGroup, SignInsGroup, UsersGroup } from './AccountsGroups'
+import { formatDay } from '@/utils'
 
 export default function SettingsPage() {
   const user = useAuthStore((s) => s.user)
@@ -24,6 +26,8 @@ export default function SettingsPage() {
   const confirm = useConfirm()
   const { device } = useShell()
   const phone = device === 'phone'
+  // « user » accounts: their name and e-mail, the library, notifications (nothing of the server)
+  const isAdmin = user?.role === 'admin'
   const [scanning, setScanning] = useState(false)
   const [pruning, setPruning] = useState(false)
 
@@ -70,12 +74,13 @@ export default function SettingsPage() {
             </span>
             <span className="min-w-0">
               <span className="block text-headline text-label truncate">{user?.username}</span>
-              <span className="block text-subhead text-label2 truncate">{user?.email} · {user?.role === 'admin' ? 'Administrateur' : 'Utilisateur'}</span>
+              <span className="block text-subhead text-label2 truncate">{user?.email} · {isAdmin ? 'Administrateur' : 'Utilisateur'}</span>
+              {user?.expiresAt && <span className="block text-subhead text-label2 truncate">Compte ouvert jusqu’au {formatDay(user.expiresAt)}</span>}
             </span>
           </div>
         </Group>
 
-        <Group header="Apparence" footer="Auto suit le réglage clair ou sombre de l’appareil. Ce choix est propre à cet appareil.">
+        {isAdmin && <Group header="Apparence" footer="Auto suit le réglage clair ou sombre de l’appareil. Ce choix est propre à cet appareil.">
           <div role="listitem" className="nx-row relative flex items-center justify-between gap-3 px-4 min-h-row py-2">
             {!phone && <span className="text-label">Apparence</span>}
             <SegmentedControl<Appearance>
@@ -90,23 +95,28 @@ export default function SettingsPage() {
               ]}
             />
           </div>
+        </Group>}
+
+        <Group header="Bibliothèque">
+          <ListRow wrap title="Analyser les médias" subtitle="Ajoute les fichiers trouvés dans les dossiers de la bibliothèque.">
+            <Button size="small" loading={scanning} onClick={handleScan}>Analyser</Button>
+          </ListRow>
+          <ListRow wrap title="Nettoyer la bibliothèque" subtitle="Retire les titres dont le fichier n’existe plus.">
+            <Button size="small" variant="destructive" loading={pruning} onClick={handlePrune}>Nettoyer…</Button>
+          </ListRow>
         </Group>
 
-        {user?.role === 'admin' && (
-          <Group header="Bibliothèque">
-            <ListRow wrap title="Analyser les médias" subtitle="Ajoute les fichiers trouvés dans les dossiers de la bibliothèque.">
-              <Button size="small" loading={scanning} onClick={handleScan}>Analyser</Button>
-            </ListRow>
-            <ListRow wrap title="Nettoyer la bibliothèque" subtitle="Retire les titres dont le fichier n’existe plus.">
-              <Button size="small" variant="destructive" loading={pruning} onClick={handlePrune}>Nettoyer…</Button>
-            </ListRow>
-          </Group>
+        <NotificationsGroup />
+        {isAdmin && (
+          <>
+            <UsersGroup />
+            <DevicesGroup />
+            <SignInsGroup />
+            <UsernameGroup />
+            <PasswordGroup />
+            <VersionGroup />
+          </>
         )}
-
-        {user?.role === 'admin' && <NotificationsGroup />}
-        <UsernameGroup />
-        <PasswordGroup />
-        <VersionGroup />
 
         <Group>
           <ListRow title="Se déconnecter" destructive onClick={handleLogout} className="justify-center [&>span]:text-center" />
@@ -194,13 +204,15 @@ function PasswordGroup() {
     e.preventDefault()
     if (next.length < 8) { setError('Le nouveau mot de passe doit faire au moins 8 caractères.'); return }
     if (next !== again) { setError('Les deux nouveaux mots de passe ne sont pas identiques.'); return }
+    if (!/[a-z]/.test(next) || !/[A-Z]/.test(next) || !/\d/.test(next)) { setError('Le nouveau mot de passe doit contenir une majuscule, une minuscule et un chiffre.'); return }
     setSaving(true); setError(null)
     try {
       await authService.changePassword(current, next)
-      toast.success('Mot de passe mis à jour')
+      toast.success('Mot de passe mis à jour. Tes autres appareils sont déconnectés.')
       setCurrent(''); setNext(''); setAgain('')
-    } catch {
-      setError('Le mot de passe actuel est incorrect.')
+    } catch (err) {
+      const status = (err as { response?: { status?: number } })?.response?.status
+      setError(status === 401 ? 'Le mot de passe actuel est incorrect.' : 'Impossible de modifier le mot de passe.')
     } finally { setSaving(false) }
   }
 
@@ -224,7 +236,7 @@ function PasswordGroup() {
 
   return (
     <form onSubmit={submit} aria-labelledby="password-h">
-      <Group id="password" header="Mot de passe">
+      <Group id="password" header="Mot de passe" footer="Changer le mot de passe déconnecte tes autres appareils.">
         {field('pwd-current', 'Actuel', current, setCurrent, 'current-password')}
         {field('pwd-new', 'Nouveau', next, setNext, 'new-password')}
         {field('pwd-again', 'Confirmer', again, setAgain, 'new-password')}

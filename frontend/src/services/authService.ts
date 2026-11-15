@@ -1,4 +1,5 @@
 import { api } from './api'
+import { useAuthStore } from '@/stores/authStore'
 import type { User } from '@/types'
 
 interface LoginResponse {
@@ -31,7 +32,11 @@ export const authService = {
     return data.data
   },
 
+  /** The other devices are signed out; this one gets new tokens (stored here) and stays signed in. */
   async changePassword(currentPassword: string, newPassword: string): Promise<void> {
-    await api.patch('/auth/password', { currentPassword, newPassword })
+    const { data } = await api.patch<{ data?: { accessToken?: string; refreshToken?: string } }>(
+      '/auth/password', { currentPassword, newPassword })
+    if (data.data?.refreshToken) localStorage.setItem('nexus_refresh_token', data.data.refreshToken)
+    if (data.data?.accessToken) useAuthStore.getState().setAccessToken(data.data.accessToken)
   },
 }

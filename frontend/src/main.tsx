@@ -5,6 +5,7 @@ import { MotionConfig } from 'framer-motion'
 import { ConfirmProvider } from '@/components/ui/ConfirmDialog'
 import AppToaster from '@/components/ui/AppToaster'
 import App from './App'
+import { useAuthStore } from '@/stores/authStore'
 import { registerServiceWorker } from '@/services/pushService'
 import { installNativeFeel } from '@/services/nativeFeel'
 import './index.css'
@@ -23,6 +24,9 @@ const queryClient = new QueryClient({
     },
   },
 })
+
+// Signed out: nothing of that account stays in memory for the next one (its queue, its lists)
+useAuthStore.subscribe((state, prev) => { if (prev.isAuth && !state.isAuth) queryClient.clear() })
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

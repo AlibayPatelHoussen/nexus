@@ -21,23 +21,29 @@ const last = (a: number[]) => (a.length ? a[a.length - 1] : 0)
 export default function DashboardPage() {
   const { device } = useShell()
   const phone = device === 'phone'
+  // « user » accounts: the storage only (the server sends them nothing else)
+  const isAdmin = useAuthStore((s) => s.user?.role === 'admin')
   // Live stats only while the page is on screen (its tab stays mounted when hidden)
   const { stats, connected } = useSystemStats(usePageActive())
-  const history = useStatsHistory(stats)
+  const history = useStatsHistory(isAdmin ? stats : null)
   const { data: services, isError: servicesError } = useQuery({
     queryKey: ['services'],
     queryFn:  servicesService.getAll,
     refetchInterval: 10_000,
+    enabled: isAdmin,
   })
 
-  const subtitle = stats
-    ? `${stats.os.hostname} · en ligne depuis ${formatUptime(stats.uptime)}`
-    : connected ? 'Réception des mesures…' : 'Connexion au serveur…'
+  const subtitle = !stats
+    ? connected ? 'Réception des mesures…' : 'Connexion au serveur…'
+    : isAdmin ? `${stats.os.hostname} · en ligne depuis ${formatUptime(stats.uptime)}`
+      : `${formatBytes(stats.disk.free)} disponibles`
 
   return (
     <Page title={phone ? 'Aperçu' : 'Vue d’ensemble'} subtitle={subtitle}>
       {!stats && !connected ? (
         <Connecting />
+      ) : !isAdmin ? (
+        <StorageOverview stats={stats} phone={phone} />
       ) : phone ? (
         <PhoneOverview stats={stats} history={history} services={services} servicesError={servicesError} />
       ) : (
@@ -120,10 +126,39 @@ function Meter({ label, value, detail, warn, children }: { label: string; value:
   )
 }
 
+/* ── « user » accounts: the storage only ───────────────────────────────── */
+
+function StorageOverview({ stats, phone }: { stats: SystemStats | null; phone: boolean }) {
+  const meter = stats && <CapacityBar percent={stats.disk.usedPercent} label="Espace disque utilisé" />
+  if (phone) {
+    return (
+      <div className="flex flex-col gap-8">
+        <Group>
+          <PhoneMeter label="Stockage" value={stats ? formatPercent(stats.disk.usedPercent) : null}>{meter}</PhoneMeter>
+        </Group>
+        <MediaStorage stats={stats} />
+      </div>
+    )
+  }
+  return (
+    <div className="flex flex-col gap-6 max-w-[680px]">
+      <section aria-label="Stockage" className="rounded-card overflow-hidden">
+        <Meter label="Stockage" value={stats ? formatBytes(stats.disk.used) : null}
+          detail={stats ? `sur ${formatBytes(stats.disk.total)}` : null}>
+          <div className="h-[44px] flex flex-col justify-end gap-1.5">
+            {meter}
+            {stats && <p className="text-caption text-label2 tabular">{formatBytes(stats.disk.free)} disponibles</p>}
+          </div>
+        </Meter>
+      </section>
+      <MediaStorage stats={stats} />
+    </div>
+  )
+}
+
 /* ── Phone: grouped lists, rows with chevrons ───────────────────────────── */
 
 function PhoneOverview({ stats, history, services, servicesError }: OverviewProps) {
-  const isAdmin = useAuthStore((s) => s.user?.role === 'admin')
   const stopped = services?.filter(isStopped).length ?? 0
   return (
     <div className="flex flex-col gap-8">
@@ -144,7 +179,7 @@ function PhoneOverview({ stats, history, services, servicesError }: OverviewProp
 
       <Group header="Serveur">
         <ListRow to="/jarvis" icon={<Bot strokeWidth={1.75} />} iconTone="accent" title="Jarvis" detail="Assistant" accessory="chevron" />
-        {isAdmin && <ListRow to="/files" icon={<Folder strokeWidth={1.75} />} iconTone="accent" title="Fichiers" accessory="chevron" />}
+        <ListRow to="/files" icon={<Folder strokeWidth={1.75} />} iconTone="accent" title="Fichiers" accessory="chevron" />
         <ListRow to="/services" icon={<Activity strokeWidth={1.75} />} iconTone="accent" title="Services"
           detail={servicesError ? 'Indisponible' : services ? (stopped ? `${stopped} arrêté${stopped > 1 ? 's' : ''}` : 'Tous actifs') : ''} accessory="chevron" />
         <ListRow to="/network" icon={<Wifi strokeWidth={1.75} />} iconTone="accent" title="Réseau" detail={stats?.network.ip} accessory="chevron" />

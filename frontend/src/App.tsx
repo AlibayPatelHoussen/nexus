@@ -52,6 +52,12 @@ function Guard({ children }: { children: React.ReactNode }) {
   return isAuth ? <>{children}</> : <Navigate to="/login" replace />
 }
 
+/** Server pages: admins only (« user » accounts have médias, manga and the storage). */
+function AdminOnly({ children }: { children: React.ReactNode }) {
+  const isAdmin = useAuthStore((s) => s.user?.role === 'admin')
+  return isAdmin ? <>{children}</> : <Navigate to="/dashboard" replace />
+}
+
 function S({ children }: { children: React.ReactNode }) {
   return <Suspense fallback={<PageLoader />}>{children}</Suspense>
 }
@@ -78,14 +84,14 @@ export default function App() {
         <Route path="/" element={<Guard><AppShell /></Guard>}>
           <Route index element={<Navigate to="/dashboard" replace />} />
           <Route path="dashboard" element={<DashboardPage />} />
-          <Route path="jarvis"    element={<S><JarvisPage   /></S>} />
-          <Route path="files"     element={<S><FilesPage    /></S>} />
-          <Route path="terminal"  element={<S><TerminalPage /></S>} />
+          <Route path="jarvis"    element={<AdminOnly><S><JarvisPage   /></S></AdminOnly>} />
+          <Route path="files"     element={<AdminOnly><S><FilesPage    /></S></AdminOnly>} />
+          <Route path="terminal"  element={<AdminOnly><S><TerminalPage /></S></AdminOnly>} />
           <Route path="cinema"    element={<S><CinemaPage   /></S>} />
           <Route path="animes"    element={<S><AnimesPage   /></S>} />
           <Route path="manga"     element={<S><MangaPage    /></S>} />
-          <Route path="services"  element={<S><ServicesPage /></S>} />
-          <Route path="network"   element={<S><NetworkPage  /></S>} />
+          <Route path="services"  element={<AdminOnly><S><ServicesPage /></S></AdminOnly>} />
+          <Route path="network"   element={<AdminOnly><S><NetworkPage  /></S></AdminOnly>} />
           <Route path="settings"  element={<S><SettingsPage /></S>} />
           <Route path="downloads" element={<S><DownloadsPage /></S>} />
           <Route path="youtube"   element={<S><YoutubePage /></S>} />

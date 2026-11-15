@@ -40,10 +40,10 @@ if [ ${#password} -lt 8 ] || ! [[ $password =~ [a-z] && $password =~ [A-Z] && $p
 fi
 
 # bcrypt like Nexus (12 rounds); the password goes through stdin, never on a command line
-hash=$(printf '%s' "$password" | node -e '
-  const bcrypt = require(process.argv[1])
+hash=$(cd "$DIR/backend" && printf '%s' "$password" | node -e '
+  const bcrypt = require("bcryptjs")
   let s = ""; process.stdin.on("data", (d) => (s += d)).on("end", () => console.log(bcrypt.hashSync(s, 12)))
-' "$DIR/backend/node_modules/bcryptjs")
+')
 
 psql_su -v u="$username" -v e="$email" -v h="$hash" <<'SQL' >/dev/null
 INSERT INTO users (username, email, password, role)

@@ -3,6 +3,13 @@ import { useNavigate } from 'react-router-dom'
 import { Eye, EyeOff } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 import { authService } from '@/services/authService'
+import { takeSignOutReason } from '@/services/api'
+import { resyncPush } from '@/services/pushService'
+
+const SIGNED_OUT = {
+  expired: 'Ce compte a expiré. Demande à l’administrateur de le prolonger.',
+  ended: 'Tu as été déconnecté de cet appareil. Reconnecte-toi.',
+}
 import Button from '@/components/ui/Button'
 
 /** Sign-in, in the spirit of the Apple ID screen: centred, quiet, one clear action. */
@@ -15,7 +22,11 @@ export default function LoginPage() {
   const [password, setPassword] = useState('')
   const [showPass, setShowPass] = useState(false)
   const [loading,  setLoading]  = useState(false)
-  const [error,    setError]    = useState<string | null>(null)
+  // Why this device was signed out (account expired, session ended elsewhere), said once
+  const [error,    setError]    = useState<string | null>(() => {
+    const reason = takeSignOutReason()
+    return reason ? SIGNED_OUT[reason] : null
+  })
   const passRef = useRef<HTMLInputElement>(null)
 
   async function handleSubmit(e: React.FormEvent) {
@@ -28,11 +39,14 @@ export default function LoginPage() {
       localStorage.setItem('nexus_refresh_token', result.refreshToken)
       setAuth(result.user, result.accessToken)
       setTheme(result.user.theme)
+      // Notifications already allowed on this device: they now belong to this account
+      void resyncPush().catch(() => {})
       navigate('/dashboard', { replace: true })
     } catch (err: unknown) {
-      const e2 = err as { response?: { status?: number; data?: { error?: string } } }
+      const e2 = err as { response?: { status?: number; data?: { error?: string; code?: string } } }
       setError(
-        e2.response?.status === 401 ? 'Identifiant ou mot de passe incorrect.'
+        e2.response?.data?.code === 'ACCOUNT_EXPIRED' ? SIGNED_OUT.expired
+          : e2.response?.status === 401 ? 'Identifiant ou mot de passe incorrect.'
           : e2.response?.data?.error || 'Le serveur ne répond pas. Vérifie qu’il est démarré, puis réessaie.',
       )
       setPassword('')

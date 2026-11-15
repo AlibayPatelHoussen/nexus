@@ -7,6 +7,7 @@ import {
   SOURCE_INFO, downloadsService, langLabel, originalImage, type DetailChapter, type DetailEpisode, type SearchResult, type TorrentGroup,
 } from '@/services/downloadsService'
 import { useShell } from '@/components/shell/shellContext'
+import { useAuthStore } from '@/stores/authStore'
 import Sheet from '@/components/ui/Sheet'
 import Button from '@/components/ui/Button'
 import Toggle from '@/components/ui/Toggle'
@@ -109,7 +110,9 @@ function StandardSheet({ result, onClose }: { result: SearchResult | null; onClo
   const [lang, setLang] = useState<string>('')
   const [selected, setSelected] = useState<Set<number>>(new Set())
   const [busy, setBusy] = useState(false)
-  const followable = !!r && (r.kind === 'anime' || r.kind === 'serie' || r.kind === 'manga')
+  // Automatic downloads of what comes next: admins
+  const isAdmin = useAuthStore((s) => s.user?.role === 'admin')
+  const followable = isAdmin && !!r && (r.kind === 'anime' || r.kind === 'serie' || r.kind === 'manga')
   const { data: follow, refetch: refetchFollow } = useQuery({
     queryKey: ['dl-follow', r?.id], queryFn: () => downloadsService.follow(r!.id), enabled: followable, retry: false,
   })

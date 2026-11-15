@@ -8,6 +8,7 @@ export interface NavItem {
   label:     string
   icon:      LucideIcon
   section:   'server' | 'media' | 'settings'
+  /** Not for « user » accounts (médias, manga, their downloads and the storage only) */
   adminOnly?: boolean
   /** Other words the ⌘K search should match */
   keywords?: string
@@ -16,18 +17,18 @@ export interface NavItem {
 /** Sidebar (desktop / tablet): every destination, grouped. */
 export const NAV: NavItem[] = [
   { to: '/dashboard', label: 'Vue d’ensemble', icon: Gauge,          section: 'server', keywords: 'accueil aperçu processeur mémoire disque' },
-  { to: '/jarvis',    label: 'Jarvis',         icon: Bot,            section: 'server', keywords: 'assistant ia intelligence artificielle chat aide vocal' },
+  { to: '/jarvis',    label: 'Jarvis',         icon: Bot,            section: 'server', adminOnly: true, keywords: 'assistant ia intelligence artificielle chat aide vocal' },
   { to: '/files',     label: 'Fichiers',       icon: Folder,         section: 'server', adminOnly: true, keywords: 'dossiers explorateur' },
   { to: '/terminal',  label: 'Terminal',       icon: SquareTerminal, section: 'server', adminOnly: true, keywords: 'shell console bash ssh' },
-  { to: '/services',  label: 'Services',       icon: Activity,       section: 'server', keywords: 'systemd démarrer arrêter' },
-  { to: '/network',   label: 'Réseau',         icon: Wifi,           section: 'server', keywords: 'ip interface' },
+  { to: '/services',  label: 'Services',       icon: Activity,       section: 'server', adminOnly: true, keywords: 'systemd démarrer arrêter' },
+  { to: '/network',   label: 'Réseau',         icon: Wifi,           section: 'server', adminOnly: true, keywords: 'ip interface' },
   { to: '/ma-liste',  label: 'Ma liste',       icon: ListPlus,       section: 'media',  keywords: 'favoris à voir plus tard' },
   { to: '/cinema',    label: 'Films et séries', icon: Film,          section: 'media',  keywords: 'cinéma vidéo' },
   { to: '/animes',    label: 'Animes',         icon: Tv,             section: 'media' },
   { to: '/youtube',   label: 'YouTube',        icon: Youtube,        section: 'media',  keywords: 'vidéos chaînes' },
   { to: '/iptv',      label: 'IPTV',           icon: RadioTower,     section: 'media',  keywords: 'télévision tv direct live chaînes m3u iptv-org' },
   { to: '/manga',     label: 'Manga',          icon: BookOpen,       section: 'media',  keywords: 'scans webtoon lecture' },
-  { to: '/downloads', label: 'Téléchargements', icon: Download,      section: 'media',  adminOnly: true, keywords: 'télécharger anime-sama movix youtube file d’attente' },
+  { to: '/downloads', label: 'Téléchargements', icon: Download,      section: 'media',  keywords: 'télécharger anime-sama movix youtube file d’attente' },
   { to: '/settings',  label: 'Réglages',       icon: Settings,       section: 'settings', keywords: 'apparence compte mot de passe' },
 ]
 

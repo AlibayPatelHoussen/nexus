@@ -29,8 +29,8 @@ router.get('/follows', requireAdmin, asyncHandler(async (req: Request, res: Resp
   res.json({ success: true, data: await listFollows() })
 }))
 
-// The follow switch of a library title (anime / series / manga page)
-router.get('/follows/media/:mediaId', requireAdmin, asyncHandler(async (req: Request, res: Response) => {
+// Where a library title comes from (its « Télécharger » button; the follow switch for admins)
+router.get('/follows/media/:mediaId', asyncHandler(async (req: Request, res: Response) => {
   res.json({ success: true, data: await followTarget(req.params.mediaId) })
 }))
 

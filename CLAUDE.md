@@ -32,6 +32,14 @@ npm workspaces (`frontend`, `backend`); run from the repo root unless noted.
   via `config/database.ts` `query()`, no ORM). Rows are mapped to camelCase API objects in the
   services (e.g. `mapMedia` in `services/media.ts`). Socket.io namespaces in `socket.ts`: live stats,
   terminal (node-pty), download progress. Admin-only areas use `requireAdmin`.
+- **Accounts and sessions**: `admin` has everything; `user` accounts get médias, manga, their own downloads
+  (queue, socket events and notifications only for the account that asked) and the storage (stats reduced to
+  `disk` + `mediaStorage`); the frontend hides the rest (`adminOnly` in `components/shell/nav.ts`, `AdminOnly`
+  routes). Admin accounts are only made in the terminal (`scripts/create-admin.sh`); `/api/users` makes `user`
+  accounts, optionally with `expires_at`. Each sign-in opens a device session (`refresh_tokens`: device, IP, place
+  from Cloudflare headers via `utils/device.ts`) and is journaled (`login_events`). Tokens carry the session
+  (`sid`) and the account's `session_version` (`sv`); `services/sessions.ts` checks them on every request, stream
+  and socket (5 s cache, `forgetSessions()` after a change): a new password bumps the version (other devices out).
 - **Database**: `backend/src/db/schema.sql` is the full current schema (fresh installs); every change also gets a
   numbered file in `backend/src/db/migrations/` (see its README). Both must stay in sync.
 - **Media library**: `services/scanner.ts` walks the media folders, looks titles up on TMDB / AniList /
