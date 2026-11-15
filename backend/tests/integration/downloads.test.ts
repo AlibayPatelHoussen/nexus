@@ -11,7 +11,7 @@ import {
 } from '../../src/services/downloads'
 import { checkDueFollows } from '../../src/services/follows'
 import { MediaScanner } from '../../src/services/scanner'
-import { makeToken } from '../helpers'
+import { FIXTURES, makeToken } from '../helpers'
 
 /**
  * The real scripts need the internet: these tests use fake scripts that speak
@@ -139,6 +139,7 @@ beforeAll(async () => {
   process.env.SERIES_PATH = path.join(OUT, 'series')
   process.env.FILMS_PATH = path.join(OUT, 'films')
   process.env.DOWNLOADS_SEARCH_TIMEOUT_MS = '3000'
+  process.env.DOWNLOAD_NOTIFY_WAIT_MS = '300'
   const { rows } = await query<{ id: string }>(
     `INSERT INTO users (username, email, password, role) VALUES ('dl-admin', 'dl@test.io', 'x', 'admin')
      ON CONFLICT (username) DO UPDATE SET role = 'admin' RETURNING id`)
@@ -155,10 +156,49 @@ afterAll(async () => {
 })
 
 describe('Downloads: access', () => {
-  it('needs a token and an admin', async () => {
+  it('needs a token; automatic downloads and the catalogue stay with the admins', async () => {
     expect((await request(app).get('/api/downloads')).status).toBe(401)
-    expect((await request(app).get('/api/downloads').set(user)).status).toBe(403)
-    expect((await request(app).post('/api/downloads/search').set(user).send({ query: 'x' })).status).toBe(403)
+    expect((await request(app).get('/api/downloads').set(user)).status).toBe(200)
+    expect((await request(app).get('/api/downloads/follows').set(user)).status).toBe(403)
+    expect((await request(app).put('/api/downloads/follows').set(user).send({ id: 'anisama:manga:x', enabled: true })).status).toBe(403)
+    expect((await request(app).post('/api/downloads/catalogue/refresh').set(user)).status).toBe(403)
+  })
+
+  it('a « user » account downloads too, and only sees and hears about its own downloads', async () => {
+    emitted.length = 0
+    const mine = await request(app).post('/api/downloads').set(user)
+      .send({ id: 'anisama:manga:one-piece', title: 'One Piece', lang: 'vf', chapters: [1], force: true })
+    expect(mine.status).toBe(201)
+    const theirs = await request(app).post('/api/downloads').set(admin)
+      .send({ id: 'anisama:manga:one-piece', title: 'One Piece', lang: 'vf', chapters: [2], force: true })
+    await waitFor(async () => (await statusOf(mine.body.data.id)) === 'done' && (await statusOf(theirs.body.data.id)) === 'done')
+
+    // The queue: its own downloads for the user, everything for the admins
+    const userList = (await request(app).get('/api/downloads').set(user)).body.data.map((d: { id: string }) => d.id)
+    expect(userList).toContain(mine.body.data.id)
+    expect(userList).not.toContain(theirs.body.data.id)
+    const adminList = (await request(app).get('/api/downloads').set(admin)).body.data.map((d: { id: string }) => d.id)
+    expect(adminList).toEqual(expect.arrayContaining([mine.body.data.id, theirs.body.data.id]))
+
+    // Another account's download looks missing
+    expect((await request(app).post(`/api/downloads/${theirs.body.data.id}/retry`).set(user)).status).toBe(404)
+    expect((await request(app).delete(`/api/downloads/${theirs.body.data.id}`).set(user)).status).toBe(404)
+    expect((await request(app).get(`/api/downloads/${theirs.body.data.id}/open`).set(user)).status).toBe(404)
+
+    // Live updates: the owner's room and the admins', never the other accounts'
+    const rooms = (id: string) => emitted.filter((e) => e.event === 'download:status' && e.payload.id === id).map((e) => e.room)
+    expect(rooms(mine.body.data.id).every((r) => JSON.stringify(r) === JSON.stringify(['admins', `user:${FIXTURES.user.id}`]))).toBe(true)
+    expect(rooms(theirs.body.data.id).every((r) => JSON.stringify(r) === JSON.stringify(['admins', `user:${adminId}`]))).toBe(true)
+    // « Terminé » toast: the owner only
+    const finished = await waitFor(async () => {
+      const f = emitted.filter((e) => e.event === 'download:finished')
+      return f.length >= 2 ? f : null
+    }, 5000)
+    expect(finished.find((e) => e.payload.id === mine.body.data.id)?.room).toBe(`user:${FIXTURES.user.id}`)
+    expect(finished.find((e) => e.payload.id === theirs.body.data.id)?.room).toBe(`user:${adminId}`)
+
+    await request(app).delete(`/api/downloads/${mine.body.data.id}`).set(user).expect(200)
+    await request(app).delete(`/api/downloads/${theirs.body.data.id}`).set(admin).expect(200)
   })
 })
 

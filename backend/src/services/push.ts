@@ -50,7 +50,8 @@ export const publicKey = () => vapid().publicKey
 
 export interface PushSubscriptionInput { endpoint?: unknown; keys?: { p256dh?: unknown; auth?: unknown } }
 
-export async function subscribe(userId: string, sub: PushSubscriptionInput, userAgent?: string) {
+/** sessionId: the device's session, so its notifications end with it (sign-out, « Déconnecter »). */
+export async function subscribe(userId: string, sub: PushSubscriptionInput, userAgent?: string, sessionId?: string) {
   const endpoint = typeof sub?.endpoint === 'string' ? sub.endpoint : ''
   const p256dh = typeof sub?.keys?.p256dh === 'string' ? sub.keys.p256dh : ''
   const auth = typeof sub?.keys?.auth === 'string' ? sub.keys.auth : ''
@@ -58,9 +59,11 @@ export async function subscribe(userId: string, sub: PushSubscriptionInput, user
     throw new ValidationError('Abonnement invalide')
   }
   await query(
-    `INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth, user_agent) VALUES ($1, $2, $3, $4, $5)
-     ON CONFLICT (endpoint) DO UPDATE SET user_id = EXCLUDED.user_id, p256dh = EXCLUDED.p256dh, auth = EXCLUDED.auth`,
-    [userId, endpoint, p256dh, auth, (userAgent || '').slice(0, 300)],
+    `INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth, user_agent, session_id)
+     SELECT $1, $2, $3, $4, $5, (SELECT id FROM refresh_tokens WHERE id = $6::uuid AND user_id = $1)
+     ON CONFLICT (endpoint) DO UPDATE SET user_id = EXCLUDED.user_id, p256dh = EXCLUDED.p256dh, auth = EXCLUDED.auth,
+       session_id = EXCLUDED.session_id`,
+    [userId, endpoint, p256dh, auth, (userAgent || '').slice(0, 300), sessionId ?? null],
   )
 }
 

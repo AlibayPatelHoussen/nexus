@@ -7,9 +7,10 @@ const router = Router()
 
 router.use(authenticate)
 
-router.get('/stats', asyncHandler(async (_req: Request, res: Response) => {
+router.get('/stats', asyncHandler(async (req: Request, res: Response) => {
   const stats = await SystemService.getStats()
-  res.json({ success: true, data: stats })
+  // « user » accounts: the storage only (Aperçu shows them nothing else)
+  res.json({ success: true, data: req.user!.role === 'admin' ? stats : SystemService.storageOnly(stats) })
 }))
 
 // The system journal can hold anything (paths, IPs, other services): admins only

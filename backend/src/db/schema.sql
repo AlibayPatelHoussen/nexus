@@ -17,17 +17,45 @@ CREATE TABLE IF NOT EXISTS users (
   theme       VARCHAR(10)  NOT NULL DEFAULT 'dark' CHECK (theme IN ('dark', 'light')),
   created_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
   updated_at  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
-  last_login  TIMESTAMPTZ
+  last_login  TIMESTAMPTZ,
+  -- In every token: changing the password (or « Déconnecter tous les appareils ») increases
+  -- it, which ends every other session of the account at once
+  session_version INTEGER NOT NULL DEFAULT 1,
+  expires_at  TIMESTAMPTZ           -- account opened for a limited time (NULL: no limit)
 );
 
--- ─── REFRESH TOKENS ──────────────────────────────────
+-- ─── SESSIONS (refresh tokens): one per signed-in device ─
 CREATE TABLE IF NOT EXISTS refresh_tokens (
   id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   user_id     UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   token       VARCHAR(500) UNIQUE NOT NULL,
   expires_at  TIMESTAMPTZ NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  session_version INTEGER NOT NULL DEFAULT 1,
+  user_agent  VARCHAR(400),
+  device      VARCHAR(80),           -- « iPhone · Safari »
+  ip          VARCHAR(64),
+  location    VARCHAR(160),          -- « Lyon, Auvergne-Rhône-Alpes, France » (Cloudflare headers)
+  last_used_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_refresh_user ON refresh_tokens(user_id);
+
+-- ─── SIGN-IN JOURNAL (kept 180 days) ─────────────────
+CREATE TABLE IF NOT EXISTS login_events (
+  id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  user_id     UUID REFERENCES users(id) ON DELETE SET NULL,
+  username    VARCHAR(255) NOT NULL,   -- as typed (unknown names too)
+  success     BOOLEAN NOT NULL,
+  reason      VARCHAR(10) NOT NULL CHECK (reason IN ('ok', 'password', 'unknown', 'expired')),
+  new_device  BOOLEAN NOT NULL DEFAULT FALSE,
+  device      VARCHAR(80),
+  user_agent  VARCHAR(400),
+  ip          VARCHAR(64),
+  location    VARCHAR(160),
   created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+CREATE INDEX IF NOT EXISTS idx_login_events_created ON login_events(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_login_events_user    ON login_events(user_id, created_at DESC);
 
 -- ─── MEDIA ITEMS ─────────────────────────────────────
 CREATE TABLE IF NOT EXISTS media_items (
@@ -254,7 +282,9 @@ CREATE TABLE IF NOT EXISTS push_subscriptions (
   p256dh      TEXT NOT NULL,
   auth        TEXT NOT NULL,
   user_agent  VARCHAR(300),
-  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  -- the device's session: its notifications end with it (sign-out, « Déconnecter », new password)
+  session_id  UUID REFERENCES refresh_tokens(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_push_user ON push_subscriptions(user_id);
 

@@ -25,15 +25,20 @@ const MAX_PARALLEL = () => Math.max(1, Math.min(8, Number(process.env.DOWNLOADS_
 const SEARCH_TIMEOUT = () => Number(process.env.DOWNLOADS_SEARCH_TIMEOUT_MS) || 90_000
 const DETAILS_TIMEOUT = () => Number(process.env.DOWNLOADS_DETAILS_TIMEOUT_MS) || 180_000
 
-// ─── Live updates (Socket.io namespace /downloads, admins only) ─────────────
+// ─── Live updates (Socket.io namespace /downloads) ───────────────────────────
+// Rooms: « user:<id> » (each account), « admins ». A download is heard by the account that
+// asked for it and by the admins, never by the other accounts.
 
 let ns: Namespace | null = null
 export function setDownloadsNamespace(n: Namespace) { ns = n }
-const emit = (event: string, payload: unknown, room?: string) => {
+const emit = (event: string, payload: unknown, room?: string | string[]) => {
   if (!ns) return
   if (room) ns.to(room).emit(event, payload)
   else ns.emit(event, payload)
 }
+/** Rooms that hear about this download: its owner and the admins. */
+const roomsOf = (row: Pick<DownloadRow, 'created_by'>) => (row.created_by ? ['admins', `user:${row.created_by}`] : ['admins'])
+const emitFor = (row: Pick<DownloadRow, 'created_by'>, event: string, payload: unknown) => emit(event, payload, roomsOf(row))
 
 /** Listeners for finished jobs (push notifications, step 5). */
 type FinishListener = (job: DownloadRow, libraryUpdated: Promise<void>) => void
@@ -263,14 +268,22 @@ export async function createDownload(input: CreateInput, userId: string) {
   return present(rows[0])
 }
 
-export async function listDownloads() {
+/** The queue: all of it for admins, one account's own downloads otherwise. */
+export async function listDownloads(ownerId?: string) {
   const { rows } = await query<DownloadRow>(
-    `SELECT * FROM downloads ORDER BY
+    `SELECT * FROM downloads ${ownerId ? 'WHERE created_by = $1' : ''} ORDER BY
        CASE status WHEN 'running' THEN 0 WHEN 'queued' THEN 1 WHEN 'paused' THEN 2 ELSE 3 END,
        COALESCE(finished_at, created_at) DESC
      LIMIT 500`,
+    ownerId ? [ownerId] : [],
   )
   return rows.map(present)
+}
+
+/** A « user » account only acts on its own downloads (another's looks missing). */
+export async function assertOwner(id: string, user: { userId: string; role: string }) {
+  const row = await getRow(id)
+  if (user.role !== 'admin' && row.created_by !== user.userId) throw new NotFoundError('Téléchargement')
 }
 
 async function getRow(id: string): Promise<DownloadRow> {
@@ -294,7 +307,7 @@ async function setStatus(id: string, status: Status, extra: Record<string, unkno
 }
 
 function broadcastStatus(row: DownloadRow) {
-  emit('download:status', present(row))
+  emitFor(row, 'download:status', present(row))
 }
 
 // ─── Worker ────────────────────────────────────────────────────────────────
@@ -358,7 +371,7 @@ async function launch(row: DownloadRow) {
     // Each finished episode / chapter shows up in the library a few seconds later,
     // without waiting for the rest of the job (it can be read right away)
     if (e.type === 'item_done') rescanSoon(row.kind, () => writeHints({ ...row, progress }))
-    emit('download:progress', { id: row.id, progress })
+    emitFor(row, 'download:progress', { id: row.id, progress })
     if (Date.now() - lastSave > 2000 || e.type !== 'progress') {
       lastSave = Date.now()
       const json = JSON.stringify(progress)
@@ -436,7 +449,7 @@ export async function removeReplaced(row: DownloadRow) {
       }
     }
     await query('DELETE FROM downloads WHERE id = $1', [old.id])
-    emit('download:removed', { id: old.id })
+    emitFor(old, 'download:removed', { id: old.id })
     logger.info(`Download ${row.id}: replaces ${old.id} (${old.options.version?.label ?? 'autre version'})`)
   }
 }
@@ -542,11 +555,11 @@ export async function actOn(id: string, action: 'pause' | 'resume' | 'cancel' | 
 }
 
 export async function deleteDownload(id: string) {
-  await getRow(id)
+  const row = await getRow(id)
   const live = running.get(id)
   if (live) { live.stopAs = 'cancelled'; live.handle.kill() }
   await query('DELETE FROM downloads WHERE id = $1', [id])
-  emit('download:removed', { id })
+  emitFor(row, 'download:removed', { id })
 }
 
 /** Where to open a finished download: player (video) or reader (manga). */
@@ -622,6 +635,9 @@ function rescanLibrary(kind: Kind, attempt = 0): Promise<void> {
 }
 
 /** Live event to every open Nexus of the admins (the /downloads namespace is admin only). */
-export function broadcast(event: string, payload: unknown) { emit(event, payload) }
+/** To the account that asked for this download only (else, when nobody did, the admins). */
+export function tellOwner(row: Pick<DownloadRow, 'created_by'>, event: string, payload: unknown) {
+  emit(event, payload, row.created_by ? `user:${row.created_by}` : 'admins')
+}
 
 export const _test = { applyEvent, findDuplicates, running }

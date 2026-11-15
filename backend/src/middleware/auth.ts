@@ -1,6 +1,7 @@
 import { Request, Response, NextFunction } from 'express'
 import jwt from 'jsonwebtoken'
 import { UnauthorizedError, ForbiddenError } from '../utils/errors'
+import { checkSession } from '../services/sessions'
 
 export type TokenType = 'access' | 'refresh' | 'stream'
 
@@ -8,6 +9,10 @@ export interface JwtPayload {
   userId: string
   username: string
   role: 'admin' | 'user'
+  /** Device session (refresh_tokens.id): « Déconnecter » this device ends it */
+  sid?: string
+  /** Account session version: a password change increases it, ending the other sessions */
+  sv?: number
 }
 
 interface SignedPayload extends JwtPayload {
@@ -35,7 +40,11 @@ export function verifyToken(token: string, typ: TokenType): JwtPayload | null {
   try {
     const payload = jwt.verify(token, secretFor(typ)) as SignedPayload
     if (payload.typ !== typ) return null
-    return { userId: payload.userId, username: payload.username, role: payload.role }
+    return {
+      userId: payload.userId, username: payload.username, role: payload.role,
+      ...(typeof payload.sid === 'string' ? { sid: payload.sid } : {}),
+      ...(typeof payload.sv === 'number' ? { sv: payload.sv } : {}),
+    }
   } catch {
     return null
   }
@@ -46,16 +55,27 @@ function bearerToken(req: Request): string | undefined {
   return authHeader?.startsWith('Bearer ') ? authHeader.slice(7) : undefined
 }
 
+/**
+ * A valid token whose session still holds (account not deleted nor expired, password not
+ * changed since, device not disconnected): the request goes on with the account's current
+ * name and role (a demoted admin loses its rights at once).
+ */
+export async function verifySession(token: string, typ: TokenType): Promise<JwtPayload> {
+  const payload = verifyToken(token, typ)
+  if (!payload) throw new UnauthorizedError('Invalid or expired token')
+  const user = await checkSession(payload)
+  return { ...payload, username: user.username, role: user.role }
+}
+
+function useSession(req: Request, next: NextFunction, token: string, typ: TokenType) {
+  verifySession(token, typ).then((user) => { req.user = user; next() }, next)
+}
+
 /** Standard API auth: access token in the Authorization header only. */
 export function authenticate(req: Request, _res: Response, next: NextFunction): void {
   const token = bearerToken(req)
   if (!token) throw new UnauthorizedError('No token provided')
-
-  const payload = verifyToken(token, 'access')
-  if (!payload) throw new UnauthorizedError('Invalid or expired token')
-
-  req.user = payload
-  next()
+  useSession(req, next, token, 'access')
 }
 
 /**
@@ -66,17 +86,9 @@ export function authenticate(req: Request, _res: Response, next: NextFunction): 
  */
 export function authenticateStream(req: Request, _res: Response, next: NextFunction): void {
   const header = bearerToken(req)
-  const payload = header
-    ? verifyToken(header, 'access')
-    : typeof req.query.token === 'string'
-      ? verifyToken(req.query.token, 'stream')
-      : null
-
-  if (!header && typeof req.query.token !== 'string') throw new UnauthorizedError('No token provided')
-  if (!payload) throw new UnauthorizedError('Invalid or expired token')
-
-  req.user = payload
-  next()
+  if (header) { useSession(req, next, header, 'access'); return }
+  if (typeof req.query.token !== 'string') throw new UnauthorizedError('No token provided')
+  useSession(req, next, req.query.token, 'stream')
 }
 
 export function requireAdmin(req: Request, _res: Response, next: NextFunction): void {

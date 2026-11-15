@@ -2,7 +2,7 @@ import http from 'http'
 import type { AddressInfo } from 'net'
 import request from 'supertest'
 import { app } from '../../src/index'
-import { makeToken } from '../helpers'
+import { FIXTURES, makeToken } from '../helpers'
 
 /**
  * A fake Jarvis API (same routes and formats as jarvis-backend) to check what
@@ -64,7 +64,7 @@ beforeEach(() => {
   delete process.env.JARVIS_OWNER
 })
 
-const auth = (role: 'admin' | 'user' = 'admin', userId = 'test-uuid') => `Bearer ${makeToken(role, 'access', userId)}`
+const auth = (role: 'admin' | 'user' = 'admin') => `Bearer ${makeToken(role, 'access')}`
 
 describe('Jarvis relay', () => {
   it('requires a Nexus session', async () => {
@@ -94,20 +94,28 @@ describe('Jarvis relay', () => {
   })
 
   it('sends the user identity and role, never the browser token', async () => {
-    await request(app).get('/api/jarvis/history').set('Authorization', auth('user', 'uuid-alice'))
+    await request(app).get('/api/jarvis/history').set('Authorization', auth('admin'))
     const h = seen[0].headers
     expect(h.authorization).toBe('Bearer jv_cle_de_test')
-    expect(h['x-jarvis-user']).toBe('uuid-alice')
-    expect(h['x-jarvis-name']).toBe('testuser')
-    expect(h['x-jarvis-role']).toBe('user')
+    expect(h['x-jarvis-user']).toBe(FIXTURES.admin.id)
+    // the account's current name and role (database), not the token's
+    expect(h['x-jarvis-name']).toBe(FIXTURES.admin.username)
+    expect(h['x-jarvis-role']).toBe('admin')
+  })
+
+  it('« user » accounts have no Jarvis (médias and manga only)', async () => {
+    expect((await request(app).get('/api/jarvis/status').set('Authorization', auth('user'))).status).toBe(403)
+    expect((await request(app).post('/api/jarvis/chat').set('Authorization', auth('user')).send({ message: 'x' })).status).toBe(403)
+    expect(seen).toHaveLength(0)
   })
 
   it('links the JARVIS_OWNER account to the Jarvis owner', async () => {
-    process.env.JARVIS_OWNER = 'TestAdmin'
+    process.env.JARVIS_OWNER = FIXTURES.admin.username.toUpperCase()
     await request(app).get('/api/jarvis/history').set('Authorization', auth('admin'))
     expect(seen[0].headers['x-jarvis-user']).toBe('owner')
-    await request(app).get('/api/jarvis/history').set('Authorization', auth('user'))
-    expect(seen[1].headers['x-jarvis-user']).toBe('test-uuid')
+    process.env.JARVIS_OWNER = 'quelqu-un'
+    await request(app).get('/api/jarvis/history').set('Authorization', auth('admin'))
+    expect(seen[1].headers['x-jarvis-user']).toBe(FIXTURES.admin.id)
   })
 
   it('relays the answer as a stream', async () => {
