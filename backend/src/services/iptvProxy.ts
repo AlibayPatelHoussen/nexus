@@ -5,6 +5,7 @@ import { Readable } from 'stream'
 import type { Request, Response } from 'express'
 import { logger } from '../utils/logger'
 import type { IptvStream } from './iptv'
+import { iptvFetch } from './iptvVpn'
 
 /*
  * Relay of the IPTV streams for the browser player.
@@ -66,7 +67,8 @@ async function upstream(url: string, stream: IptvStream, req: Request, signal: A
       try { headers.Origin = new URL(stream.referrer).origin } catch { /* not a URL */ }
     }
     if (typeof req.headers.range === 'string') headers.Range = req.headers.range
-    const res = await fetch(current, { headers, redirect: 'manual', signal })
+    // Through the IPTV's VPN when there is one (iptvVpn.ts)
+    const res = await iptvFetch(current, { headers, redirect: 'manual', signal })
     if (res.status >= 300 && res.status < 400 && res.headers.get('location')) {
       await res.body?.cancel().catch(() => {})
       current = new URL(res.headers.get('location')!, current)

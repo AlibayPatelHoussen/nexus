@@ -3,6 +3,7 @@ import path from 'path'
 import readline from 'readline'
 import { ValidationError } from '../utils/errors'
 import { logger } from '../utils/logger'
+import { iptvProxyEnv } from './iptvVpn'
 
 /**
  * Runs the download scripts of downloaders/ in their --json mode.
@@ -90,13 +91,14 @@ export function selectionArg(list: unknown): string | null {
   return parts.join(',')
 }
 
-/** Variables the scripts may see (no DB password, no JWT secret…). */
-function scriptEnv(): NodeJS.ProcessEnv {
+/** Variables the scripts may see (no DB password, no JWT secret…). The IPTV's go through its VPN. */
+function scriptEnv(source?: ScriptName): NodeJS.ProcessEnv {
   const keep = ['PATH', 'HOME', 'LANG', 'LC_ALL', 'TZ', 'USER', 'TMDB_API_KEY', 'PLAYWRIGHT_BROWSERS_PATH', 'OXTORRENT_URL',
     'IPTV_API_BASE', 'IPTV_PLAYLIST_URL', 'IPTV_FREETV_URL', 'IPTV_YTDLP', 'IPTV_DATA_DIR', 'IPTV_ALLOW_PRIVATE',
     'HTTP_PROXY', 'HTTPS_PROXY', 'NO_PROXY', 'http_proxy', 'https_proxy', 'no_proxy']
   const env: NodeJS.ProcessEnv = { PYTHONUNBUFFERED: '1', PYTHONIOENCODING: 'utf-8' }
   for (const k of keep) if (process.env[k]) env[k] = process.env[k]
+  if (source === 'iptv') Object.assign(env, iptvProxyEnv())
   return env
 }
 
@@ -126,7 +128,7 @@ export function runScript(source: ScriptName, args: string[], onEvent: (e: Scrip
   const file = path.join(scriptsDir(), SCRIPT_FILE[source])
   const child = spawn(python(), [file, '--json', ...args], {
     cwd: scriptsDir(),
-    env: scriptEnv(),
+    env: scriptEnv(source),
     stdio: ['ignore', 'pipe', 'pipe'],
     detached: true,   // own process group: kill() also stops ffmpeg / chromium
   })

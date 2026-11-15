@@ -4,6 +4,11 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Added — A VPN for the IPTV only
+- `sudo bash scripts/iptv-vpn.sh install <provider WireGuard file>`: the IPTV (the streams the relay fetches, the checks, the guide, the YouTube / Twitch / Dailymotion lives) leaves through the VPN — to watch another country's channels — while the library, the downloads, TMDB, Cloudflare Tunnel and the updates keep the normal connection. wireproxy (WireGuard in user space, pinned v1.0.9 checked by SHA-256) opens a local HTTP proxy only the IPTV uses (`IPTV_PROXY`); no change to the server's routes
+- If the VPN is down, the channels stop instead of going out directly
+- *IPTV › Réglages › VPN* (admins): on / off, exit country and IP (« Vérifier »); `status` and `uninstall` in the script
+
 ### Changed — Correcting an account's duration
 - Account sheet: « Durée du compte » (Illimité, 1 mois, 6 mois, 1 an, counted from today) corrects the limit at once; « Prolonger » adds to the current end. Times stay at the device's hour (showing them at the server's hour was tried and undone: the owner wants the hour where they are)
 

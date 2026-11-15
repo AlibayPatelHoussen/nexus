@@ -10,6 +10,7 @@ import {
 import { relay, signUrl, validUrlSignature } from '../services/iptvProxy'
 import { convertStream, convertedPlaylist, convertedSegment } from '../services/iptvConvert'
 import { AuthService } from '../services/auth'
+import { vpnStatus } from '../services/iptvVpn'
 
 const router = Router()
 const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : undefined)
@@ -135,6 +136,11 @@ router.get('/settings', asyncHandler(async (_req: Request, res: Response) => {
 router.put('/settings', requireAdmin, asyncHandler(async (req: Request, res: Response) => {
   res.json({ success: true, data: await saveSettings(req.body ?? {}) })
 }))
+/** The IPTV's VPN: off, or up / down and where the IPTV comes out (country, IP). Admins. */
+router.get('/vpn', requireAdmin, asyncHandler(async (req: Request, res: Response) => {
+  res.json({ success: true, data: await vpnStatus(req.query.refresh === '1') })
+}))
+
 /** Downloads the catalogue again now (answers at once; the state is in GET /settings). */
 router.post('/refresh', requireAdmin, asyncHandler(async (_req: Request, res: Response) => {
   void refreshCatalogue().catch(() => {})

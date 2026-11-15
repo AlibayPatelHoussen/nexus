@@ -69,6 +69,17 @@ export interface ChannelQuery {
 const data = <T,>(p: Promise<{ data: { data: T } }>) => p.then((r) => r.data.data)
 const enc = encodeURIComponent
 
+/** The IPTV's VPN (scripts/iptv-vpn.sh) */
+export interface IptvVpn {
+  configured: boolean
+  ok?: boolean
+  ip?: string
+  country?: string
+  countryCode?: string
+  error?: string
+  checkedAt?: string
+}
+
 export const iptvService = {
   summary: () => data<IptvSummary>(api.get('/iptv/summary')),
   facets: () => data<IptvFacets>(api.get('/iptv/facets')),
@@ -82,6 +93,8 @@ export const iptvService = {
   history: () => data<IptvChannel[]>(api.get('/iptv/history')),
   watched: (id: string) => api.post(`/iptv/history/${enc(id)}`),
   settings: () => data<{ settings: IptvSettings; refresh: IptvRefresh }>(api.get('/iptv/settings')),
+  /** The IPTV's VPN (admins): off, or up / down and where the IPTV comes out */
+  vpn: (refresh = false) => data<IptvVpn>(api.get('/iptv/vpn', { params: refresh ? { refresh: 1 } : {} })),
   saveSettings: (s: Partial<Omit<IptvSettings, 'priorityCountries'>> & { priorityCountries?: string[] | string }) => data<IptvSettings>(api.put('/iptv/settings', s)),
   refresh: () => data<IptvRefresh>(api.post('/iptv/refresh')),
   /** Playlist relayed by the server (stream token in the URL: media elements send no header) */
