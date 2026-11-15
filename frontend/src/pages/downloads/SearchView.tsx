@@ -5,6 +5,7 @@ import toast from 'react-hot-toast'
 import type { Socket } from 'socket.io-client'
 import { SOURCE_INFO, downloadsService, type DownloadKind, type DownloadSource, type SearchResult, type TorrentGroup } from '@/services/downloadsService'
 import { useShell } from '@/components/shell/shellContext'
+import { useAuthStore } from '@/stores/authStore'
 import SegmentedControl from '@/components/ui/SegmentedControl'
 import SearchField from '@/components/ui/SearchField'
 import EmptyState from '@/components/ui/EmptyState'
@@ -206,6 +207,7 @@ export default function SearchView({ socket }: { socket: Socket | null }) {
 
 /** anime-sama's catalogue: how many titles, when it was rebuilt, rebuild now. */
 function CatalogueLine() {
+  const isAdmin = useAuthStore((s) => s.user?.role === 'admin')
   const { data, refetch } = useQuery({
     queryKey: ['dl-catalogue'], queryFn: downloadsService.catalogue, refetchInterval: (q) => (q.state.data?.refreshing ? 5000 : false),
   })
@@ -218,7 +220,7 @@ function CatalogueLine() {
       {' · '}
       {data.refreshing
         ? <span className="inline-flex items-center gap-1 align-middle"><Spinner size={10} />Actualisation…</span>
-        : <button type="button" className="text-accent-text font-medium" onClick={() => downloadsService.refreshCatalogue().then(() => refetch()).catch(() => toast.error('Actualisation impossible'))}>Actualiser</button>}
+        : isAdmin && <button type="button" className="text-accent-text font-medium" onClick={() => downloadsService.refreshCatalogue().then(() => refetch()).catch(() => toast.error('Actualisation impossible'))}>Actualiser</button>}
     </p>
   )
 }

@@ -11,7 +11,7 @@ router.get('/key', asyncHandler(async (req: Request, res: Response) => {
 }))
 
 router.post('/subscribe', asyncHandler(async (req: Request, res: Response) => {
-  await subscribe(req.user!.userId, req.body?.subscription, req.get('user-agent'))
+  await subscribe(req.user!.userId, req.body?.subscription, req.get('user-agent'), req.user!.sid)
   res.status(201).json({ success: true })
 }))
 

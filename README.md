@@ -17,7 +17,8 @@
 - **Real-time stats** — CPU, RAM, disk, temperature via WebSocket
 - **Dark/Light theme**
 - **JWT authentication** with bcrypt hashing
-- **Role-based access control** — file manager, terminal and service control are admin-only
+- **Accounts** — admins have everything; « user » accounts get the media, manga, their own downloads and the storage (no Jarvis, services, files, terminal). Admins create user accounts in *Réglages › Utilisateurs*, optionally for a limited time (1 month, 6 months, 1 year); admin accounts are only made in the terminal (`bash scripts/create-admin.sh`)
+- **Connected devices** — every sign-in is recorded (device, IP, approximate place from Cloudflare), refused ones too; *Réglages › Appareils connectés* signs a device out at once; a new device notifies the admins. A new password signs the account's other devices out (session version)
 - **Rate limiting** on login and API
 
 ## Stack
@@ -232,6 +233,13 @@ Expose the app (backend serving the built frontend) via Cloudflare Tunnel:
 ```
 nexus.houssen-serveur.com → localhost:3001
 ```
+To see the city of each sign-in (not only the country) in *Réglages › Appareils connectés*,
+turn on **Add visitor location headers** once in the Cloudflare dashboard (*Rules → Settings →
+Managed Transforms*). Nexus only trusts those headers when the request comes through the
+tunnel (from the same machine).
+
+Admin accounts: `bash scripts/create-admin.sh` (asks the name, e-mail and password; on an
+existing account it resets the password and signs it out everywhere).
 
 ### Troubleshooting
 | Symptom | Fix |

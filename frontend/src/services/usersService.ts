@@ -1,0 +1,91 @@
+import { api } from './api'
+
+/** Réglages › Utilisateurs, Appareils connectés, Journal des connexions (admins). */
+
+export interface Account {
+  id:        string
+  username:  string
+  email:     string
+  role:      'admin' | 'user'
+  createdAt: string
+  lastLogin: string | null
+  /** End of an account opened for a limited time (null: no limit) */
+  expiresAt: string | null
+  expired:   boolean
+  /** Devices signed in right now */
+  devices:   number
+}
+
+export interface DeviceSession {
+  id:           string
+  userId:       string
+  username:     string
+  role:         'admin' | 'user'
+  /** « iPhone · Safari » */
+  device:       string
+  /** « Lyon, Auvergne-Rhône-Alpes, France », « Réseau local », or null */
+  location:     string | null
+  ip:           string | null
+  signedInAt:   string
+  lastActiveAt: string
+  /** The device asking */
+  current:      boolean
+}
+
+export interface SignInEvent {
+  id:        string
+  userId:    string | null
+  username:  string
+  success:   boolean
+  reason:    'ok' | 'password' | 'unknown' | 'expired'
+  newDevice: boolean
+  device:    string
+  location:  string | null
+  ip:        string | null
+  at:        string
+}
+
+export interface NewAccount {
+  username:  string
+  email:     string
+  password:  string
+  expiresAt: string | null
+}
+
+export const usersService = {
+  list: async () => (await api.get<{ data: Account[] }>('/users')).data.data,
+  create: async (body: NewAccount) => (await api.post<{ data: { id: string } }>('/users', body)).data.data,
+  setExpiry: async (id: string, expiresAt: string | null) => { await api.patch(`/users/${id}`, { expiresAt }) },
+  remove: async (id: string) => { await api.delete(`/users/${id}`) },
+  signOutEverywhere: async (id: string) => (await api.post<{ data: { removed: number } }>(`/users/${id}/sign-out`)).data.data,
+  sessions: async () => (await api.get<{ data: DeviceSession[] }>('/users/sessions')).data.data,
+  revokeSession: async (id: string) => { await api.delete(`/users/sessions/${id}`) },
+  logins: async (params: { limit?: number; user?: string } = {}) =>
+    (await api.get<{ data: SignInEvent[] }>('/users/logins', { params })).data.data,
+}
+
+/** « Mot de passe incorrect », « Nom inconnu »… for a refused sign-in. */
+export const SIGN_IN_REASON: Record<SignInEvent['reason'], string> = {
+  ok: 'Connecté',
+  password: 'Mot de passe incorrect',
+  unknown: 'Nom inconnu',
+  expired: 'Compte expiré',
+}
+
+/** Account durations offered when creating or extending one. */
+export const DURATIONS = [
+  { value: 'none', label: 'Sans limite', months: 0 },
+  { value: '1m', label: '1 mois', months: 1 },
+  { value: '6m', label: '6 mois', months: 6 },
+  { value: '1y', label: '1 an', months: 12 },
+] as const
+export type Duration = typeof DURATIONS[number]['value']
+
+/** The end date of a duration starting now (or from `from`), as ISO; null for no limit. */
+export function endOf(duration: Duration, from = new Date()): string | null {
+  const months = DURATIONS.find((d) => d.value === duration)?.months ?? 0
+  if (!months) return null
+  const end = new Date(from)
+  end.setMonth(end.getMonth() + months)
+  return end.toISOString()
+}

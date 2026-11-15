@@ -15,6 +15,7 @@ const config: Config = {
     '^@/(.*)$': '<rootDir>/src/$1',
   },
   setupFiles: ['<rootDir>/tests/setupEnv.ts'],
+  setupFilesAfterEnv: ['<rootDir>/tests/setupDb.ts'],
   forceExit: true,
 }
 

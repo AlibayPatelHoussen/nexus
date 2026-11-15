@@ -1,7 +1,7 @@
 import crypto from 'crypto'
 import { Router, Request, Response, NextFunction } from 'express'
 import asyncHandler from 'express-async-handler'
-import { authenticate } from '../middleware/auth'
+import { authenticate, requireAdmin } from '../middleware/auth'
 import { AppError, UnauthorizedError, ValidationError } from '../utils/errors'
 import { jarvisFetch, jarvisJson, jarvisStatus } from '../services/jarvis'
 import { manifest, runTool } from '../services/jarvisTools'
@@ -38,8 +38,8 @@ router.post('/tools/:name', requireJarvisSecret, asyncHandler(async (req: Reques
   res.json({ result })
 }))
 
-// ─── Relay for the logged-in user ────────────────────────────────────────────
-router.use(authenticate)
+// ─── Relay for the logged-in user (admins: « user » accounts only have médias and manga) ─
+router.use(authenticate, requireAdmin)
 
 router.get('/status', asyncHandler(async (_req: Request, res: Response) => {
   res.json({ success: true, data: await jarvisStatus() })

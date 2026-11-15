@@ -6,7 +6,8 @@ import { ValidationError } from '../utils/errors'
 
 const router = Router()
 
-router.use(authenticate)
+// Server services: admins (« user » accounts only see médias, manga and the storage)
+router.use(authenticate, requireAdmin)
 
 router.get('/', asyncHandler(async (_req: Request, res: Response) => {
   const services = await ServicesService.getAll()

@@ -3,37 +3,70 @@ import { SystemService } from './services/system'
 import { logger } from './utils/logger'
 import { attachTerminal } from './services/terminal'
 import { setDownloadsNamespace } from './services/downloads'
-import { verifyToken } from './middleware/auth'
+import { verifySession } from './middleware/auth'
 import type { JwtPayload } from './middleware/auth'
+import { checkSession } from './services/sessions'
 
-function authenticateSocket(socket: Socket): JwtPayload | null {
+interface SocketUser { userId: string; role: 'admin' | 'user'; sid?: string; sv?: number }
+
+/** The account behind the socket's access token, if its session still holds (else null). */
+async function authenticateSocket(socket: Socket): Promise<JwtPayload | null> {
   const token = socket.handshake.auth?.token
-  return typeof token === 'string' && token ? verifyToken(token, 'access') : null
+  if (typeof token !== 'string' || !token) return null
+  return verifySession(token, 'access').catch(() => null)
+}
+
+type Guard = (socket: Socket, next: (err?: Error) => void) => void
+
+/** Signed-in accounts only (adminOnly: admins only). The socket keeps its user in socket.data. */
+function guard(adminOnly: boolean): Guard {
+  return (socket, next) => {
+    void authenticateSocket(socket).then((user) => {
+      if (!user) { next(new Error('unauthorized')); return }
+      if (adminOnly && user.role !== 'admin') { next(new Error('forbidden')); return }
+      socket.data = { userId: user.userId, role: user.role, sid: user.sid, sv: user.sv } satisfies SocketUser
+      next()
+    })
+  }
+}
+
+/**
+ * A socket stays open for hours: every 30 s its session is checked again, so a device
+ * signed out (« Déconnecter », new password, account deleted or expired) loses it too.
+ */
+function watchSession(socket: Socket) {
+  const claims = socket.data as SocketUser
+  const timer = setInterval(() => {
+    void checkSession(claims).catch(() => {
+      logger.info(`Socket ${socket.nsp.name} ${socket.id}: session ended, disconnected`)
+      socket.disconnect(true)
+    })
+  }, Number(process.env.SOCKET_SESSION_CHECK_MS) || 30_000)
+  timer.unref()
+  socket.on('disconnect', () => clearInterval(timer))
 }
 
 export function registerSocketHandlers(io: Server): void {
 
   // ─── Stats namespace ────────────────────────────
   const statsNs = io.of('/stats')
-
-  statsNs.use((socket, next) => {
-    const user = authenticateSocket(socket)
-    if (!user) { next(new Error('unauthorized')); return }
-    next()
-  })
+  statsNs.use(guard(false))
 
   statsNs.on('connection', (socket) => {
     logger.info(`Stats socket connected: ${socket.id}`)
+    watchSession(socket)
+    // « user » accounts: the storage only
+    const admin = (socket.data as SocketUser).role === 'admin'
+    const send = () => SystemService.getStats()
+      .then((stats) => socket.emit('stats', admin ? stats : SystemService.storageOnly(stats)))
 
     // Send stats every 3 seconds
     const interval = setInterval(() => {
-      SystemService.getStats()
-        .then(stats => socket.emit('stats', stats))
-        .catch((err: unknown) => logger.error('Stats emit error', { err }))
+      send().catch((err: unknown) => logger.error('Stats emit error', { err }))
     }, 3000)
 
     // Send immediately on connect
-    SystemService.getStats().then(stats => socket.emit('stats', stats)).catch(() => {})
+    send().catch(() => {})
 
     socket.on('disconnect', () => {
       clearInterval(interval)
@@ -43,33 +76,24 @@ export function registerSocketHandlers(io: Server): void {
 
   // ─── Terminal namespace ──────────────────────────
   const termNs = io.of('/terminal')
-
-  termNs.use((socket, next) => {
-    const user = authenticateSocket(socket)
-    if (!user) { next(new Error('unauthorized')); return }
-    if (user.role !== 'admin') { next(new Error('forbidden')); return }
-    socket.data = { userId: user.userId }
-    next()
-  })
+  termNs.use(guard(true))
 
   termNs.on('connection', (socket) => {
-    attachTerminal(socket, (socket.data as { userId: string }).userId)
+    watchSession(socket)
+    attachTerminal(socket, (socket.data as SocketUser).userId)
   })
 
   // ─── Downloads namespace (search results, progress) ─
+  // Everyone signed in downloads; each account only hears about its own downloads, admins about all
   const dlNs = io.of('/downloads')
-
-  dlNs.use((socket, next) => {
-    const user = authenticateSocket(socket)
-    if (!user) { next(new Error('unauthorized')); return }
-    if (user.role !== 'admin') { next(new Error('forbidden')); return }
-    socket.data = { userId: user.userId }
-    next()
-  })
+  dlNs.use(guard(false))
 
   dlNs.on('connection', (socket) => {
-    // Search results only go to the user who searched
-    void socket.join(`user:${(socket.data as { userId: string }).userId}`)
+    watchSession(socket)
+    const { userId, role } = socket.data as SocketUser
+    // Search results and the account's own downloads go to its room
+    void socket.join(`user:${userId}`)
+    if (role === 'admin') void socket.join('admins')
   })
   setDownloadsNamespace(dlNs)
 }

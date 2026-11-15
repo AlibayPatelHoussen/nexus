@@ -4,7 +4,7 @@ import { execFileSync } from 'child_process'
 import request from 'supertest'
 import { app } from '../../src/index'
 import { listJobs } from '../../src/services/transcode'
-import { makeToken } from '../helpers'
+import { FIXTURES, makeToken } from '../helpers'
 
 // Real ffmpeg is required: skip (with a notice) on machines without it
 let hasFfmpeg = true
@@ -191,7 +191,7 @@ d('HLS conversion', () => {
 
   it('another user cannot read someone else\'s conversion', async () => {
     const res = await request(app).post(`/api/files/transcode?${q(files.remux)}`).set(auth)
-    const other = await request(app).get(`${res.body.data.playlist}?token=${makeToken('admin', 'stream', 'another-user')}`)
+    const other = await request(app).get(`${res.body.data.playlist}?token=${makeToken('user', 'stream', FIXTURES.other.id)}`)
     expect(other.status).toBe(404)
   }, 30_000)
 

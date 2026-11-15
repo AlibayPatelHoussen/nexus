@@ -5,6 +5,8 @@ export interface User {
   email:    string
   role:     'admin' | 'user'
   theme:    'dark' | 'light'
+  /** Account opened for a limited time: its end (ISO), null for no limit */
+  expiresAt?: string | null
 }
 
 export interface AuthState {

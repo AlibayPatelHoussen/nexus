@@ -1,13 +1,15 @@
 import path from 'path'
 import { query } from '../config/database'
 import { logger } from '../utils/logger'
-import { broadcast, onDownloadFinished, type DownloadRow } from './downloads'
+import { onDownloadFinished, tellOwner, type DownloadRow } from './downloads'
 import { sendPush } from './push'
 import { langLabel } from './downloadScripts'
 
 /**
- * End of every download, whatever the script: a push notification to the
- * admins' devices and a live toast in every open Nexus.
+ * End of every download, whatever the script: a push notification to the devices of the
+ * account that asked for it, and a live toast in its open Nexus — only there: another
+ * account's download never notifies anyone else (automatic downloads: the account that
+ * switched them on; nobody left: the admins).
  *   « Film terminé » — « Deadpool & Wolverine · 1080p MULTI »
  * Touching it opens the title in the library (once the rescan found it).
  */
@@ -84,8 +86,10 @@ onDownloadFinished((row, libraryUpdated) => {
     await Promise.race([libraryUpdated, new Promise((r) => setTimeout(r, LIBRARY_WAIT_MS()).unref())])
     const url = await urlOf(row).catch(() => '/downloads?tab=queue')
     const { ok, title, body } = message(row)
-    broadcast('download:finished', { id: row.id, ok, title, body, url })
-    const { rows } = await query<{ id: string }>(`SELECT id FROM users WHERE role = 'admin'`)
-    await sendPush(rows.map((r) => r.id), { title, body, url, tag: `download-${row.id}` })
+    tellOwner(row, 'download:finished', { id: row.id, ok, title, body, url })
+    const to = row.created_by
+      ? [row.created_by]
+      : (await query<{ id: string }>(`SELECT id FROM users WHERE role = 'admin'`)).rows.map((r) => r.id)
+    await sendPush(to, { title, body, url, tag: `download-${row.id}` })
   })().catch((err: Error) => logger.warn(`Download notification: ${err.message}`))
 })

@@ -4,6 +4,15 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Added — Accounts: « user » accounts, connected devices, sign-in journal, session version
+- **« user » accounts** (made by an admin in *Réglages › Utilisateurs*): médias, manga, their own downloads, and on *Aperçu* the storage only (disk + each library). *Réglages*: their name and e-mail, the library, notifications. No Jarvis, services, network, files, terminal or version. Enforced by the server, not only hidden
+- Accounts **for a limited time** (1 month, 6 months, 1 year): refused once the date has passed (« Ce compte a expiré »), its devices signed out; an admin extends it or removes the limit. Admins also delete « user » accounts and sign an account out of every device
+- **Admin accounts are made in the terminal only**: `bash scripts/create-admin.sh` now asks the name, e-mail and password (it set « password » before); resetting an account signs it out everywhere
+- **Appareils connectés**: every signed-in device of every account — « iPhone · Safari », the place (« Lyon, Auvergne-Rhône-Alpes, France », given by Cloudflare from the IP), the IP, last activity — and « Déconnecter » ends it at once (its notifications too)
+- **Journal des connexions**: every sign-in, successful or refused (wrong password, unknown name, expired account), kept 6 months. A **new device** sends a notification to the admins' devices
+- **Session version**: changing the password signs every other device out at once; the device that changed it stays signed in
+- **Notifications per device and per account**: a download's notification and live toast go only to the account that asked for it; a device's notifications end with its session and never reach the next account signed in on it
+
 ### Added — Jarvis can act in Nexus: downloads, library, IPTV
 - Nexus lends its actions to Jarvis (`services/jarvisTools.ts`), so you can ask it in plain words: « télécharge les épisodes 1 à 12 de la saison 1 de One Piece en VOSTFR », « télécharge les chapitres 1100 à 1110 de One Piece », « télécharge Dune », « où en sont mes téléchargements ? », « mets France 24 », « analyse la bibliothèque des films », « fais le point sur ma bibliothèque », « supprime ce film » (with your approval)
 - Jarvis searches every download source (anime-sama, movix, tiprov, OxTorrent, YouTube), picks the season, language, episodes or chapters, and queues them like the « Téléchargements » page; a torrent film gets the best version (1080p, shared, reasonable size)

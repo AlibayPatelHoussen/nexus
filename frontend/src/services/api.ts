@@ -9,16 +9,38 @@ export const api = axios.create({
 // ── Token helpers ────────────────────────────────────
 let refreshing: Promise<string> | null = null
 
+/** Why this device was signed out, shown once on the sign-in screen. */
+export type SignOutReason = 'expired' | 'ended'
+const REASON_KEY = 'nexus_signed_out'
+export function takeSignOutReason(): SignOutReason | null {
+  try {
+    const r = sessionStorage.getItem(REASON_KEY)
+    sessionStorage.removeItem(REASON_KEY)
+    return r === 'expired' || r === 'ended' ? r : null
+  } catch { return null }
+}
+function rememberSignOut(err: unknown) {
+  const res = (err as { response?: { status?: number; data?: { code?: string } } }).response
+  if (res?.status !== 401) return            // network error: not a sign-out
+  try { sessionStorage.setItem(REASON_KEY, res.data?.code === 'ACCOUNT_EXPIRED' ? 'expired' : 'ended') } catch { /* private mode */ }
+}
+
 /** Get a new access token from the refresh token (concurrent calls share one request). */
 export function refreshAccessToken(): Promise<string> {
   if (!refreshing) {
     refreshing = (async () => {
       const refreshToken = localStorage.getItem('nexus_refresh_token')
       if (!refreshToken) throw new Error('No refresh token')
-      const { data } = await axios.post('/api/auth/refresh', { refreshToken })
-      const token = data.data.accessToken as string
-      useAuthStore.getState().setAccessToken(token)
-      return token
+      try {
+        const { data } = await axios.post('/api/auth/refresh', { refreshToken })
+        const token = data.data.accessToken as string
+        useAuthStore.getState().setAccessToken(token)
+        return token
+      } catch (err) {
+        // The session ended (signed out from Réglages, new password elsewhere, account expired)
+        rememberSignOut(err)
+        throw err
+      }
     })().finally(() => { refreshing = null })
   }
   return refreshing

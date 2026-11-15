@@ -82,7 +82,8 @@ export default function MediaDetailPage() {
   useSection(media ? libraryOf(media.type).to.split('?')[0] : null)
   // New episodes / chapters (a download running…) show up without « Analyser »
   useAutoScan(scanTypeOf(media?.type))
-  const dlKind = isAdmin ? downloadKind(media?.type) : null
+  // « Télécharger » for every account; the automatic downloads (follow) stay with the admins
+  const dlKind = downloadKind(media?.type)
   const dlTarget = useDownloadTarget(id, !!dlKind)
   // Tapped before the title was found on the site: open as soon as it is (or say why not)
   useEffect(() => {

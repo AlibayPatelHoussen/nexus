@@ -161,6 +161,11 @@ export class SystemService {
     }
   }
 
+  /** What a « user » account sees of the server: the storage (disk, libraries), nothing else. */
+  static storageOnly(stats: SystemStats): Pick<SystemStats, 'disk' | 'mediaStorage'> {
+    return { disk: stats.disk, mediaStorage: stats.mediaStorage }
+  }
+
   static async getLogs(lines = 100): Promise<string[]> {
     const { execFile } = await import('child_process')
     const { promisify } = await import('util')

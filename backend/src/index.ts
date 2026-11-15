@@ -35,6 +35,7 @@ import imagesRoutes   from './routes/images'
 import castRoutes     from './routes/cast'
 import iptvRoutes     from './routes/iptv'
 import jarvisRoutes   from './routes/jarvis'
+import usersRoutes    from './routes/users'
 import { startIptvWorker } from './services/iptv'
 import { registerSocketHandlers } from './socket'
 
@@ -100,6 +101,7 @@ app.use('/api/push', pushRoutes)
 app.use('/api/cast', castRoutes)
 app.use('/api/iptv', iptvRoutes)
 app.use('/api/jarvis', jarvisRoutes)
+app.use('/api/users', usersRoutes)
 app.use('/api/terminal', terminalRoutes)
 app.get('/api/health',   (_req, res) => res.json({
   status:    'ok',

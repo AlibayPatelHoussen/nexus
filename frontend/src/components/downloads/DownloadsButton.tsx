@@ -6,9 +6,9 @@ import { downloadsService } from '@/services/downloadsService'
 
 /** iPhone: Médias › Téléchargements (navigation bar button with the active count). */
 export default function DownloadsButton() {
-  const isAdmin = useAuthStore((s) => s.user?.role === 'admin')
-  const { data } = useQuery({ queryKey: ['downloads'], queryFn: downloadsService.list, enabled: isAdmin, refetchInterval: 30_000 })
-  if (!isAdmin) return null
+  // Every account downloads (a « user » account sees its own queue)
+  const signedIn = useAuthStore((s) => s.isAuth)
+  const { data } = useQuery({ queryKey: ['downloads'], queryFn: downloadsService.list, enabled: signedIn, refetchInterval: 30_000 })
   const active = (data ?? []).filter((d) => d.status === 'running' || d.status === 'queued').length
   return (
     <Link to="/downloads" className="relative w-11 h-11 grid place-items-center rounded-full text-label active:opacity-50" aria-label={`Téléchargements${active ? `, ${active} en cours` : ''}`}>

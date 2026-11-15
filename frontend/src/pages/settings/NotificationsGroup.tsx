@@ -3,9 +3,10 @@ import toast from 'react-hot-toast'
 import { Group, ListRow } from '@/components/ui/GroupedList'
 import Toggle from '@/components/ui/Toggle'
 import Button from '@/components/ui/Button'
+import { useAuthStore } from '@/stores/authStore'
 import { disablePush, enablePush, pushSupport, resyncPush, testPush } from '@/services/pushService'
 
-/** Réglages › Notifications: this device receives a notification when a download ends. */
+/** Réglages › Notifications: this device receives a notification when one of the account's downloads ends (admins: also a new device signing in). */
 export default function NotificationsGroup() {
   const support = pushSupport()
   const [on, setOn] = useState(false)
@@ -31,8 +32,9 @@ export default function NotificationsGroup() {
     }
   }
 
+  const isAdmin = useAuthStore((st) => st.user?.role === 'admin')
   const footer = {
-    ok: 'Une notification quand un téléchargement se termine ou échoue, même quand Nexus est fermé. Chaque appareil s’active séparément.',
+    ok: `Une notification quand un de tes téléchargements se termine ou échoue${isAdmin ? ', et quand un nouvel appareil se connecte à Nexus' : ''}, même quand Nexus est fermé. Chaque appareil s’active séparément, pour le compte connecté dessus.`,
     'needs-home-screen': 'Sur iPhone, ajoute d’abord Nexus à l’écran d’accueil (Partager › Sur l’écran d’accueil), puis ouvre-le depuis son icône.',
     unsupported: 'Ce navigateur ne gère pas les notifications web.',
     insecure: 'Les notifications ont besoin d’une connexion HTTPS.',
@@ -40,7 +42,7 @@ export default function NotificationsGroup() {
 
   return (
     <Group header="Notifications" footer={footer}>
-      <ListRow title="Téléchargements" subtitle={support === 'ok' ? 'Terminés ou échoués' : undefined}>
+      <ListRow title={isAdmin ? 'Téléchargements et connexions' : 'Téléchargements'} subtitle={support === 'ok' ? (isAdmin ? 'Téléchargements terminés, nouveaux appareils' : 'Terminés ou échoués') : undefined}>
         <Toggle checked={on} onChange={(v) => { void toggle(v) }} disabled={busy || support !== 'ok'} label="Notifications des téléchargements" />
       </ListRow>
       {on && (
