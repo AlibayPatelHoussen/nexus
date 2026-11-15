@@ -4,10 +4,6 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
-### Changed — Times at the server's hour, and correcting an account's duration
-- The times of what happens on the server (Réglages › Version « Démarré le », sign-ins, connected devices, account end dates, IPTV refreshes, files, the anime-sama catalogue) are shown at the server's hour, whatever the time zone of the device (an iPhone in another country showed its own). `/api/health` gives the server's time zone, remembered on each device; Réglages › Version says which one. An account chosen to end on a day closes at 23:59 at the server
-- Account sheet: « Durée du compte » (Illimité, 1 mois, 6 mois, 1 an, counted from today) corrects the limit at once; « Prolonger » adds to the current end
-
 ### Changed — « user » accounts: their settings and automatic downloads; any account duration; journal clean-up
 - « user » accounts get back *Apparence*, their name and their password in *Réglages*, and the automatic downloads (« Téléchargement automatique » on a title, and in the download sheet). A title has one follow, shared like the library: whoever switches it on owns it (its downloads and notifications)
 - Account duration: « Autre » to pick the last day yourself (the account closes at 23:59 that day); an existing account can be extended to a chosen date too (« Choisir une date… »)

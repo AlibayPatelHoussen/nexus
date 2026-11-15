@@ -41,8 +41,5 @@ describe('GET /api/health', () => {
     const res = await request(app).get('/api/health')
     expect(res.status).toBe(200)
     expect(res.body.status).toBe('ok')
-    // The UI shows the server's events at the server's hour
-    expect(res.body.timeZone).toBe(Intl.DateTimeFormat().resolvedOptions().timeZone)
-    expect(res.body.timeZone).toMatch(/^[A-Za-z_]+(\/[A-Za-z0-9_+-]+)*$/)
   })
 })
