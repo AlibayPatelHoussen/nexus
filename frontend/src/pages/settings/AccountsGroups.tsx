@@ -2,11 +2,12 @@ import { useId, useRef, useState } from 'react'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import toast from 'react-hot-toast'
 import { isAxiosError } from 'axios'
-import { CheckCircle2, Laptop, Smartphone, Tablet, UserPlus, XCircle, type LucideIcon } from 'lucide-react'
+import { CheckCircle2, Laptop, Smartphone, Tablet, Trash2, UserPlus, XCircle, type LucideIcon } from 'lucide-react'
 import {
-  DURATIONS, SIGN_IN_REASON, endOf, usersService,
+  DURATIONS, SIGN_IN_REASON, endOf, endOfDay, firstEndDay, usersService,
   type Account, type DeviceSession, type Duration, type SignInEvent,
 } from '@/services/usersService'
+import { useContextMenu } from '@/components/ui/useContextMenu'
 import { useAuthStore } from '@/stores/authStore'
 import { useShell } from '@/components/shell/shellContext'
 import { Group, ListRow } from '@/components/ui/GroupedList'
@@ -87,26 +88,29 @@ function NewUserSheet({ open, onClose }: { open: boolean; onClose: () => void })
   const [username, setUsername] = useState('')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
-  const [duration, setDuration] = useState<Duration>('1y')
+  // A ready-made duration, or « Autre » : the end day of your choice
+  const [duration, setDuration] = useState<Duration | 'date'>('1y')
+  const [day, setDay] = useState('')
+  const expiresAt = duration === 'date' ? endOfDay(day) : endOf(duration)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const formId = useId()
 
   const nameOk = /^[A-Za-z0-9_-]{3,50}$/.test(username.trim())
   const passOk = password.length >= 8 && /[a-z]/.test(password) && /[A-Z]/.test(password) && /\d/.test(password)
-  const valid = nameOk && /^\S+@\S+\.\S+$/.test(email.trim()) && passOk
+  const valid = nameOk && /^\S+@\S+\.\S+$/.test(email.trim()) && passOk && (duration !== 'date' || !!expiresAt)
 
   function close() {
     if (saving) return
     onClose()
-    setUsername(''); setEmail(''); setPassword(''); setDuration('1y'); setError(null)
+    setUsername(''); setEmail(''); setPassword(''); setDuration('1y'); setDay(''); setError(null)
   }
 
   async function submit() {
     if (!valid || saving) return
     setSaving(true); setError(null)
     try {
-      await usersService.create({ username: username.trim(), email: email.trim(), password, expiresAt: endOf(duration) })
+      await usersService.create({ username: username.trim(), email: email.trim(), password, expiresAt })
       await qc.invalidateQueries({ queryKey: ['accounts'] })
       toast.success(`Compte « ${username.trim()} » créé`)
       setSaving(false)
@@ -146,11 +150,17 @@ function NewUserSheet({ open, onClose }: { open: boolean; onClose: () => void })
           error={password && !passOk ? 'Au moins 8 caractères, avec une majuscule, une minuscule et un chiffre.' : undefined} />
         <div className="flex flex-col gap-1.5">
           <span className="text-subhead text-label2" id={`${formId}-d`}>Durée du compte</span>
-          <SegmentedControl<Duration> label="Durée du compte" full value={duration} onChange={setDuration}
-            options={DURATIONS.map((d) => ({ value: d.value, label: d.label }))} />
+          <SegmentedControl<Duration | 'date'> label="Durée du compte" full value={duration} onChange={setDuration}
+            options={[...DURATIONS.map((d) => ({ value: d.value, label: d.label })), { value: 'date' as const, label: 'Autre' }]} />
+          {duration === 'date' && (
+            <TextField label="Fin du compte" hideLabel type="date" min={firstEndDay()} value={day}
+              onChange={(e) => { setDay(e.target.value); setError(null) }} aria-label="Date de fin du compte"
+              error={day && !expiresAt ? 'Choisis une date après aujourd’hui.' : undefined} />
+          )}
           <p className="text-caption text-label2">
             {duration === 'none' ? 'Le compte reste ouvert jusqu’à ce que tu le supprimes.'
-              : `Le compte se ferme le ${formatDay(endOf(duration)!)} ; tu peux le prolonger.`}
+              : expiresAt ? `Le compte se ferme le ${formatDay(expiresAt)} ; tu peux le prolonger.`
+                : 'Choisis le dernier jour du compte.'}
           </p>
         </div>
         {error && <p role="alert" className="text-subhead text-danger-text">{error}</p>}
@@ -164,6 +174,10 @@ function AccountSheet({ account, onClose }: { account: Account | null; onClose: 
   const confirm = useConfirm()
   const me = useAuthStore((s) => s.user?.id)
   const [busy, setBusy] = useState(false)
+  // « Choisir une date… » : the end day of your choice
+  const [picking, setPicking] = useState(false)
+  const [day, setDay] = useState('')
+  const menu = useContextMenu()
   const { data: sessions } = useQuery({ queryKey: ['sessions'], queryFn: usersService.sessions, enabled: !!account })
   const { data: journal } = useQuery({
     queryKey: ['logins', account?.id], queryFn: () => usersService.logins({ user: account!.id, limit: 10 }), enabled: !!account,
@@ -193,6 +207,22 @@ function AccountSheet({ account, onClose }: { account: Account | null; onClose: 
     const from = a!.expiresAt && !a!.expired ? new Date(a!.expiresAt) : new Date()
     const end = endOf(duration, from)
     await run(() => usersService.setExpiry(a!.id, end), end ? `Compte ouvert jusqu’au ${formatDay(end)}` : 'Compte sans limite de durée')
+  }
+
+  async function setDayEnd() {
+    const end = endOfDay(day)
+    if (!end) return
+    await run(() => usersService.setExpiry(a!.id, end), `Compte ouvert jusqu’au ${formatDay(end)}`)
+    setPicking(false); setDay('')
+  }
+
+  async function clearJournal() {
+    const ok = await confirm({
+      title: `Effacer les connexions de ${a!.username} ?`,
+      message: 'Ses lignes du journal des connexions sont supprimées. Ses appareils restent connectés.',
+      confirmLabel: 'Effacer', danger: true,
+    })
+    if (ok) await run(() => usersService.clearLogins(a!.id), 'Connexions effacées')
   }
 
   async function signOutEverywhere() {
@@ -241,7 +271,17 @@ function AccountSheet({ account, onClose }: { account: Account | null; onClose: 
                 <Button key={d.value} size="small" disabled={busy} onClick={() => void extend(d.value)}>+ {d.label}</Button>
               ))}
               {a.expiresAt && <Button size="small" variant="plain" disabled={busy} onClick={() => void extend('none')}>Sans limite</Button>}
+              {!picking && <Button size="small" variant="plain" disabled={busy} onClick={() => setPicking(true)}>Choisir une date…</Button>}
             </div>
+            {picking && (
+              <form role="listitem" className="nx-row relative flex flex-wrap items-center gap-2 px-4 py-3"
+                onSubmit={(e) => { e.preventDefault(); void setDayEnd() }}>
+                <TextField label="Dernier jour du compte" hideLabel type="date" min={firstEndDay()} value={day}
+                  onChange={(e) => setDay(e.target.value)} aria-label="Dernier jour du compte" className="flex-1 min-w-[160px]" />
+                <Button size="small" variant="primary" type="submit" disabled={busy || !endOfDay(day)}>Enregistrer</Button>
+                <Button size="small" variant="plain" onClick={() => { setPicking(false); setDay('') }}>Annuler</Button>
+              </form>
+            )}
           </Group>
         )}
 
@@ -254,15 +294,17 @@ function AccountSheet({ account, onClose }: { account: Account | null; onClose: 
         <Group header="Dernières connexions">
           {!journal ? <SkeletonRows rows={2} /> : journal.length === 0
             ? <ListRow title={<span className="text-label2">Aucune connexion</span>} />
-            : journal.map((e) => <SignInRow key={e.id} e={e} withName={false} />)}
+            : journal.map((e) => <SignInRow key={e.id} e={e} withName={false} menu={menu} />)}
         </Group>
 
         <Group>
           {devices.length > 0 && a.id !== me && <ListRow title="Déconnecter tous les appareils" destructive onClick={() => void signOutEverywhere()} disabled={busy} />}
+          {(journal?.length ?? 0) > 0 && <ListRow title="Effacer ses connexions du journal…" destructive onClick={() => void clearJournal()} disabled={busy} />}
           {isUser && <ListRow title="Supprimer le compte…" destructive onClick={() => void remove()} disabled={busy} />}
-          {!isUser && <ListRow title={<span className="text-label2">Un compte administrateur se gère dans le terminal.</span>} />}
+          {!isUser && <ListRow wrap title={<span className="text-label2">Un compte administrateur se supprime dans le terminal : <code className="font-mono">bash scripts/delete-account.sh {a.username}</code></span>} />}
         </Group>
       </div>
+      {menu.element}
     </Sheet>
   )
 }
@@ -327,10 +369,29 @@ export function DevicesGroup() {
 
 /* ── Journal des connexions ──────────────────────────────────────────────── */
 
-function SignInRow({ e, withName = true }: { e: SignInEvent; withName?: boolean }) {
+/** Removes one entry of the journal (and refreshes the lists showing it). */
+function useDeleteLogin() {
+  const qc = useQueryClient()
+  return async (id: string) => {
+    try {
+      await usersService.deleteLogin(id)
+      await qc.invalidateQueries({ queryKey: ['logins'] })
+    } catch (err) { toast.error(errorOf(err, 'Impossible de supprimer cette entrée.')) }
+  }
+}
+
+type Menu = ReturnType<typeof useContextMenu>
+
+/**
+ * One sign-in. Right click / long press: « Supprimer du journal »; with `trash`, a delete
+ * button on the row too (the full journal).
+ */
+function SignInRow({ e, withName = true, menu, trash }: { e: SignInEvent; withName?: boolean; menu: Menu; trash?: boolean }) {
+  const remove = useDeleteLogin()
   // What happened first on the second line (wraps): « Mot de passe incorrect · Lyon, France · hier à 21:04 »
   const what = e.success ? (e.newDevice ? 'Nouvel appareil' : null) : SIGN_IN_REASON[e.reason]
   return (
+    <div className="contents" {...menu.bind([{ label: 'Supprimer du journal', icon: <Trash2 size={16} strokeWidth={1.75} />, destructive: true, onSelect: () => void remove(e.id) }])}>
     <ListRow
       icon={e.success ? <CheckCircle2 strokeWidth={1.75} /> : <XCircle strokeWidth={1.75} />}
       iconTone={e.success ? 'green' : 'red'}
@@ -338,33 +399,70 @@ function SignInRow({ e, withName = true }: { e: SignInEvent; withName?: boolean 
       subtitle={<>{what && <span className={e.success ? 'text-accent-text' : 'text-danger-text'}>{what} · </span>}{placeOf(e)} · {formatWhen(e.at)}</>}
       wrap
       aria-label={`${withName ? `${e.username}, ` : ''}${e.device}, ${what ?? 'connecté'}, ${placeOf(e)}, ${formatWhen(e.at)}`}
-    />
+    >
+      {trash && (
+        <button type="button" onClick={() => void remove(e.id)} aria-label="Supprimer cette entrée du journal"
+          className="flex-shrink-0 -mr-2 w-11 h-11 grid place-items-center rounded-full text-danger-text active:opacity-50">
+          <Trash2 size={18} strokeWidth={1.75} />
+        </button>
+      )}
+    </ListRow>
+    </div>
   )
 }
 
 export function SignInsGroup() {
+  const qc = useQueryClient()
+  const confirm = useConfirm()
+  const menu = useContextMenu()
   const [all, setAll] = useState(false)
   const { data: events, isError } = useQuery({ queryKey: ['logins', 'all'], queryFn: () => usersService.logins({ limit: 100 }), refetchInterval: 60_000 })
   const shown = events?.slice(0, 8)
+
+  async function clearAll() {
+    const ok = await confirm({
+      title: 'Effacer tout le journal des connexions ?',
+      message: 'Toutes les connexions enregistrées sont supprimées. Les appareils restent connectés.',
+      confirmLabel: 'Tout effacer', danger: true,
+    })
+    if (!ok) return
+    try {
+      await usersService.clearLogins()
+      await qc.invalidateQueries({ queryKey: ['logins'] })
+      setAll(false)
+      toast.success('Journal effacé')
+    } catch (err) { toast.error(errorOf(err, 'Impossible d’effacer le journal.')) }
+  }
+
   return (
     <>
       <Group
         id="journal"
         header="Journal des connexions"
-        footer="Chaque connexion à Nexus, réussie ou refusée, gardée 6 mois."
-        action={events && events.length > 8 ? <button type="button" className="text-subhead text-accent-text hover:underline" onClick={() => setAll(true)}>Tout afficher</button> : undefined}
+        footer="Chaque connexion à Nexus, réussie ou refusée, gardée 6 mois. Clic droit ou appui long sur une ligne pour la supprimer."
+        action={events?.length ? <button type="button" className="text-subhead text-accent-text hover:underline" onClick={() => setAll(true)}>{events.length > 8 ? 'Tout afficher' : 'Modifier'}</button> : undefined}
       >
         {isError ? (
           <EmptyState className="py-8" title="Journal indisponible" message="Le serveur n’a pas répondu. Réessaie dans un instant." />
         ) : !shown ? <SkeletonRows rows={3} /> : shown.length === 0
           ? <ListRow title={<span className="text-label2">Aucune connexion pour l’instant</span>} />
-          : shown.map((e) => <SignInRow key={e.id} e={e} />)}
+          : shown.map((e) => <SignInRow key={e.id} e={e} menu={menu} />)}
       </Group>
       <Sheet open={all} onClose={() => setAll(false)} title="Journal des connexions" size="md"
-        phoneHeader={{ right: <Button variant="plain" className="font-semibold" onClick={() => setAll(false)}>OK</Button> }}
-        footer={<Button variant="primary" onClick={() => setAll(false)} className="max-md:hidden">OK</Button>}>
-        <Group>{(events ?? []).map((e) => <SignInRow key={e.id} e={e} />)}</Group>
+        phoneHeader={{
+          left: <Button variant="destructive-plain" onClick={() => void clearAll()} disabled={!events?.length}>Tout effacer</Button>,
+          right: <Button variant="plain" className="font-semibold" onClick={() => setAll(false)}>OK</Button>,
+        }}
+        footer={<>
+          <Button variant="destructive" onClick={() => void clearAll()} disabled={!events?.length} className="max-md:hidden mr-auto">Tout effacer…</Button>
+          <Button variant="primary" onClick={() => setAll(false)} className="max-md:hidden">OK</Button>
+        </>}>
+        {events?.length
+          ? <Group>{events.map((e) => <SignInRow key={e.id} e={e} menu={menu} trash />)}</Group>
+          : <EmptyState className="py-10" title="Journal vide" message="Les prochaines connexions s’afficheront ici." />}
+        {menu.element}
       </Sheet>
+      {!all && menu.element}
     </>
   )
 }

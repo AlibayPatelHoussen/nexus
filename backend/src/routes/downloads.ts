@@ -9,7 +9,8 @@ import { catalogueInfo, refreshCatalogue } from '../services/catalogue'
 import { checkDueFollows, followTarget, getFollow, listFollows, setFollow, type FollowInput } from '../services/follows'
 
 // « Téléchargements »: every account searches and downloads; a « user » account sees and
-// acts on its own downloads only, admins on all. Automatic downloads and the catalogue: admins.
+// acts on its own downloads only, admins on all. Automatic downloads (one per title, shared
+// like the library): every account. Rebuilding the catalogue, checking every follow now: admins.
 const router = Router()
 router.use(authenticate)
 
@@ -24,17 +25,17 @@ router.get('/details', asyncHandler(async (req: Request, res: Response) => {
 }))
 
 // « Télécharger automatiquement les nouveautés » (off unless switched on)
-router.get('/follows', requireAdmin, asyncHandler(async (req: Request, res: Response) => {
+router.get('/follows', asyncHandler(async (req: Request, res: Response) => {
   if (req.query.id) { res.json({ success: true, data: await getFollow(req.query.id) }); return }
   res.json({ success: true, data: await listFollows() })
 }))
 
-// Where a library title comes from (its « Télécharger » button; the follow switch for admins)
+// Where a library title comes from (its « Télécharger » button, its follow switch)
 router.get('/follows/media/:mediaId', asyncHandler(async (req: Request, res: Response) => {
   res.json({ success: true, data: await followTarget(req.params.mediaId) })
 }))
 
-router.put('/follows', requireAdmin, asyncHandler(async (req: Request, res: Response) => {
+router.put('/follows', asyncHandler(async (req: Request, res: Response) => {
   res.json({ success: true, data: await setFollow((req.body ?? {}) as FollowInput, req.user!.userId) })
 }))
 

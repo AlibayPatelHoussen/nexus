@@ -17,7 +17,7 @@
 - **Real-time stats** — CPU, RAM, disk, temperature via WebSocket
 - **Dark/Light theme**
 - **JWT authentication** with bcrypt hashing
-- **Accounts** — admins have everything; « user » accounts get the media, manga, their own downloads and the storage (no Jarvis, services, files, terminal). Admins create user accounts in *Réglages › Utilisateurs*, optionally for a limited time (1 month, 6 months, 1 year); admin accounts are only made in the terminal (`bash scripts/create-admin.sh`)
+- **Accounts** — admins have everything; « user » accounts get the media, manga, their own downloads (automatic ones too), their settings and the storage (no Jarvis, services, files, terminal). Admins create user accounts in *Réglages › Utilisateurs*, optionally for a limited time (1 month, 6 months, 1 year or any date); admin accounts are only made and deleted in the terminal (`bash scripts/create-admin.sh`, `bash scripts/delete-account.sh`)
 - **Connected devices** — every sign-in is recorded (device, IP, approximate place from Cloudflare), refused ones too; *Réglages › Appareils connectés* signs a device out at once; a new device notifies the admins. A new password signs the account's other devices out (session version)
 - **Rate limiting** on login and API
 
@@ -239,7 +239,9 @@ Managed Transforms*). Nexus only trusts those headers when the request comes thr
 tunnel (from the same machine).
 
 Admin accounts: `bash scripts/create-admin.sh` (asks the name, e-mail and password; on an
-existing account it resets the password and signs it out everywhere).
+existing account it resets the password and signs it out everywhere). Delete an account
+(admin or user): `bash scripts/delete-account.sh <name>` (asks to type the name again; never
+the last admin).
 
 ### Troubleshooting
 | Symptom | Fix |

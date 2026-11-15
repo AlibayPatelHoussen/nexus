@@ -219,6 +219,35 @@ describe('Accounts (admins)', () => {
   })
 })
 
+describe('Sign-in journal: removing entries (admins)', () => {
+  it('one entry, one account\'s entries, or all of them', async () => {
+    await login('lucas', WINDOWS, 'Mauvais123')
+    await login('lucas')
+    const lucas = (await request(app).get('/api/users/logins').set(admin).query({ user: lucasId })).body.data
+    expect(lucas.length).toBeGreaterThanOrEqual(2)
+
+    expect((await request(app).delete(`/api/users/logins/${lucas[0].id}`).set(asUser)).status).toBe(403)
+    await request(app).delete(`/api/users/logins/${lucas[0].id}`).set(admin).expect(200)
+    expect((await request(app).delete(`/api/users/logins/${lucas[0].id}`).set(admin)).status).toBe(404)
+    const after = (await request(app).get('/api/users/logins').set(admin).query({ user: lucasId })).body.data
+    expect(after.map((e: { id: string }) => e.id)).not.toContain(lucas[0].id)
+    expect(after).toHaveLength(lucas.length - 1)
+
+    // One account's entries: the others stay
+    await login('personne-inconnue')
+    const cleared = await request(app).delete('/api/users/logins').set(admin).query({ user: lucasId })
+    expect(cleared.body.data.removed).toBe(lucas.length - 1)
+    expect((await request(app).get('/api/users/logins').set(admin).query({ user: lucasId })).body.data).toHaveLength(0)
+    expect((await request(app).get('/api/users/logins').set(admin)).body.data.length).toBeGreaterThan(0)
+
+    // Everything; the devices stay signed in
+    const s = (await login('lucas')).body.data
+    await request(app).delete('/api/users/logins').set(admin).expect(200)
+    expect((await request(app).get('/api/users/logins').set(admin)).body.data).toHaveLength(0)
+    expect((await request(app).get('/api/auth/me').set(bearer(s.accessToken))).status).toBe(200)
+  })
+})
+
 describe('What a « user » account sees', () => {
   it('the storage only on Aperçu; no services, Jarvis, files or terminal', async () => {
     const stats = await request(app).get('/api/system/stats').set(asUser)

@@ -822,11 +822,18 @@ test('UI: « user » account — médias, manga and its downloads; Aperçu shows
   await page.goto(`${B}/settings`, { waitUntil: 'networkidle' })
   await page.waitForSelector('text=Bibliothèque')
   await page.waitForSelector('text=Notifications')
-  for (const hidden of ['Version', 'Utilisateurs', 'Appareils connectés', 'Journal des connexions', 'Mot de passe', 'Apparence']) {
+  for (const shown of ['Apparence', 'Nom d’utilisateur', 'Mot de passe']) {
+    eq(await page.locator(`h2:text-is("${shown}")`).count(), 1, `${shown} in Réglages`)
+  }
+  for (const hidden of ['Version', 'Utilisateurs', 'Appareils connectés', 'Journal des connexions']) {
     eq(await page.locator(`h2:text-is("${hidden}")`).count(), 0, `${hidden} hidden in Réglages`)
   }
   await page.goto(`${B}/downloads`, { waitUntil: 'networkidle' })
   assert(page.url().includes('/downloads'), 'downloads open to users')
+  // Automatic downloads too (a title's page)
+  const anime = sql(`SELECT id FROM media_items WHERE type = 'anime' LIMIT 1`)
+  await page.goto(`${B}/media/${anime}`, { waitUntil: 'networkidle' })
+  await page.waitForSelector('text=Téléchargement automatique')
   await page.context().close()
 })
 
@@ -839,11 +846,15 @@ test('accounts: an admin creates an account for 1 year, sees its device and plac
   await sheet.locator('input[maxlength="50"]').fill('invite')
   await sheet.locator('input[type="email"]').fill('invite@example.com')
   await sheet.locator('input[autocomplete="new-password"]').fill('Invite123')
-  await page.click('[role="radiogroup"][aria-label="Durée du compte"] >> text=1 an')
+  // A duration of your choice: until 30 June next year
+  const lastDay = `${new Date().getFullYear() + 1}-06-30`
+  await page.click('[role="radiogroup"][aria-label="Durée du compte"] >> text=Autre')
+  await sheet.locator('input[type="date"]').fill(lastDay)
+  await page.waitForSelector('[role="dialog"] >> text=Le compte se ferme le 30 juin')
   await page.click('[role="dialog"] button[type="submit"]:visible')
   await page.waitForSelector('text=Compte « invite » créé')
-  const end = sql(`SELECT to_char(expires_at, 'YYYY-MM-DD') FROM users WHERE username = 'invite'`)
-  eq(end.slice(0, 4), String(new Date().getFullYear() + 1), 'one year')
+  const end = sql(`SELECT to_char(expires_at, 'YYYY-MM-DD HH24:MI') FROM users WHERE username = 'invite'`)
+  eq(end, `${lastDay} 23:59`, 'the chosen day, to its end')
   eq(sql(`SELECT role FROM users WHERE username = 'invite'`), 'user', 'a user account')
 
   // The new account signs in from an iPhone in Lyon (through Cloudflare)
@@ -864,6 +875,12 @@ test('accounts: an admin creates an account for 1 year, sees its device and plac
   await row.waitFor()
   assert((await row.textContent()).includes('iPhone · Safari'), `device shown: ${await row.textContent()}`)
   await page.waitForSelector('section[aria-labelledby="journal-h"] >> text=invite · iPhone · Safari')
+  // Right click on the line: « Supprimer du journal »
+  const before = Number(sql(`SELECT count(*) FROM login_events WHERE username = 'invite'`))
+  await page.click('section[aria-labelledby="journal-h"] [role="listitem"]:has-text("invite · iPhone · Safari")', { button: 'right' })
+  await page.click('[role="menuitem"]:has-text("Supprimer du journal")')
+  await page.waitForFunction(() => !document.querySelector('section[aria-labelledby="journal-h"]')?.textContent?.includes('invite · iPhone'))
+  eq(Number(sql(`SELECT count(*) FROM login_events WHERE username = 'invite'`)), before - 1, 'entry removed')
   await row.locator('button:has-text("Déconnecter")').click()
   await page.click('[role="alertdialog"] button:has-text("Déconnecter")')
   await page.waitForSelector('text=Appareil déconnecté')

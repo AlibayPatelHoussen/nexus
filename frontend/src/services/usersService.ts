@@ -62,6 +62,11 @@ export const usersService = {
   revokeSession: async (id: string) => { await api.delete(`/users/sessions/${id}`) },
   logins: async (params: { limit?: number; user?: string } = {}) =>
     (await api.get<{ data: SignInEvent[] }>('/users/logins', { params })).data.data,
+  /** Removes one entry of the journal */
+  deleteLogin: async (id: string) => { await api.delete(`/users/logins/${id}`) },
+  /** Clears the journal (one account's entries with `user`) */
+  clearLogins: async (user?: string) =>
+    (await api.delete<{ data: { removed: number } }>('/users/logins', { params: user ? { user } : {} })).data.data,
 }
 
 /** « Mot de passe incorrect », « Nom inconnu »… for a refused sign-in. */
@@ -72,14 +77,26 @@ export const SIGN_IN_REASON: Record<SignInEvent['reason'], string> = {
   expired: 'Compte expiré',
 }
 
-/** Account durations offered when creating or extending one. */
+/** Account durations offered when creating or extending one (« Autre » : a date of your choice). */
 export const DURATIONS = [
-  { value: 'none', label: 'Sans limite', months: 0 },
+  { value: 'none', label: 'Illimité', months: 0 },
   { value: '1m', label: '1 mois', months: 1 },
   { value: '6m', label: '6 mois', months: 6 },
   { value: '1y', label: '1 an', months: 12 },
 ] as const
 export type Duration = typeof DURATIONS[number]['value']
+
+const pad = (n: number) => String(n).padStart(2, '0')
+/** « 2026-11-16 »: a local day, as a date field takes it. */
+export const dayValue = (d: Date) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`
+/** The first day a chosen end date may be: tomorrow. */
+export const firstEndDay = (now = new Date()) => dayValue(new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1))
+/** A chosen end day → its end (23:59:59, local time) as ISO; null when empty or not after today. */
+export function endOfDay(day: string, now = new Date()): string | null {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(day) || day < firstEndDay(now)) return null
+  const [y, m, d] = day.split('-').map(Number)
+  return new Date(y, m - 1, d, 23, 59, 59).toISOString()
+}
 
 /** The end date of a duration starting now (or from `from`), as ISO; null for no limit. */
 export function endOf(duration: Duration, from = new Date()): string | null {

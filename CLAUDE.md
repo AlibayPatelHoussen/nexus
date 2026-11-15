@@ -33,10 +33,12 @@ npm workspaces (`frontend`, `backend`); run from the repo root unless noted.
   services (e.g. `mapMedia` in `services/media.ts`). Socket.io namespaces in `socket.ts`: live stats,
   terminal (node-pty), download progress. Admin-only areas use `requireAdmin`.
 - **Accounts and sessions**: `admin` has everything; `user` accounts get médias, manga, their own downloads
-  (queue, socket events and notifications only for the account that asked) and the storage (stats reduced to
-  `disk` + `mediaStorage`); the frontend hides the rest (`adminOnly` in `components/shell/nav.ts`, `AdminOnly`
-  routes). Admin accounts are only made in the terminal (`scripts/create-admin.sh`); `/api/users` makes `user`
-  accounts, optionally with `expires_at`. Each sign-in opens a device session (`refresh_tokens`: device, IP, place
+  (queue, socket events and notifications only for the account that asked), automatic downloads (one follow per
+  title, owned by whoever switched it on), their own settings (appearance, name, password) and the storage (stats
+  reduced to `disk` + `mediaStorage`); the frontend hides the rest (`adminOnly` in `components/shell/nav.ts`,
+  `AdminOnly` routes). Admin accounts are only made / deleted in the terminal (`scripts/create-admin.sh`,
+  `scripts/delete-account.sh`, which keeps the last admin); `/api/users` makes `user` accounts, optionally with
+  `expires_at`, and manages the sign-in journal. Each sign-in opens a device session (`refresh_tokens`: device, IP, place
   from Cloudflare headers via `utils/device.ts`) and is journaled (`login_events`). Tokens carry the session
   (`sid`) and the account's `session_version` (`sv`); `services/sessions.ts` checks them on every request, stream
   and socket (5 s cache, `forgetSessions()` after a change): a new password bumps the version (other devices out).

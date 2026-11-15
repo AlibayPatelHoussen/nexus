@@ -107,6 +107,19 @@ export async function revokeSession(id: string) {
   forgetSessions(rows[0].user_id)
 }
 
+/** Removes entries of the sign-in journal: one (id), one account's (userId), or all. Returns how many. */
+export async function deleteLoginEvents(target: { id?: string; userId?: string }) {
+  if (target.id) checkId(target.id, 'Entry')
+  if (target.userId) checkId(target.userId)
+  const { rowCount } = target.id
+    ? await query('DELETE FROM login_events WHERE id = $1', [target.id])
+    : target.userId
+      ? await query('DELETE FROM login_events WHERE user_id = $1', [target.userId])
+      : await query('DELETE FROM login_events')
+  if (target.id && !rowCount) throw new NotFoundError('Entry')
+  return rowCount ?? 0
+}
+
 /** The sign-in journal, newest first. */
 export async function listLoginEvents(limit = 100, userId?: string) {
   const n = Math.max(1, Math.min(500, Math.floor(Number(limit) || 100)))

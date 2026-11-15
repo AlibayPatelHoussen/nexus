@@ -4,7 +4,7 @@ import { authenticate, requireAdmin } from '../middleware/auth'
 import * as controller from '../controllers/auth'
 import { AuthService } from '../services/auth'
 import {
-  deleteAccount, listAccounts, listLoginEvents, listSessions, revokeSession, setExpiry,
+  deleteAccount, deleteLoginEvents, listAccounts, listLoginEvents, listSessions, revokeSession, setExpiry,
 } from '../services/users'
 
 // Réglages › Utilisateurs, Appareils connectés, Journal des connexions: admins only
@@ -17,6 +17,19 @@ router.get('/', asyncHandler(async (_req: Request, res: Response) => {
 
 /** New « user » account (médias, manga, its own downloads), optionally for a limited time. */
 router.post('/', controller.registerValidators, asyncHandler(controller.register))
+
+// (before /:id, which would take « logins » for an account id)
+/** Removes one entry of the journal. */
+router.delete('/logins/:id', asyncHandler(async (req: Request, res: Response) => {
+  await deleteLoginEvents({ id: req.params.id })
+  res.json({ success: true })
+}))
+
+/** Clears the journal (?user=<id>: one account's entries only). */
+router.delete('/logins', asyncHandler(async (req: Request, res: Response) => {
+  const user = typeof req.query.user === 'string' ? req.query.user : undefined
+  res.json({ success: true, data: { removed: await deleteLoginEvents({ userId: user }) } })
+}))
 
 router.patch('/:id', asyncHandler(async (req: Request, res: Response) => {
   await setExpiry(req.params.id, req.body?.expiresAt)

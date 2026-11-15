@@ -156,11 +156,12 @@ afterAll(async () => {
 })
 
 describe('Downloads: access', () => {
-  it('needs a token; automatic downloads and the catalogue stay with the admins', async () => {
+  it('needs a token; automatic downloads for every account; rebuilding the catalogue for the admins', async () => {
     expect((await request(app).get('/api/downloads')).status).toBe(401)
     expect((await request(app).get('/api/downloads').set(user)).status).toBe(200)
-    expect((await request(app).get('/api/downloads/follows').set(user)).status).toBe(403)
-    expect((await request(app).put('/api/downloads/follows').set(user).send({ id: 'anisama:manga:x', enabled: true })).status).toBe(403)
+    expect((await request(app).get('/api/downloads/follows').set(user)).status).toBe(200)
+    expect((await request(app).put('/api/downloads/follows').set(user).send({ id: 'anisama:manga:personne', enabled: false })).status).toBe(200)
+    expect((await request(app).post('/api/downloads/follows/check').set(user)).status).toBe(403)
     expect((await request(app).post('/api/downloads/catalogue/refresh').set(user)).status).toBe(403)
   })
 
@@ -441,7 +442,8 @@ describe('Follow a title (automatic downloads, off by default)', () => {
     expect((await request(app).put('/api/downloads/follows').set(admin).send({ id: 'youtube:dQw4w9WgXcQ', title: 'x', enabled: true })).status).toBe(422)
     expect((await request(app).put('/api/downloads/follows').set(admin).send({ id: 'movix:movie:603', title: 'x', enabled: true })).status).toBe(422)
     expect((await request(app).put('/api/downloads/follows').set(admin).send({ id: 'anisama:anime:x', title: 'x', lang: 'VF', season: '../', enabled: true })).status).toBe(422)
-    expect((await request(app).put('/api/downloads/follows').set(user).send({ id: 'anisama:manga:x', enabled: true })).status).toBe(403)
+    // « user » accounts follow titles too, with the same checks
+    expect((await request(app).put('/api/downloads/follows').set(user).send({ id: 'anisama:manga:x', enabled: true })).status).toBe(422)
   })
 })
 

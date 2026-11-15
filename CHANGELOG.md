@@ -4,6 +4,13 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Changed — « user » accounts: their settings and automatic downloads; any account duration; journal clean-up
+- « user » accounts get back *Apparence*, their name and their password in *Réglages*, and the automatic downloads (« Téléchargement automatique » on a title, and in the download sheet). A title has one follow, shared like the library: whoever switches it on owns it (its downloads and notifications)
+- Account duration: « Autre » to pick the last day yourself (the account closes at 23:59 that day); an existing account can be extended to a chosen date too (« Choisir une date… »)
+- Journal des connexions: right click or long press on a line to remove it; « Tout afficher » / « Modifier » lists everything with a delete button per line and « Tout effacer… »; an account's lines can be cleared from its sheet
+- `bash scripts/delete-account.sh <name>` deletes an account (admin or user) in the terminal, after typing its name again; never the last admin
+- An automatic download whose owner was deleted keeps working (the admins are told when it lands)
+
 ### Added — Accounts: « user » accounts, connected devices, sign-in journal, session version
 - **« user » accounts** (made by an admin in *Réglages › Utilisateurs*): médias, manga, their own downloads, and on *Aperçu* the storage only (disk + each library). *Réglages*: their name and e-mail, the library, notifications. No Jarvis, services, network, files, terminal or version. Enforced by the server, not only hidden
 - Accounts **for a limited time** (1 month, 6 months, 1 year): refused once the date has passed (« Ce compte a expiré »), its devices signed out; an admin extends it or removes the limit. Admins also delete « user » accounts and sign an account out of every device

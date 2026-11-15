@@ -228,7 +228,8 @@ async function otherVersions(item: string) {
   return rows
 }
 
-export async function createDownload(input: CreateInput, userId: string) {
+/** userId: the account that asked (null: an automatic download whose owner was deleted). */
+export async function createDownload(input: CreateInput, userId: string | null) {
   const c = cleanInput(input)
   if (c.source === 'oxtorrent' && c.options.item) {
     const others = await otherVersions(c.options.item)
