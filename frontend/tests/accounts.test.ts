@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
 import { formatWhen } from '@/utils'
-import { endOf } from '@/services/usersService'
+import { endOf, endOfDay, firstEndDay } from '@/services/usersService'
 
 describe('when a device was last active', () => {
   const now = new Date(2026, 10, 15, 18, 30)
@@ -24,5 +24,18 @@ describe('account durations', () => {
     expect(new Date(endOf('1y', from)!).getMonth()).toBe(10)
     expect(new Date(endOf('6m', from)!).getMonth()).toBe(4)
     expect(new Date(endOf('1m', from)!).getMonth()).toBe(11)
+  })
+})
+
+describe('an end day of your choice', () => {
+  const now = new Date(2026, 10, 15, 18, 30)
+  it('ends that day at 23:59 local time, never today or before', () => {
+    expect(firstEndDay(now)).toBe('2026-11-16')
+    const end = new Date(endOfDay('2027-03-01', now)!)
+    expect([end.getFullYear(), end.getMonth(), end.getDate(), end.getHours(), end.getMinutes()]).toEqual([2027, 2, 1, 23, 59])
+    expect(endOfDay('2026-11-15', now)).toBeNull()
+    expect(endOfDay('2026-11-16', now)).not.toBeNull()
+    expect(endOfDay('', now)).toBeNull()
+    expect(endOfDay('demain', now)).toBeNull()
   })
 })

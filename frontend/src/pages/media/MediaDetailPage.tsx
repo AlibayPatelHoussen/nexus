@@ -82,7 +82,7 @@ export default function MediaDetailPage() {
   useSection(media ? libraryOf(media.type).to.split('?')[0] : null)
   // New episodes / chapters (a download running…) show up without « Analyser »
   useAutoScan(scanTypeOf(media?.type))
-  // « Télécharger » for every account; the automatic downloads (follow) stay with the admins
+  // « Télécharger » and the automatic downloads: every account
   const dlKind = downloadKind(media?.type)
   const dlTarget = useDownloadTarget(id, !!dlKind)
   // Tapped before the title was found on the site: open as soon as it is (or say why not)
@@ -342,7 +342,7 @@ export default function MediaDetailPage() {
       {isReading && !isPlaceholderData && <ChaptersSection chapters={chapters} onRead={(chapterId, version) => play(undefined, chapterId, version)} onScan={scan} scanning={scanning} />}
 
       {/* Automatic downloads of what comes next (off unless switched on) */}
-      {isAdmin && (media.type === 'anime' || media.type === 'serie' || media.type === 'manga' || media.type === 'webtoon') && (
+      {(media.type === 'anime' || media.type === 'serie' || media.type === 'manga' || media.type === 'webtoon') && (
         <div className="max-w-[640px] mb-10">
           <FollowGroup mediaId={media.id} kind={media.type === 'webtoon' ? 'manga' : media.type} />
         </div>

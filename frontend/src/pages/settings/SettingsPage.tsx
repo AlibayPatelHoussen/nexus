@@ -26,7 +26,7 @@ export default function SettingsPage() {
   const confirm = useConfirm()
   const { device } = useShell()
   const phone = device === 'phone'
-  // « user » accounts: their name and e-mail, the library, notifications (nothing of the server)
+  // « user » accounts: everything but the server (accounts, devices, journal, version)
   const isAdmin = user?.role === 'admin'
   const [scanning, setScanning] = useState(false)
   const [pruning, setPruning] = useState(false)
@@ -80,7 +80,7 @@ export default function SettingsPage() {
           </div>
         </Group>
 
-        {isAdmin && <Group header="Apparence" footer="Auto suit le réglage clair ou sombre de l’appareil. Ce choix est propre à cet appareil.">
+        <Group header="Apparence" footer="Auto suit le réglage clair ou sombre de l’appareil. Ce choix est propre à cet appareil.">
           <div role="listitem" className="nx-row relative flex items-center justify-between gap-3 px-4 min-h-row py-2">
             {!phone && <span className="text-label">Apparence</span>}
             <SegmentedControl<Appearance>
@@ -95,7 +95,7 @@ export default function SettingsPage() {
               ]}
             />
           </div>
-        </Group>}
+        </Group>
 
         <Group header="Bibliothèque">
           <ListRow wrap title="Analyser les médias" subtitle="Ajoute les fichiers trouvés dans les dossiers de la bibliothèque.">
@@ -112,11 +112,11 @@ export default function SettingsPage() {
             <UsersGroup />
             <DevicesGroup />
             <SignInsGroup />
-            <UsernameGroup />
-            <PasswordGroup />
-            <VersionGroup />
           </>
         )}
+        <UsernameGroup />
+        <PasswordGroup />
+        {isAdmin && <VersionGroup />}
 
         <Group>
           <ListRow title="Se déconnecter" destructive onClick={handleLogout} className="justify-center [&>span]:text-center" />

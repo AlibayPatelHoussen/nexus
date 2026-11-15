@@ -85,7 +85,9 @@ export async function setFollow(input: FollowInput, userId: string): Promise<Fol
     `INSERT INTO follows (source_id, source_script, kind, title, poster_url, options, known, enabled, created_by, last_checked_at, last_error)
      VALUES ($1, $2, $3, $4, $5, $6, $7, TRUE, $8, NOW(), NULL)
      ON CONFLICT (source_id) DO UPDATE SET title = EXCLUDED.title, poster_url = COALESCE(EXCLUDED.poster_url, follows.poster_url),
-       options = EXCLUDED.options, known = EXCLUDED.known, enabled = TRUE, last_checked_at = NOW(), last_error = NULL
+       options = EXCLUDED.options, known = EXCLUDED.known, enabled = TRUE, last_checked_at = NOW(), last_error = NULL,
+       -- whoever switches it on owns it: the downloads and their notifications are theirs
+       created_by = EXCLUDED.created_by
      RETURNING *`,
     [id, source, kind, title, poster, JSON.stringify(options), JSON.stringify(known), userId],
   )
@@ -98,7 +100,8 @@ export async function checkFollow(f: FollowRow): Promise<number[]> {
     const now = await available(f.source_id, f.kind, f.options)
     const known = new Set(f.known)
     const fresh = now.filter((n) => !known.has(n))
-    if (fresh.length && f.created_by) {
+    // Its owner's download (account deleted since: nobody's, the admins are told)
+    if (fresh.length) {
       await createDownload({
         id: f.source_id, title: f.title, poster_url: f.poster_url, lang: f.options.lang, season: f.options.season,
         ...(f.kind === 'manga' ? { chapters: fresh } : { episodes: fresh }), force: true,
