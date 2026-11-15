@@ -207,7 +207,7 @@ export default function TabBar() {
     if (navTimer.current) clearTimeout(navTimer.current)
     navTimer.current = setTimeout(() => {
       navTimer.current = null
-      if (to) startTransition(() => navigate(to))
+      if (to) startTransition(() => { void navigate(to) })
       else if (again) window.scrollTo({ top: 0, behavior: reduced ? 'auto' : 'smooth' })
     }, reduced ? 0 : GLIDE_MS)
   }

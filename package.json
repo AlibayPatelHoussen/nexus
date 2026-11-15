@@ -1,7 +1,7 @@
 {
   "name": "nexus",
   "version": "1.0.0",
-  "description": "Nexus \u2014 Self-hosted server control panel & media center",
+  "description": "Nexus — Self-hosted server control panel & media center",
   "private": true,
   "workspaces": [
     "frontend",
@@ -22,5 +22,8 @@
   "engines": {
     "node": ">=20.0.0",
     "npm": ">=10.0.0"
+  },
+  "overrides": {
+    "qs": "^6.16.2"
   }
 }

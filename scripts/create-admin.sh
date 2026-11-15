@@ -38,6 +38,10 @@ if [ "$password" != "$again" ]; then echo "❌ Les deux mots de passe sont diff�
 if [ ${#password} -lt 8 ] || ! [[ $password =~ [a-z] && $password =~ [A-Z] && $password =~ [0-9] ]]; then
   echo "❌ Au moins 8 caractères, avec une majuscule, une minuscule et un chiffre"; exit 1
 fi
+# bcrypt reads 72 bytes: a longer password would be cut without a word
+if [ "$(printf '%s' "$password" | LC_ALL=C wc -c)" -gt 72 ]; then
+  echo "❌ 72 caractères au plus"; exit 1
+fi
 
 # bcrypt like Nexus (12 rounds); the password goes through stdin, never on a command line
 hash=$(cd "$DIR/backend" && printf '%s' "$password" | node -e '

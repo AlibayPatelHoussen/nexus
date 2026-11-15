@@ -6,7 +6,7 @@ import path from 'path'
 import { AppError } from '../utils/errors'
 import { libraryRoots, strictlyInside } from '../utils/fsErrors'
 import { logger } from '../utils/logger'
-import { assertNotProtected, sanitizePath } from './files'
+import { assertAllowed, assertNotProtected, sanitizePath } from './files'
 
 /**
  * Deletion forced with the server account's sudo password, for library
@@ -38,6 +38,8 @@ async function checkTarget(input: string): Promise<string> {
     throw new AppError(`« ${path.basename(safe)} » n'existe plus (déjà supprimé ou déplacé ?)`, 404)
   }
   assertNotProtected(real)
+  await assertAllowed(safe, 'write')
+  await assertAllowed(real, 'write')
   const roots = await Promise.all(libraryRoots().map((r) => fs.realpath(r).catch(() => r)))
   // Never a library folder itself, nor a category folder (films, animes…) of MEDIA_ROOT
   const mediaRoot = await fs.realpath(path.resolve(process.env.MEDIA_ROOT || '/media')).catch(() => '')

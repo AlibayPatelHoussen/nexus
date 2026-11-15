@@ -4,6 +4,18 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Security — audit of the checklist
+- **File manager**: secrets (`.env` and its copies, SSH / GnuPG / VPN keys, Nexus' Web Push keys, `/etc/default/nexus-*`, `/etc/shadow`…) are never read, downloaded, streamed, written, renamed, moved, deleted or uploaded from the browser, even through a symlink (`PROTECTED_FILE`); the Nexus folder (code, `.git`, `.gitignore`) and the folders holding it are read-only there. Uploads: 500 files at most at once
+- **Sign-in**: an unknown name takes as long as a wrong password (same answer, same time); only strings are accepted; passwords 8 to 72 characters (bcrypt reads 72 bytes), in the interface, the server and `create-admin.sh`; the rate-limit message is in French
+- **Requests**: bodies limited to 1 MB (10 MB for the file editor); broken JSON → 400, too big → 413, upload limits → 413, never a 500 with details; unexpected errors show details only in development
+- **HTTPS**: a visitor who reached Cloudflare over http is redirected to https; HSTS one year (the local network keeps http)
+- **Real visitor address**: only the tunnel on this machine (loopback) may give it; a device on the local network can no longer fake `X-Forwarded-For` to dodge the sign-in limit
+- `JWT_SECRET` is required to start, and the placeholders of `.env.example` are refused (a warning when shorter than 32 characters); no more built-in fallback key for signed image / IPTV addresses
+- **Access tokens** live 15 minutes by default and never more than an hour, whatever `JWT_EXPIRES_IN` says (`setup-server.sh` wrote 7 days); the app renews them by itself
+- **Dependencies**: no known vulnerability left in what runs (`npm audit --omit=dev`): sharp 0.35, adm-zip 0.6, react-router 7.18, axios 1.21, compression, morgan, systeminformation, qs; unused `archiver` removed
+- **Automatic backups**: `sudo bash scripts/backup.sh install` — the database (pg_dump) and the settings every night into `/var/backups/nexus` (root only, 14 kept, optional copy on another disk), `restore` with a safety backup first
+- `.gitignore`: every `.env` copy, keys and backup files
+
 ### Added — What each account opens; the IPTV's own address; the VPN switch
 - **Access per account**, chosen when an admin creates it and changed at once on its sheet (*Réglages › Utilisateurs*): « Médias + IPTV », « Médias » (no IPTV) or « IPTV seulement ». Enforced by the server (`requireMedia` / `requireIptv` on the API, streams and sockets: `NO_MEDIA_ACCESS`, `NO_IPTV_ACCESS`), the pages and tabs follow. Admins keep everything; existing accounts keep « Médias + IPTV »
 - **The IPTV's own address** (*IPTV › Paramètres › Adresse de l’IPTV*): a Cloudflare subdomain (e.g. `iptv.mon-domaine.com`) to the same Nexus (`localhost:3001`). Opened there, Nexus shows the IPTV and the settings only (« Se connecter à l’IPTV »), for every account. An « IPTV seulement » account that opens the Nexus address is sent there to sign in; an account without the IPTV sees « Pas d’accès à l’IPTV » there. Any `iptv.` address works the same way

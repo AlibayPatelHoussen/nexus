@@ -10,7 +10,7 @@ import { authenticate, authenticateStream, requireAdmin, requireMedia } from '..
 import { forgetPaths } from '../services/libraryDelete'
 import { sudoLimiter } from '../middleware/rateLimit'
 import { elevatedDelete } from '../services/elevatedDelete'
-import { FilesService, isInsideDir, sanitizePath } from '../services/files'
+import { FilesService, assertAllowed, isInsideDir, sanitizePath, secretReason } from '../services/files'
 import { DLNA_STREAM_HEADERS } from '../services/cast'
 import { AppError, ForbiddenError, NotFoundError, ValidationError } from '../utils/errors'
 import { query } from '../config/database'
@@ -72,6 +72,8 @@ async function resolveReadable(req: Request): Promise<string> {
   if (req.user!.role !== 'admin' && !(await isInsideDir(MEDIA_ROOT, filePath))) {
     throw new ForbiddenError('Access outside the media library is not allowed')
   }
+  // Secrets (.env, keys…) are never sent, even to an admin
+  await assertAllowed(filePath, 'read')
   return filePath
 }
 
@@ -258,7 +260,7 @@ const storage = multer.diskStorage({
     const dest = sanitizePath(raw)
     const r = req as SudoUploadRequest
     // Called once per file, possibly concurrently: decide the folder once per request
-    r.uploadDir ??= withSudo(
+    r.uploadDir ??= assertAllowed(dest, 'write').then(() => withSudo(
       async () => {
         await fs.promises.mkdir(dest, { recursive: true })
         await fs.promises.access(dest, fs.constants.W_OK)
@@ -270,7 +272,7 @@ const storage = multer.diskStorage({
         r.sudoUpload = { tmp, dest }
         return tmp
       },
-    )
+    ))
     r.uploadDir.then((d) => cb(null, d), (err) => cb(err, ''))
   },
   // Never trust the client filename for directories
@@ -278,10 +280,13 @@ const storage = multer.diskStorage({
     // Busboy decodes multipart file names as latin1: "Épisode" arrived as "Ã\x89pisode"
     const name = path.basename(Buffer.from(file.originalname, 'latin1').toString('utf8'))
     if (!name || name === '.' || name === '..') cb(new ValidationError('Invalid file name'), '')
+    // No secrets (.env…) or Git files dropped from the browser
+    else if (secretReason(name) || name === '.gitignore' || name === '.git') cb(new ForbiddenError(`« ${name} » ne peut pas être envoyé depuis le navigateur`), '')
     else cb(null, name)
   },
 })
-const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 * 1024 } }) // 5GB
+// 5 GB per file, 500 files per upload, no other form fields
+const upload = multer({ storage, limits: { fileSize: 5 * 1024 * 1024 * 1024, files: 500, fields: 10, fieldSize: 64 * 1024 } })
 
 // LIST
 router.get('/', asyncHandler(async (req: Request, res: Response) => {

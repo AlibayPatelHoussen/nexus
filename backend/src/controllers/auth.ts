@@ -13,11 +13,25 @@ function validate(req: Request) {
 
 // ─── Validators ───────────────────────────────────────
 export const loginValidators = [
-  body('username').notEmpty().withMessage('Username is required').trim(),
-  body('password').notEmpty().withMessage('Password is required'),
+  body('username').isString().withMessage('Username is required').trim().notEmpty().withMessage('Username is required')
+    .isLength({ max: 254 }).withMessage('Invalid credentials'),
+  body('password').isString().withMessage('Password is required').notEmpty().withMessage('Password is required')
+    .isLength({ max: 1024 }).withMessage('Invalid credentials'),
 ]
 
+/** bcrypt only reads the first 72 bytes: a longer password would be cut without a word */
+const MAX_PASSWORD_BYTES = 72
+const passwordRule = (field: string) => body(field)
+  .isString().withMessage('Password is required')
+  .isLength({ min: 8 })
+  .withMessage('Password must be at least 8 characters')
+  .custom((v: string) => Buffer.byteLength(v, 'utf8') <= MAX_PASSWORD_BYTES)
+  .withMessage('Password must be at most 72 characters')
+  .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
+  .withMessage('Password must contain uppercase, lowercase, and a number')
+
 const usernameRule = () => body('username')
+  .isString().withMessage('Username is required')
   .trim()
   .isLength({ min: 3, max: 50 })
   .withMessage('Username must be 3–50 characters')
@@ -26,17 +40,13 @@ const usernameRule = () => body('username')
 
 export const changeUsernameValidators = [
   usernameRule(),
-  body('currentPassword').notEmpty().withMessage('Current password is required'),
+  body('currentPassword').isString().notEmpty().withMessage('Current password is required'),
 ]
 
 export const registerValidators = [
   usernameRule(),
-  body('email').isEmail().withMessage('Valid email required').normalizeEmail(),
-  body('password')
-    .isLength({ min: 8 })
-    .withMessage('Password must be at least 8 characters')
-    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
-    .withMessage('Password must contain uppercase, lowercase, and a number'),
+  body('email').isString().isEmail().withMessage('Valid email required').isLength({ max: 254 }).normalizeEmail(),
+  passwordRule('password'),
   // Account opened for a limited time: its end (ISO date, in the future), or null
   body('access').optional().isIn(['all', 'media', 'iptv']).withMessage('Access must be all, media or iptv'),
   body('expiresAt').optional({ values: 'null' }).isISO8601().withMessage('Invalid expiry date')
@@ -44,12 +54,8 @@ export const registerValidators = [
 ]
 
 export const changePasswordValidators = [
-  body('currentPassword').notEmpty().withMessage('Current password is required'),
-  body('newPassword')
-    .isLength({ min: 8 })
-    .withMessage('Password must be at least 8 characters')
-    .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
-    .withMessage('Password must contain uppercase, lowercase, and a number'),
+  body('currentPassword').isString().notEmpty().withMessage('Current password is required'),
+  passwordRule('newPassword'),
 ]
 
 // ─── Handlers ─────────────────────────────────────────
