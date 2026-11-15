@@ -6,6 +6,7 @@ import type { Socket } from 'socket.io-client'
 import { SOURCE_INFO, downloadsService, type DownloadKind, type DownloadSource, type SearchResult, type TorrentGroup } from '@/services/downloadsService'
 import { useShell } from '@/components/shell/shellContext'
 import { useAuthStore } from '@/stores/authStore'
+import { serverTimeZone } from '@/services/serverClock'
 import SegmentedControl from '@/components/ui/SegmentedControl'
 import SearchField from '@/components/ui/SearchField'
 import EmptyState from '@/components/ui/EmptyState'
@@ -212,7 +213,7 @@ function CatalogueLine() {
     queryKey: ['dl-catalogue'], queryFn: downloadsService.catalogue, refetchInterval: (q) => (q.state.data?.refreshing ? 5000 : false),
   })
   if (!data) return null
-  const date = data.updatedAt ? new Date(data.updatedAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : null
+  const date = data.updatedAt ? new Date(data.updatedAt).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric', timeZone: serverTimeZone() }) : null
   return (
     <p className="text-caption text-label2 text-center px-4">
       Catalogue anime-sama : {data.count.toLocaleString('fr-FR')} titres{date ? `, mis à jour le ${date}` : ''} · actualisé chaque jour

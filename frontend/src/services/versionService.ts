@@ -1,4 +1,5 @@
 import axios from 'axios'
+import { rememberServerTimeZone } from './serverClock'
 
 export const FRONTEND_COMMIT: string = typeof __APP_COMMIT__ !== 'undefined' ? __APP_COMMIT__ : 'dev'
 
@@ -6,11 +7,14 @@ export interface ServerHealth {
   status:     string
   build?:     { commit: string; builtAt: string | null }
   startedAt?: string
+  /** The server's time zone (« Europe/Paris ») */
+  timeZone?:  string
 }
 
 export async function getServerHealth(): Promise<ServerHealth> {
   const { data } = await axios.get<ServerHealth>('/api/health', { headers: { Accept: 'application/json' } })
   if (typeof data !== 'object' || !data) throw new Error('Invalid /api/health response')
+  rememberServerTimeZone(data.timeZone)
   return data
 }
 

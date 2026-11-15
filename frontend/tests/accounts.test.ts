@@ -39,3 +39,28 @@ describe('an end day of your choice', () => {
     expect(endOfDay('demain', now)).toBeNull()
   })
 })
+
+describe('times at the server, whatever the zone of the device', () => {
+  const started = '2026-11-15T10:17:00Z'
+  const now = new Date('2026-11-15T18:30:00Z')
+  it('shows the server\'s hour', async () => {
+    const { formatDateTime, formatWhen } = await import('@/utils')
+    expect(formatDateTime(started, 'medium', 'Europe/Paris')).toMatch(/11:17/)
+    expect(formatDateTime(started, 'medium', 'America/Toronto')).toMatch(/05:17/)
+    expect(formatWhen(started, now, 'Europe/Paris')).toBe('aujourd’hui à 11:17')
+    expect(formatWhen(started, now, 'America/Toronto')).toBe('aujourd’hui à 05:17')
+    // 00:30 in Paris is still « yesterday » in Toronto
+    expect(formatWhen('2026-11-14T23:30:00Z', now, 'Europe/Paris')).toBe('aujourd’hui à 00:30')
+    expect(formatWhen('2026-11-14T23:30:00Z', now, 'America/Toronto')).toBe('hier à 18:30')
+  })
+
+  it('an account ends at 23:59 at the server, summer time included', () => {
+    expect(endOfDay('2027-06-30', now, 'Europe/Paris')).toBe('2027-06-30T21:59:59.000Z')
+    expect(endOfDay('2027-06-30', now, 'America/Toronto')).toBe('2027-07-01T03:59:59.000Z')
+    expect(endOfDay('2027-01-15', now, 'Europe/Paris')).toBe('2027-01-15T22:59:59.000Z')
+    expect(endOfDay('2027-03-28', now, 'Europe/Paris')).toBe('2027-03-28T21:59:59.000Z')    // the day summer time starts
+    // Already the 16th in Paris at 23:30 UTC on the 15th: the first possible end day is the 17th
+    expect(firstEndDay(new Date('2026-11-15T23:30:00Z'), 'Europe/Paris')).toBe('2026-11-17')
+    expect(firstEndDay(new Date('2026-11-15T23:30:00Z'), 'America/Toronto')).toBe('2026-11-16')
+  })
+})
