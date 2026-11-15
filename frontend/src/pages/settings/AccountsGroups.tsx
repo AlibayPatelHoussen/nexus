@@ -271,7 +271,7 @@ function AccountSheet({ account, onClose }: { account: Account | null; onClose: 
           <ListRow title="Type de compte" detail={roleLabel(a)} />
           <ListRow title="Créé le" detail={formatDay(a.createdAt)} />
           <ListRow title="Dernière connexion" detail={a.lastLogin ? formatWhen(a.lastLogin) : 'Jamais'} />
-          {isUser && <ListRow title="Accès" detail={a.expired ? 'Expiré' : a.expiresAt ? `Jusqu’au ${formatDay(a.expiresAt)}` : 'Sans limite'} status={a.expired ? 'error' : undefined} />}
+          {isUser && <ListRow title={a.expired ? 'Expiré le' : 'Fin du compte'} detail={a.expiresAt ? formatDay(a.expiresAt) : 'Sans limite'} status={a.expired ? 'error' : undefined} />}
         </Group>
 
         {isUser && (
@@ -288,13 +288,15 @@ function AccountSheet({ account, onClose }: { account: Account | null; onClose: 
                 options={DURATIONS.map((d) => ({ value: d.value, label: d.label }))} />
             </div>
             {a.expiresAt && !a.expired && (
-              <ListRow title="Prolonger">
-                <span className="flex gap-1.5 flex-shrink-0">
+              // The buttons go under « Prolonger » when the row is too narrow (iPhone)
+              <div role="listitem" className="nx-row relative flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2.5 min-h-row">
+                <span className="text-label mr-auto">Prolonger</span>
+                <span className="flex gap-1.5">
                   {DURATIONS.filter((d) => d.value !== 'none').map((d) => (
                     <Button key={d.value} size="small" disabled={busy} onClick={() => void extend(d.value)}>+ {d.label}</Button>
                   ))}
                 </span>
-              </ListRow>
+              </div>
             )}
             {!picking && <ListRow title={<span className="text-accent-text">Choisir une date…</span>} onClick={() => setPicking(true)} disabled={busy} />}
             {picking && (
