@@ -4,6 +4,9 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Changed — Correcting an account's duration
+- Account sheet: « Durée du compte » (Illimité, 1 mois, 6 mois, 1 an, counted from today) corrects the limit at once; « Prolonger » adds to the current end. Times stay at the device's hour (showing them at the server's hour was tried and undone: the owner wants the hour where they are)
+
 ### Changed — « user » accounts: their settings and automatic downloads; any account duration; journal clean-up
 - « user » accounts get back *Apparence*, their name and their password in *Réglages*, and the automatic downloads (« Téléchargement automatique » on a title, and in the download sheet). A title has one follow, shared like the library: whoever switches it on owns it (its downloads and notifications)
 - Account duration: « Autre » to pick the last day yourself (the account closes at 23:59 that day); an existing account can be extended to a chosen date too (« Choisir une date… »)
