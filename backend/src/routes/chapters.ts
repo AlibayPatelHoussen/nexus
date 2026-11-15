@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express'
 import asyncHandler from 'express-async-handler'
-import { authenticate, authenticateStream } from '../middleware/auth'
+import { authenticate, authenticateStream, requireMedia } from '../middleware/auth'
 import { query } from '../config/database'
 import fs from 'fs/promises'
 import { chapterKind } from '../services/chapters'
@@ -17,7 +17,7 @@ async function chapterPath(id: string): Promise<string | null> {
 
 // ─── One page, ready to read (WebP at the reader's width, converted once) ───
 // Media elements cannot send headers: stream token in the query string.
-router.get('/chapters/:id/page/:n', authenticateStream, asyncHandler(async (req: Request, res: Response) => {
+router.get('/chapters/:id/page/:n', authenticateStream, requireMedia, asyncHandler(async (req: Request, res: Response) => {
   const file = await chapterPath(req.params.id)
   if (!file) { res.status(404).json({ success: false, error: 'Chapter not found' }); return }
   if (req.user!.role !== 'admin' && !(await isInsideDir(MEDIA_ROOT, file))) {
@@ -42,7 +42,7 @@ router.get('/chapters/:id/page/:n', authenticateStream, asyncHandler(async (req:
   }
 }))
 
-router.use(authenticate)
+router.use(authenticate, requireMedia)
 
 router.get('/chapters/:id/pages', asyncHandler(async (req: Request, res: Response) => {
   const { rows } = await query(

@@ -13,6 +13,9 @@ export interface JwtPayload {
   sid?: string
   /** Account session version: a password change increases it, ending the other sessions */
   sv?: number
+  /** What the account opens, read from the database on each request (admins: everything) */
+  canMedia?: boolean
+  canIptv?: boolean
 }
 
 interface SignedPayload extends JwtPayload {
@@ -64,7 +67,7 @@ export async function verifySession(token: string, typ: TokenType): Promise<JwtP
   const payload = verifyToken(token, typ)
   if (!payload) throw new UnauthorizedError('Invalid or expired token')
   const user = await checkSession(payload)
-  return { ...payload, username: user.username, role: user.role }
+  return { ...payload, username: user.username, role: user.role, canMedia: user.canMedia, canIptv: user.canIptv }
 }
 
 function useSession(req: Request, next: NextFunction, token: string, typ: TokenType) {
@@ -89,6 +92,20 @@ export function authenticateStream(req: Request, _res: Response, next: NextFunct
   if (header) { useSession(req, next, header, 'access'); return }
   if (typeof req.query.token !== 'string') throw new UnauthorizedError('No token provided')
   useSession(req, next, req.query.token, 'stream')
+}
+
+/** The media (films, series, animes, manga, downloads): accounts that have them. */
+export function requireMedia(req: Request, _res: Response, next: NextFunction): void {
+  if (!req.user) throw new UnauthorizedError()
+  if (req.user.role !== 'admin' && req.user.canMedia === false) throw new ForbiddenError('Ce compte n’a pas accès aux médias', 'NO_MEDIA_ACCESS')
+  next()
+}
+
+/** The IPTV: accounts that have it. */
+export function requireIptv(req: Request, _res: Response, next: NextFunction): void {
+  if (!req.user) throw new UnauthorizedError()
+  if (req.user.role !== 'admin' && req.user.canIptv === false) throw new ForbiddenError('Ce compte n’a pas accès à l’IPTV', 'NO_IPTV_ACCESS')
+  next()
 }
 
 export function requireAdmin(req: Request, _res: Response, next: NextFunction): void {

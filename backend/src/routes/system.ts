@@ -1,13 +1,13 @@
 import { Router, Request, Response } from 'express'
 import asyncHandler from 'express-async-handler'
-import { authenticate, requireAdmin } from '../middleware/auth'
+import { authenticate, requireAdmin, requireMedia } from '../middleware/auth'
 import { SystemService } from '../services/system'
 
 const router = Router()
 
 router.use(authenticate)
 
-router.get('/stats', asyncHandler(async (req: Request, res: Response) => {
+router.get('/stats', requireMedia, asyncHandler(async (req: Request, res: Response) => {
   const stats = await SystemService.getStats()
   // « user » accounts: the storage only (Aperçu shows them nothing else)
   res.json({ success: true, data: req.user!.role === 'admin' ? stats : SystemService.storageOnly(stats) })

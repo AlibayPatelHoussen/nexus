@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express'
 import asyncHandler from 'express-async-handler'
-import { authenticate, authenticateStream, requireAdmin } from '../middleware/auth'
+import { authenticate, authenticateStream, requireAdmin, requireIptv } from '../middleware/auth'
 import { NotFoundError, ValidationError } from '../utils/errors'
 import {
   addFavorite, assertChannelId, checkChannel, facets, favorites, forgetPage, getChannel, getSettings, listChannels, playable,
@@ -27,7 +27,7 @@ const relayPath = (req: Request, id: string, s: number) => (abs: string) => {
   return `/api/iptv/play/${encodeURIComponent(id)}/${s}/seg?u=${encodeURIComponent(abs)}&k=${signUrl(id, s, abs)}${token}`
 }
 
-router.get('/play/:id/:s/index.m3u8', authenticateStream, asyncHandler(async (req: Request, res: Response) => {
+router.get('/play/:id/:s/index.m3u8', authenticateStream, requireIptv, asyncHandler(async (req: Request, res: Response) => {
   const { id, s } = playParams(req)
   const stream = await streamOf(id, s)
   if (!stream) throw new NotFoundError('Flux')
@@ -37,7 +37,7 @@ router.get('/play/:id/:s/index.m3u8', authenticateStream, asyncHandler(async (re
   if (!sent) forgetPage(stream)
 }))
 
-router.get('/play/:id/:s/seg', authenticateStream, asyncHandler(async (req: Request, res: Response) => {
+router.get('/play/:id/:s/seg', authenticateStream, requireIptv, asyncHandler(async (req: Request, res: Response) => {
   const { id, s } = playParams(req)
   const url = typeof req.query.u === 'string' ? req.query.u : ''
   if (!url || url.length > 4000 || !validUrlSignature(id, s, url, req.query.k)) { res.status(403).end(); return }
@@ -51,13 +51,13 @@ router.get('/play/:id/:s/seg', authenticateStream, asyncHandler(async (req: Requ
 /** What the stream holds; when it has a picture the browser cannot read, its live conversion
  *  (answers once the converted stream is ready, or says why there is none).
  *  ?probe=1: only what it holds, nothing is started. */
-router.post('/play/:id/:s/convert', authenticateStream, asyncHandler(async (req: Request, res: Response) => {
+router.post('/play/:id/:s/convert', authenticateStream, requireIptv, asyncHandler(async (req: Request, res: Response) => {
   const { id, s } = playParams(req)
   if (!(await streamOf(id, s))) throw new NotFoundError('Flux')
   res.json({ success: true, data: await convertStream(id, s, AuthService.generateStreamToken(req.user!), req.query.probe !== '1') })
 }))
 
-router.get('/play/:id/:s/converted/index.m3u8', authenticateStream, asyncHandler(async (req: Request, res: Response) => {
+router.get('/play/:id/:s/converted/index.m3u8', authenticateStream, requireIptv, asyncHandler(async (req: Request, res: Response) => {
   const { id, s } = playParams(req)
   const text = await convertedPlaylist(id, s, typeof req.query.token === 'string' ? req.query.token : '')
   res.setHeader('Content-Type', 'application/vnd.apple.mpegurl')
@@ -65,7 +65,7 @@ router.get('/play/:id/:s/converted/index.m3u8', authenticateStream, asyncHandler
   res.send(text)
 }))
 
-router.get('/play/:id/:s/converted/:file', authenticateStream, (req: Request, res: Response) => {
+router.get('/play/:id/:s/converted/:file', authenticateStream, requireIptv, (req: Request, res: Response) => {
   const { id, s } = playParams(req)
   const file = convertedSegment(id, s, req.params.file)
   if (!file) throw new NotFoundError('Segment')
@@ -75,7 +75,8 @@ router.get('/play/:id/:s/converted/:file', authenticateStream, (req: Request, re
 })
 
 // ─── Catalogue ───────────────────────────────────────────────────────────────
-router.use(authenticate)
+// The IPTV: accounts that have it
+router.use(authenticate, requireIptv)
 
 router.get('/summary', asyncHandler(async (req: Request, res: Response) => {
   res.json({ success: true, data: await summary(req.user!.userId) })
