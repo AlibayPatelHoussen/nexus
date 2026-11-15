@@ -24,6 +24,28 @@ interface User {
   theme: 'dark' | 'light'
   session_version: number
   expires_at: Date | null
+  can_media: boolean
+  can_iptv: boolean
+}
+
+/** What an account opens: « Médias + IPTV » (all), « Médias » (media), « IPTV seulement » (iptv). */
+export type Access = 'all' | 'media' | 'iptv'
+export const ACCESS: Record<Access, { media: boolean; iptv: boolean }> = {
+  all: { media: true, iptv: true },
+  media: { media: true, iptv: false },
+  iptv: { media: false, iptv: true },
+}
+export function accessOf(u: { role: string; can_media: boolean; can_iptv: boolean }): Access {
+  if (u.role === 'admin' || (u.can_media && u.can_iptv)) return 'all'
+  return u.can_media ? 'media' : 'iptv'
+}
+/** The account as the interface sees it */
+function publicUser(u: User) {
+  const access = accessOf(u)
+  return {
+    id: u.id, username: u.username, email: u.email, role: u.role, theme: u.theme, expiresAt: u.expires_at,
+    access, canMedia: ACCESS[access].media, canIptv: ACCESS[access].iptv,
+  }
 }
 
 /** No device information (tests, scripts) */
@@ -131,14 +153,7 @@ export class AuthService {
     return {
       accessToken: session.accessToken,
       refreshToken: session.refreshToken,
-      user: {
-        id: user.id,
-        username: user.username,
-        email: user.email,
-        role: user.role,
-        theme: user.theme,
-        expiresAt: user.expires_at,
-      },
+      user: publicUser(user),
     }
   }
 
@@ -197,6 +212,8 @@ export class AuthService {
     email: string
     password: string
     expiresAt?: Date | null
+    /** What the account opens (default: media and IPTV) */
+    access?: Access
   }) {
     const existing = await query(
       'SELECT id FROM users WHERE LOWER(username) = LOWER($1) OR LOWER(email) = LOWER($2) OR LOWER(email) = LOWER($1) OR LOWER(username) = LOWER($2)',
@@ -209,11 +226,12 @@ export class AuthService {
 
     const hashed = await bcrypt.hash(data.password, SALT_ROUNDS)
 
+    const access = ACCESS[data.access ?? 'all']
     const result = await query<User>(
-      `INSERT INTO users (username, email, password, role, expires_at)
-       VALUES ($1, $2, $3, 'user', $4)
-       RETURNING id, username, email, role, theme, expires_at`,
-      [data.username, data.email, hashed, data.expiresAt ?? null],
+      `INSERT INTO users (username, email, password, role, expires_at, can_media, can_iptv)
+       VALUES ($1, $2, $3, 'user', $4, $5, $6)
+       RETURNING id, username, email, role, theme, expires_at, can_media, can_iptv`,
+      [data.username, data.email, hashed, data.expiresAt ?? null, access.media, access.iptv],
     )
 
     return result.rows[0]
@@ -289,7 +307,7 @@ export class AuthService {
     forgetSessions(userId)
     return {
       accessToken: this.generateAccessToken({ userId, username, role: user.role, sid: current?.sid, sv: current?.sv ?? user.session_version }),
-      user: { id: user.id, username, email: user.email, role: user.role, theme: user.theme, expiresAt: user.expires_at },
+      user: publicUser({ ...user, username }),
     }
   }
 

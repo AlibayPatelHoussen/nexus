@@ -248,6 +248,54 @@ describe('Sign-in journal: removing entries (admins)', () => {
   })
 })
 
+describe('What an account opens: « Médias + IPTV », « Médias », « IPTV seulement »', () => {
+  it('chosen at creation, changed at once on the account', async () => {
+    await query(`DELETE FROM users WHERE username IN ('tele', 'cine')`)
+    const tele = await request(app).post('/api/users').set(admin)
+      .send({ username: 'tele', email: 'tele@accounts.test', password: PASSWORD, access: 'iptv' })
+    expect(tele.status).toBe(201)
+    expect((await request(app).post('/api/users').set(admin)
+      .send({ username: 'cine', email: 'cine@accounts.test', password: PASSWORD, access: 'tout' })).status).toBe(422)
+    const cine = await request(app).post('/api/users').set(admin)
+      .send({ username: 'cine', email: 'cine@accounts.test', password: PASSWORD, access: 'media' })
+    const accounts = (await request(app).get('/api/users').set(admin)).body.data
+    expect(accounts.find((a: { username: string }) => a.username === 'tele').access).toBe('iptv')
+    expect(accounts.find((a: { username: string }) => a.username === 'cine').access).toBe('media')
+    expect(accounts.find((a: { id: string }) => a.id === FIXTURES.admin.id).access).toBe('all')
+
+    // « IPTV seulement »: the IPTV, no media
+    const t = (await login('tele')).body.data
+    expect(t.user).toMatchObject({ access: 'iptv', canMedia: false, canIptv: true })
+    const media = await request(app).get('/api/media').set(bearer(t.accessToken))
+    expect(media.status).toBe(403)
+    expect(media.body.code).toBe('NO_MEDIA_ACCESS')
+    expect((await request(app).get('/api/downloads').set(bearer(t.accessToken))).status).toBe(403)
+    expect((await request(app).get('/api/system/stats').set(bearer(t.accessToken))).status).toBe(403)
+    expect((await request(app).get('/api/iptv/summary').set(bearer(t.accessToken))).status).toBe(200)
+    expect((await request(app).get('/api/auth/me').set(bearer(t.accessToken))).body.data).toMatchObject({ canMedia: false, canIptv: true })
+
+    // « Médias »: no IPTV
+    const c = (await login('cine')).body.data
+    expect(c.user).toMatchObject({ access: 'media', canMedia: true, canIptv: false })
+    const iptv = await request(app).get('/api/iptv/summary').set(bearer(c.accessToken))
+    expect(iptv.status).toBe(403)
+    expect(iptv.body.code).toBe('NO_IPTV_ACCESS')
+    expect((await request(app).get('/api/media').set(bearer(c.accessToken))).status).toBe(200)
+
+    // Changed by the admin: at once, without signing in again
+    await request(app).patch(`/api/users/${cine.body.data.id}`).set(admin).send({ access: 'all' }).expect(200)
+    expect((await request(app).get('/api/iptv/summary').set(bearer(c.accessToken))).status).toBe(200)
+    await request(app).patch(`/api/users/${tele.body.data.id}`).set(admin).send({ access: 'media' }).expect(200)
+    expect((await request(app).get('/api/iptv/summary').set(bearer(t.accessToken))).status).toBe(403)
+    expect((await request(app).get('/api/media').set(bearer(t.accessToken))).status).toBe(200)
+    expect((await request(app).patch(`/api/users/${tele.body.data.id}`).set(admin).send({ access: 'rien' })).status).toBe(422)
+    expect((await request(app).patch(`/api/users/${tele.body.data.id}`).set(admin).send({})).status).toBe(422)
+    // Admins have everything
+    expect((await request(app).patch(`/api/users/${FIXTURES.admin.id}`).set(admin).send({ access: 'iptv' })).status).toBe(403)
+    await query(`DELETE FROM users WHERE username IN ('tele', 'cine')`)
+  })
+})
+
 describe('What a « user » account sees', () => {
   it('the storage only on Aperçu; no services, Jarvis, files or terminal', async () => {
     const stats = await request(app).get('/api/system/stats').set(asUser)

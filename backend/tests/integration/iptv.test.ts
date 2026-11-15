@@ -193,7 +193,7 @@ describe('IPTV settings', () => {
     expect((await request(app).put('/api/iptv/settings').set(alice).send({ hideOffline: true })).status).toBe(403)
     expect((await request(app).put('/api/iptv/settings').set(admin).send({ epgUrl: 'javascript:alert(1)' })).status).toBe(422)
     const s = (await request(app).put('/api/iptv/settings').set(admin).send({ hideOffline: true, autoRefresh: false })).body.data
-    expect(s).toEqual({ hideOffline: true, autoRefresh: false, epgUrl: null, priorityCountries: ['CA', 'FR', 'MG', 'US'] })
+    expect(s).toEqual({ hideOffline: true, autoRefresh: false, epgUrl: null, priorityCountries: ['CA', 'FR', 'MG', 'US'], vpnEnabled: true, publicUrl: null })
     expect((await request(app).post('/api/iptv/refresh').set(alice)).status).toBe(403)
     // Priority countries: typed as text or sent as a list, two-letter codes, no duplicate
     const typed = (await request(app).put('/api/iptv/settings').set(admin).send({ priorityCountries: 'be, ch;fr  BE' })).body.data
@@ -364,6 +364,28 @@ describe('IPTV through its VPN (IPTV_PROXY, scripts/iptv-vpn.sh)', () => {
     expect(tf1.status).toBe('online')
     expect(through.some((t) => t.startsWith(`GET http://127.0.0.1:${port()}/`))).toBe(true)
   }, 60_000)
+
+  it('the VPN switched off in Réglages: the IPTV goes out directly; on again: through the VPN', async () => {
+    process.env.IPTV_PROXY = proxyUrl
+    await request(app).put('/api/iptv/settings').set(admin).send({ vpnEnabled: false }).expect(200)
+    expect((await request(app).get('/api/iptv/vpn').set(admin)).body.data).toEqual({ configured: true, enabled: false })
+    through.length = 0
+    expect((await request(app).get(`/api/iptv/play/TF1.fr/0/index.m3u8?token=${token()}`)).status).toBe(200)
+    expect(through).toHaveLength(0)
+    expect((await request(app).put('/api/iptv/settings').set(alice).send({ vpnEnabled: true })).status).toBe(403)
+    await request(app).put('/api/iptv/settings').set(admin).send({ vpnEnabled: true }).expect(200)
+    expect((await request(app).get(`/api/iptv/play/TF1.fr/0/index.m3u8?token=${token()}`)).status).toBe(200)
+    expect(through.length).toBeGreaterThan(0)
+  })
+
+  it('the IPTV subdomain: its address, given to every page by /api/health', async () => {
+    const save = (publicUrl: unknown) => request(app).put('/api/iptv/settings').set(admin).send({ publicUrl })
+    expect((await save('pas une adresse')).status).toBe(422)
+    expect((await save('iptv.houssen.example/chemin')).body.data.publicUrl).toBe('https://iptv.houssen.example')
+    expect((await request(app).get('/api/health')).body.iptvUrl).toBe('https://iptv.houssen.example')
+    expect((await save('')).body.data.publicUrl).toBeNull()
+    expect((await request(app).get('/api/health')).body.iptvUrl).toBeNull()
+  })
 
   it('Réglages › IPTV: is the VPN up, where does the IPTV come out (admins)', async () => {
     expect((await request(app).get('/api/iptv/vpn').set(admin)).body.data).toEqual({ configured: false })

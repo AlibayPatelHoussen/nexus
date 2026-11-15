@@ -1,6 +1,7 @@
 import { query } from '../config/database'
 import { ForbiddenError, NotFoundError, ValidationError } from '../utils/errors'
 import { forgetSessions, isExpired } from './sessions'
+import { ACCESS, accessOf, type Access } from './auth'
 
 /**
  * Réglages › Utilisateurs, Appareils connectés, Journal des connexions (admins only).
@@ -20,11 +21,13 @@ export interface AccountRow {
   last_login: Date | null
   expires_at: Date | null
   devices: string
+  can_media: boolean
+  can_iptv: boolean
 }
 
 export async function listAccounts() {
   const { rows } = await query<AccountRow>(
-    `SELECT u.id, u.username, u.email, u.role, u.created_at, u.last_login, u.expires_at,
+    `SELECT u.id, u.username, u.email, u.role, u.created_at, u.last_login, u.expires_at, u.can_media, u.can_iptv,
             (SELECT COUNT(*) FROM refresh_tokens r WHERE r.user_id = u.id AND r.expires_at > NOW()
                AND r.session_version = u.session_version) AS devices
        FROM users u
@@ -40,6 +43,7 @@ export async function listAccounts() {
     expiresAt: r.expires_at,
     expired: isExpired(r.expires_at),
     devices: Number(r.devices),
+    access: accessOf(r),
   }))
 }
 
@@ -61,6 +65,16 @@ export async function setExpiry(id: string, expiresAt: unknown) {
     if (date.getTime() <= Date.now()) throw new ValidationError('La date de fin doit être dans le futur')
   }
   await query('UPDATE users SET expires_at = $2 WHERE id = $1', [id, date])
+  forgetSessions(id)
+}
+
+/** What a « user » account opens: « Médias + IPTV », « Médias », « IPTV seulement ». At once. */
+export async function setAccess(id: string, access: unknown) {
+  if (typeof access !== 'string' || !(access in ACCESS)) throw new ValidationError('Accès invalide (all, media ou iptv)')
+  const user = await userAccount(id)
+  if (user.role !== 'user') throw new ForbiddenError('Un compte administrateur a tous les accès')
+  const a = ACCESS[access as Access]
+  await query('UPDATE users SET can_media = $2, can_iptv = $3 WHERE id = $1', [id, a.media, a.iptv])
   forgetSessions(id)
 }
 

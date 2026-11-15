@@ -6,6 +6,7 @@ import { logger } from '../utils/logger'
 import { AppError, NotFoundError, ValidationError } from '../utils/errors'
 import { collect, scriptsDir, type ScriptEvent } from './downloadScripts'
 import { signedImage } from './images'
+import { setVpnEnabled } from './iptvVpn'
 
 /*
  * IPTV: the iptv-org catalogue (https://github.com/iptv-org/iptv) and the Free-TV playlist
@@ -61,8 +62,15 @@ export interface IptvSettings {
   epgUrl: string | null
   /** Countries shown and checked first (ISO codes, in this order) */
   priorityCountries: string[]
+  /** Use the IPTV's VPN when one is installed (scripts/iptv-vpn.sh); off: the IPTV goes out directly */
+  vpnEnabled: boolean
+  /** Address of the IPTV's own subdomain (« https://iptv.example.com »): Nexus opened there shows the
+   *  IPTV only, and « IPTV seulement » accounts are sent there. Null: none */
+  publicUrl: string | null
 }
-const DEFAULT_SETTINGS: IptvSettings = { autoRefresh: true, hideOffline: false, epgUrl: null, priorityCountries: ['CA', 'FR', 'MG', 'US'] }
+const DEFAULT_SETTINGS: IptvSettings = {
+  autoRefresh: true, hideOffline: false, epgUrl: null, priorityCountries: ['CA', 'FR', 'MG', 'US'], vpnEnabled: true, publicUrl: null,
+}
 
 /** 'ca, fr mg' or ['ca', 'FR'] -> ['CA', 'FR', 'MG'] (two-letter codes, no duplicate, at most 12) */
 function countryCodes(input: unknown): string[] {
@@ -92,7 +100,16 @@ async function setMeta(key: string, value: unknown): Promise<void> {
 export async function getSettings(): Promise<IptvSettings> {
   const s = { ...DEFAULT_SETTINGS, ...(await getMeta<Partial<IptvSettings>>('settings', {})) }
   if (!Array.isArray(s.priorityCountries)) s.priorityCountries = DEFAULT_SETTINGS.priorityCountries
+  setVpnEnabled(s.vpnEnabled !== false)
+  publicUrlCache = { at: Date.now(), url: s.publicUrl ?? null }
   return s
+}
+
+let publicUrlCache: { at: number; url: string | null } | null = null
+/** The IPTV subdomain's address (kept 60 s: /api/health gives it to every page). */
+export async function iptvPublicUrl(): Promise<string | null> {
+  if (publicUrlCache && Date.now() - publicUrlCache.at < 60_000) return publicUrlCache.url
+  return (await getSettings()).publicUrl
 }
 export async function saveSettings(input: Partial<IptvSettings>): Promise<IptvSettings> {
   const cur = await getSettings()
@@ -105,7 +122,22 @@ export async function saveSettings(input: Partial<IptvSettings>): Promise<IptvSe
     next.epgUrl = url || null
   }
   if (input.priorityCountries !== undefined) next.priorityCountries = countryCodes(input.priorityCountries)
+  if (typeof input.vpnEnabled === 'boolean') next.vpnEnabled = input.vpnEnabled
+  if (input.publicUrl !== undefined) {
+    const raw = typeof input.publicUrl === 'string' ? input.publicUrl.trim() : ''
+    let url: string | null = null
+    if (raw) {
+      try {
+        const u = new URL(/^https?:\/\//i.test(raw) ? raw : `https://${raw}`)
+        if (!/^https?:$/.test(u.protocol) || !u.hostname.includes('.')) throw new Error('form')
+        url = u.origin
+      } catch { throw new ValidationError('Adresse de l’IPTV invalide (par exemple https://iptv.mon-domaine.com)') }
+    }
+    next.publicUrl = url
+  }
   await setMeta('settings', next)
+  setVpnEnabled(next.vpnEnabled)
+  publicUrlCache = { at: Date.now(), url: next.publicUrl }
   if (next.epgUrl && next.epgUrl !== cur.epgUrl) void refreshEpg().catch((err) => logger.warn(`IPTV guide: ${err.message}`))
   if (!next.epgUrl) await query('DELETE FROM iptv_epg')
   return next
@@ -665,6 +697,8 @@ let timers: NodeJS.Timeout[] = []
 let checking = false
 
 export function startIptvWorker() {
+  // The VPN switch and the subdomain known from the start
+  void getSettings().catch(() => {})
   if (timers.length || process.env.NODE_ENV === 'test' || process.env.IPTV_DISABLED === '1') return
   const tick = async () => {
     const settings = await getSettings()
