@@ -265,6 +265,8 @@ iptv.houssen-serveur.com → localhost:3001
 then enter it in *IPTV › Paramètres › Adresse de l’IPTV*. At that address Nexus shows the IPTV
 only; « IPTV seulement » accounts are sent there to sign in.
 
+The two admin account scripts below are kept **on the server only**: they are out of Git
+(`.gitignore`), `deploy.sh` keeps them in place and the nightly backup saves them.
 Admin accounts: `bash scripts/create-admin.sh` (asks the name, e-mail and password; on an
 existing account it resets the password and signs it out everywhere). Delete an account
 (admin or user): `bash scripts/delete-account.sh <name>` (asks to type the name again; never

@@ -4,7 +4,8 @@
 #
 #  Every night (systemd timer, independent of Nexus):
 #    - the database (accounts, library, lists, history, IPTV…): pg_dump
-#    - backend/.env and backend/data (the Web Push keys), needed to restore
+#    - backend/.env, backend/data (the Web Push keys) and the admin account
+#      scripts (out of Git), needed to restore
 #  into /var/backups/nexus (root only), the last 14 of each kept.
 #  The media files themselves are not copied (too big: use a second disk).
 #
@@ -63,7 +64,10 @@ do_backup() {
 
   # Settings: backend/.env and the Web Push keys (whatever exists)
   local items=() f saved=''
-  for f in backend/.env backend/data; do if [ -e "$NEXUS_DIR/$f" ]; then items+=("$f"); fi; done
+  # (+ the admin account scripts, kept on this server only, out of Git)
+  for f in backend/.env backend/data scripts/create-admin.sh scripts/delete-account.sh; do
+    if [ -e "$NEXUS_DIR/$f" ]; then items+=("$f"); fi
+  done
   if [ ${#items[@]} -gt 0 ]; then
     saved=' + réglages'
     tar -czf "$files.part" -C "$NEXUS_DIR" "${items[@]}"
