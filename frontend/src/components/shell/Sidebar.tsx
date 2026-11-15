@@ -95,9 +95,14 @@ export default function Sidebar({ onSearch, onLogout, onNavigate }: SidebarProps
             if (!items.length) return null
             return (
               <div key={s.id}>
-                <h2 className={cn('pl-1 pb-[9px] text-[13px] font-bold leading-4 text-[color:var(--glass-label-2)]', i === 0 ? 'pt-2' : 'pt-[18px]')}>
-                  {s.label}
-                </h2>
+                {/* Without the media (the IPTV alone) the list needs no section title */}
+                {access.media
+                  ? (
+                    <h2 className={cn('pl-1 pb-[9px] text-[13px] font-bold leading-4 text-[color:var(--glass-label-2)]', i === 0 ? 'pt-2' : 'pt-[18px]')}>
+                      {s.label}
+                    </h2>
+                  )
+                  : <div className="pt-2" />}
                 <div className="flex flex-col">{items.map(link)}</div>
               </div>
             )
