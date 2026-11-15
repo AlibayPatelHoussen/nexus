@@ -205,11 +205,18 @@ function AccountSheet({ account, onClose }: { account: Account | null; onClose: 
     finally { setBusy(false) }
   }
 
+  const saved = (end: string | null) => (end ? `Compte ouvert jusqu’au ${formatDay(end)}` : 'Compte sans limite de durée')
+
+  /** Corrects the limit: no limit, or the chosen duration from today. */
+  async function setDuration(duration: Duration) {
+    const end = endOf(duration)
+    await run(() => usersService.setExpiry(a!.id, end), saved(end))
+  }
+
+  /** « Prolonger » : adds the duration to the current end. */
   async function extend(duration: Duration) {
-    // From its current end when it has not passed yet, else from today
-    const from = a!.expiresAt && !a!.expired ? new Date(a!.expiresAt) : new Date()
-    const end = endOf(duration, from)
-    await run(() => usersService.setExpiry(a!.id, end), end ? `Compte ouvert jusqu’au ${formatDay(end)}` : 'Compte sans limite de durée')
+    const end = endOf(duration, a!.expiresAt ? new Date(a!.expiresAt) : new Date())
+    await run(() => usersService.setExpiry(a!.id, end), saved(end))
   }
 
   async function setDayEnd() {
@@ -264,18 +271,34 @@ function AccountSheet({ account, onClose }: { account: Account | null; onClose: 
           <ListRow title="Type de compte" detail={roleLabel(a)} />
           <ListRow title="Créé le" detail={formatDay(a.createdAt)} />
           <ListRow title="Dernière connexion" detail={a.lastLogin ? formatWhen(a.lastLogin) : 'Jamais'} />
-          {isUser && <ListRow title="Accès" detail={a.expired ? 'Expiré' : a.expiresAt ? `Jusqu’au ${formatDay(a.expiresAt)}` : 'Sans limite'} status={a.expired ? 'error' : undefined} />}
+          {isUser && <ListRow title={a.expired ? 'Expiré le' : 'Fin du compte'} detail={a.expiresAt ? formatDay(a.expiresAt) : 'Sans limite'} status={a.expired ? 'error' : undefined} />}
         </Group>
 
         {isUser && (
-          <Group header={a.expired ? 'Rouvrir le compte' : 'Prolonger'} footer="« + 1 mois »… s’ajoute à la date de fin actuelle (à partir d’aujourd’hui si elle est passée) ; « Choisir une date… » fixe le dernier jour.">
-            <div role="listitem" className="nx-row relative flex flex-wrap items-center gap-2 px-4 py-3">
-              {DURATIONS.filter((d) => d.value !== 'none').map((d) => (
-                <Button key={d.value} size="small" disabled={busy} onClick={() => void extend(d.value)}>+ {d.label}</Button>
-              ))}
-              {a.expiresAt && <Button size="small" variant="plain" disabled={busy} onClick={() => void extend('none')}>Sans limite</Button>}
-              {!picking && <Button size="small" variant="plain" disabled={busy} onClick={() => setPicking(true)}>Choisir une date…</Button>}
+          <Group
+            header="Durée du compte"
+            footer={a.expiresAt && !a.expired
+              ? 'Une durée compte à partir d’aujourd’hui ; « Prolonger » l’ajoute à la date de fin actuelle.'
+              : 'Une durée compte à partir d’aujourd’hui.'}
+          >
+            {/* Correct the limit at once: « Illimité » is selected for an account without one */}
+            <div role="listitem" className="nx-row relative px-4 py-3">
+              <SegmentedControl<Duration | 'date'> label="Durée du compte" full value={a.expiresAt ? 'date' : 'none'}
+                onChange={(v) => { if (v !== 'date' && !busy) void setDuration(v) }}
+                options={DURATIONS.map((d) => ({ value: d.value, label: d.label }))} />
             </div>
+            {a.expiresAt && !a.expired && (
+              // The buttons go under « Prolonger » when the row is too narrow (iPhone)
+              <div role="listitem" className="nx-row relative flex flex-wrap items-center gap-x-3 gap-y-2 px-4 py-2.5 min-h-row">
+                <span className="text-label mr-auto">Prolonger</span>
+                <span className="flex gap-1.5">
+                  {DURATIONS.filter((d) => d.value !== 'none').map((d) => (
+                    <Button key={d.value} size="small" disabled={busy} onClick={() => void extend(d.value)}>+ {d.label}</Button>
+                  ))}
+                </span>
+              </div>
+            )}
+            {!picking && <ListRow title={<span className="text-accent-text">Choisir une date…</span>} onClick={() => setPicking(true)} disabled={busy} />}
             {picking && (
               <form role="listitem" className="nx-row relative flex flex-col gap-2 px-4 py-3"
                 onSubmit={(e) => { e.preventDefault(); void setDayEnd() }}>

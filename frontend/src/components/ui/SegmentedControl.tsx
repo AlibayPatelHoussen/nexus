@@ -56,15 +56,17 @@ export default function SegmentedControl<T extends string>({ options, value, onC
           }}
         />
       )}
-      {options.map((o) => {
+      {options.map((o, i) => {
         const on = o.value === value
+        // No segment chosen (a value outside the options): the first one takes the keyboard focus
+        const tabbable = on || (i === 0 && !options.some((x) => x.value === value))
         return (
           <button
             key={o.value}
             type="button"
             role="radio"
             aria-checked={on}
-            tabIndex={on ? 0 : -1}
+            tabIndex={tabbable ? 0 : -1}
             title={o.title}
             onClick={() => onChange(o.value)}
             className={cn(

@@ -887,8 +887,16 @@ test('accounts: an admin creates an account for 1 year, sees its device and plac
   eq((await api('/api/auth/me', { token: invite.accessToken })).status, 401, 'the device is signed out')
   eq((await api('/api/auth/refresh', { method: 'POST', body: { refreshToken: invite.refreshToken } })).status, 401, 'and stays out')
 
-  // The account: delete it
+  // The account: correct its limit (no limit, then 1 month from today), then delete it
   await page.click('section[aria-labelledby="utilisateurs-h"] button:has-text("invite")')
+  const duration = '[role="dialog"] [role="radiogroup"][aria-label="Durée du compte"]'
+  await page.click(`${duration} >> text=Illimité`)
+  await page.waitForSelector('text=Compte sans limite de durée')
+  eq(sql(`SELECT expires_at IS NULL FROM users WHERE username = 'invite'`), 't', 'no limit')
+  await page.click(`${duration} >> text=1 mois`)
+  await page.waitForSelector('text=Compte ouvert jusqu’au')
+  const month = Number(sql(`SELECT round(extract(epoch FROM expires_at - NOW()) / 86400) FROM users WHERE username = 'invite'`))
+  assert(month >= 28 && month <= 31, `one month from today: ${month} days`)
   await page.click('text=Supprimer le compte…')
   await page.click('[role="alertdialog"] button:has-text("Supprimer")')
   await page.waitForSelector('text=Compte « invite » supprimé')
@@ -1380,7 +1388,9 @@ for (const t of tests) {
   } catch (e) {
     // the line of this file where it failed (several steps of a test can wait for the same thing)
     const at = (e.stack || '').split('\n').find((l) => l.includes('run.mjs:'))?.match(/run\.mjs:(\d+)/)?.[1]
-    results.push({ name: t.name, ok: false, ms: Date.now() - start, err: e.message.split('\n')[0] + (at ? ` (run.mjs:${at})` : '') })
+    // E2E_VERBOSE=1: Playwright's whole message (what the click was waiting for)
+    const msg = process.env.E2E_VERBOSE ? e.message : e.message.split('\n')[0]
+    results.push({ name: t.name, ok: false, ms: Date.now() - start, err: msg + (at ? ` (run.mjs:${at})` : '') })
   } finally { clearTimeout(timer) }
   const r = results[results.length - 1]
   console.log(`${r.ok ? '✅' : '❌'} ${r.name} (${r.ms} ms)${r.ok ? '' : `\n     → ${r.err}`}`)
