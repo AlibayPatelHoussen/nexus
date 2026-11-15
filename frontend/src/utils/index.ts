@@ -1,6 +1,5 @@
 import { clsx, type ClassValue } from 'clsx'
 import { extendTailwindMerge } from 'tailwind-merge'
-import { dayKey, daysBetween, serverTimeZone } from '@/services/serverClock'
 
 // Our type scale (tailwind.config fontSize) must be known as font sizes,
 // otherwise `text-body` is taken for a colour and drops `text-label`.
@@ -72,40 +71,30 @@ export function formatDuration(seconds: number): string {
   return `${m}:${String(s).padStart(2, '0')}`
 }
 
-export function formatDate(iso: string, tz = serverTimeZone()): string {
+export function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString('fr-CA', {
     day:   '2-digit',
     month: 'short',
     year:  'numeric',
-    timeZone: tz,
   })
 }
 
-/** « 15 nov. 2027 », the day at the server */
-export function formatDay(iso: string, tz = serverTimeZone()): string {
-  return new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric', timeZone: tz })
+/** « 15 nov. 2027 » */
+export function formatDay(iso: string): string {
+  return new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 
-/** « 15 nov. 2026 à 11:17 » at the server (dateStyle « short »: « 15/11/2026 11:17 ») */
-export function formatDateTime(iso: string, dateStyle: 'medium' | 'short' = 'medium', tz = serverTimeZone()): string {
-  return new Date(iso).toLocaleString('fr-FR', { dateStyle, timeStyle: 'short', timeZone: tz })
-}
-
-/**
- * « à l’instant », « il y a 5 min », « il y a 3 h », « hier à 21:04 », « 12 nov. à 10:02 », « 12 nov. 2025 »
- * (days and hours at the server)
- */
-export function formatWhen(iso: string, now = new Date(), tz = serverTimeZone()): string {
+/** « à l’instant », « il y a 5 min », « il y a 3 h », « hier à 21:04 », « 12 nov. à 10:02 », « 12 nov. 2025 » */
+export function formatWhen(iso: string, now = new Date()): string {
   const d = new Date(iso)
   const s = Math.round((now.getTime() - d.getTime()) / 1000)
   if (s < 60) return 'à l’instant'
   if (s < 3600) return `il y a ${Math.floor(s / 60)} min`
-  const time = d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit', timeZone: tz })
-  const today = dayKey(now, tz)
-  const day = dayKey(d, tz)
-  const days = daysBetween(day, today)
+  const time = d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+  const day = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime()
+  const days = Math.round((day(now) - day(d)) / 86_400_000)
   if (days === 0) return s < 6 * 3600 ? `il y a ${Math.floor(s / 3600)} h` : `aujourd’hui à ${time}`
   if (days === 1) return `hier à ${time}`
-  if (day.slice(0, 4) === today.slice(0, 4)) return `${d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', timeZone: tz })} à ${time}`
-  return formatDay(iso, tz)
+  if (d.getFullYear() === now.getFullYear()) return `${d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })} à ${time}`
+  return formatDay(iso)
 }

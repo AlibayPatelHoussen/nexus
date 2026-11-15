@@ -15,7 +15,7 @@ import { useConfirm } from '@/components/ui/useConfirm'
 import type { Appearance } from '@/types'
 import NotificationsGroup from './NotificationsGroup'
 import { DevicesGroup, SignInsGroup, UsersGroup } from './AccountsGroups'
-import { formatDateTime, formatDay } from '@/utils'
+import { formatDay } from '@/utils'
 
 export default function SettingsPage() {
   const user = useAuthStore((s) => s.user)
@@ -257,8 +257,7 @@ function VersionGroup() {
   return (
     <Group
       header="Version"
-      footer={outdated ? 'Le serveur n’exécute pas la même version que l’interface. Sur le serveur, lance bash scripts/deploy.sh.'
-        : data?.timeZone ? `Les heures de Nexus sont celles du serveur (${data.timeZone.replace(/_/g, ' ')}).` : undefined}
+      footer={outdated ? 'Le serveur n’exécute pas la même version que l’interface. Sur le serveur, lance bash scripts/deploy.sh.' : undefined}
     >
       <ListRow title="Interface" detail={<span className="font-mono">{FRONTEND_COMMIT}</span>} />
       <ListRow
@@ -266,7 +265,7 @@ function VersionGroup() {
         status={outdated ? 'warn' : undefined}
         detail={<span className="font-mono">{isError ? 'injoignable' : data?.build?.commit ?? (data ? 'ancienne version' : '…')}</span>}
       />
-      {data?.startedAt && <ListRow title="Démarré le" detail={formatDateTime(data.startedAt, 'medium', data.timeZone)} />}
+      {data?.startedAt && <ListRow title="Démarré le" detail={new Date(data.startedAt).toLocaleString('fr-FR', { dateStyle: 'medium', timeStyle: 'short' })} />}
     </Group>
   )
 }
