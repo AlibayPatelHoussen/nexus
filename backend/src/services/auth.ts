@@ -11,6 +11,32 @@ import { logger } from '../utils/logger'
 import type { ClientInfo } from '../utils/device'
 
 const SALT_ROUNDS = 12
+/** « 15m », « 1h », « 900 » (seconds) → seconds; null when unreadable */
+export function durationSeconds(v: string): number | null {
+  const m = /^(\d+)\s*([smhd])?$/i.exec(v.trim())
+  if (!m) return null
+  return Number(m[1]) * ({ s: 1, m: 60, h: 3600, d: 86_400 } as Record<string, number>)[(m[2] ?? 's').toLowerCase()]
+}
+
+/** Access tokens: 15 minutes by default, never over an hour (the app renews them by itself) */
+const ACCESS_MAX_SECONDS = 3600
+let warnedLongAccess = false
+export function accessLifetime(): string | number {
+  const raw = process.env.JWT_EXPIRES_IN
+  const seconds = raw ? durationSeconds(raw) : null
+  if (!seconds) return '15m'
+  if (seconds > ACCESS_MAX_SECONDS) {
+    if (!warnedLongAccess) {
+      logger.warn(`JWT_EXPIRES_IN=${raw} is too long for access tokens: 1 hour is used (15m recommended in backend/.env)`)
+      warnedLongAccess = true
+    }
+    return ACCESS_MAX_SECONDS
+  }
+  return seconds
+}
+
+/** Compared against for an unknown name, so it takes as long as a wrong password */
+const DUMMY_HASH = bcrypt.hashSync('nexus-unknown-account', SALT_ROUNDS)
 const REFRESH_DAYS = 30
 /** Sign-in journal: older entries are removed */
 const JOURNAL_DAYS = 180
@@ -53,7 +79,7 @@ const NO_CLIENT: ClientInfo = { ip: null, userAgent: null, device: 'Appareil inc
 
 export class AuthService {
   // ─── Generate Tokens ──────────────────────────────
-  private static sign(payload: JwtPayload, typ: TokenType, expiresIn: string): string {
+  private static sign(payload: JwtPayload, typ: TokenType, expiresIn: string | number): string {
     const { userId, username, role, sid, sv } = payload
     // jwtid: two logins in the same second must not produce the same token
     // (refresh tokens are stored with a UNIQUE constraint)
@@ -61,7 +87,7 @@ export class AuthService {
   }
 
   static generateAccessToken(payload: JwtPayload): string {
-    return this.sign(payload, 'access', process.env.JWT_EXPIRES_IN || '15m')
+    return this.sign(payload, 'access', accessLifetime())
   }
 
   static generateRefreshToken(payload: JwtPayload): string {
@@ -123,6 +149,8 @@ export class AuthService {
 
     const user = result.rows[0]
     if (!user) {
+      // Same work and same answer as a wrong password: the reply never tells which names exist
+      await bcrypt.compare(password, DUMMY_HASH)
       await this.journal({ userId: null, username, reason: 'unknown' }, client)
       throw new UnauthorizedError('Invalid credentials')
     }

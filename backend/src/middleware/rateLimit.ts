@@ -6,7 +6,7 @@ const handler: Parameters<typeof rateLimit>[0] = {
   windowMs,
   standardHeaders: 'draft-7',
   legacyHeaders: false,
-  message: { success: false, error: 'Too many requests, please try again later' },
+  message: { success: false, error: 'Trop de tentatives : réessaie dans 15 minutes.', code: 'RATE_LIMITED' },
 }
 
 /** Brute-force protection for login / refresh. Successful logins are not counted. */

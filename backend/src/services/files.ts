@@ -33,6 +33,54 @@ export function sanitizePath(inputPath: string): string {
   return resolved
 }
 
+/** The Nexus installation (this repository): its code, .git, .gitignore and .env. */
+export const NEXUS_ROOT = path.resolve(__dirname, '../../..')
+
+const within = (p: string, dir: string) => p === dir || p.startsWith(dir.endsWith(path.sep) ? dir : dir + path.sep)
+
+/**
+ * Secrets: never read, written, moved or deleted from the browser (a stolen admin
+ * session must not hand them out); they are managed in the server's terminal.
+ */
+export function secretReason(p: string): string | null {
+  const name = path.basename(p)
+  const parts = p.split(path.sep)
+  if (/^\.env($|\.)/i.test(name) && !/\.(example|sample|template)$/i.test(name)) return 'fichier de secrets .env'
+  if (parts.includes('.ssh') || parts.includes('.gnupg')) return 'clés privées'
+  if (within(p, path.join(NEXUS_ROOT, 'backend', 'data'))) return 'clés de Nexus'
+  if (within(p, '/etc/wireproxy') || within(p, '/etc/wireguard')) return 'clés du VPN'
+  if (/^\/etc\/default\/nexus-/.test(p)) return 'réglages privés de Nexus'
+  if (/^\/etc\/(shadow|gshadow|sudoers)(-|$|\.d)/.test(p) || within(p, '/etc/ssl/private')) return 'fichier système sensible'
+  return null
+}
+
+/** The Nexus installation is read-only here (code, .git, .gitignore): it changes through GitHub and the deploy. */
+function installReason(p: string): string | null {
+  if (within(p, NEXUS_ROOT)) return 'dossier de Nexus (code, .git, .gitignore) : il change par GitHub et le déploiement'
+  // A folder that holds the installation (/home/user…)
+  if (within(NEXUS_ROOT, p)) return 'dossier qui contient l’installation de Nexus'
+  const parts = p.split(path.sep)
+  if (parts.includes('.git') || path.basename(p) === '.gitignore') return 'fichier Git'
+  return null
+}
+
+async function realOrSelf(p: string): Promise<string> {
+  try { return await fs.realpath(p) } catch { return p }
+}
+
+/**
+ * Refuses a protected path: `read` = secrets (also through a symlink), `write` = secrets
+ * and the Nexus installation / Git files (create, write, rename, move, delete, upload).
+ */
+export async function assertAllowed(p: string, op: 'read' | 'write'): Promise<void> {
+  for (const x of new Set([p, await realOrSelf(p)])) {
+    const secret = secretReason(x)
+    if (secret) throw new AppError(`Fichier protégé (${secret}) : il se gère dans le terminal du serveur, pas depuis le navigateur.`, 403, true, 'PROTECTED_FILE')
+    const install = op === 'write' ? installReason(x) : null
+    if (install) throw new AppError(`Protégé en écriture (${install}).`, 403, true, 'PROTECTED_FILE')
+  }
+}
+
 /** System folders that must never be deleted or moved from the web UI. */
 const PROTECTED = new Set([
   '/', '/bin', '/boot', '/dev', '/etc', '/home', '/lib', '/lib64', '/opt', '/proc', '/root',
@@ -156,11 +204,14 @@ export class FilesService {
   }
 
   static async createDir(dirPath: string): Promise<void> {
-    await mkdirp(sanitizePath(dirPath))
+    const safe = sanitizePath(dirPath)
+    await assertAllowed(safe, 'write')
+    await mkdirp(safe)
   }
 
   static async createFile(filePath: string, content = ''): Promise<void> {
     const safe = sanitizePath(filePath)
+    await assertAllowed(safe, 'write')
     await mkdirp(path.dirname(safe))
     await write(safe, content)
   }
@@ -172,12 +223,15 @@ export class FilesService {
       throw new AppError('Invalid name', 422)
     }
     const newPath = path.join(path.dirname(safe), newName)
+    await assertAllowed(safe, 'write')
+    await assertAllowed(newPath, 'write')
     await mv(safe, newPath)
   }
 
   static async delete(targetPath: string): Promise<void> {
     const safe = sanitizePath(targetPath)
     assertNotProtected(safe)
+    await assertAllowed(safe, 'write')
     try {
       // lstat: a symlink (even broken) is removed itself, never its target
       const stat = await fs.lstat(safe)
@@ -210,12 +264,16 @@ export class FilesService {
 
   static async move(srcPath: string, destPath: string): Promise<void> {
     const src = sanitizePath(srcPath)
+    const dest = sanitizePath(destPath)
     assertNotProtected(src)
-    await mv(src, sanitizePath(destPath))
+    await assertAllowed(src, 'write')
+    await assertAllowed(dest, 'write')
+    await mv(src, dest)
   }
 
   static async readFile(filePath: string): Promise<string> {
     const safe = sanitizePath(filePath)
+    await assertAllowed(safe, 'read')
     const tooBig = () => new AppError('File too large to read (>10MB)', 413)
     try {
       const stat = await fs.stat(safe)
@@ -230,7 +288,9 @@ export class FilesService {
   }
 
   static async writeFile(filePath: string, content: string): Promise<void> {
-    await write(sanitizePath(filePath), content)
+    const safe = sanitizePath(filePath)
+    await assertAllowed(safe, 'write')
+    await write(safe, content)
   }
 
   static async getInfo(filePath: string): Promise<FileEntry> {

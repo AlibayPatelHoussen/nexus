@@ -208,6 +208,7 @@ function PasswordGroup() {
   async function submit(e: React.FormEvent) {
     e.preventDefault()
     if (next.length < 8) { setError('Le nouveau mot de passe doit faire au moins 8 caractères.'); return }
+    if (new TextEncoder().encode(next).length > 72) { setError('Le nouveau mot de passe doit faire 72 caractères au plus.'); return }
     if (next !== again) { setError('Les deux nouveaux mots de passe ne sont pas identiques.'); return }
     if (!/[a-z]/.test(next) || !/[A-Z]/.test(next) || !/\d/.test(next)) { setError('Le nouveau mot de passe doit contenir une majuscule, une minuscule et un chiffre.'); return }
     setSaving(true); setError(null)

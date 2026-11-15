@@ -108,7 +108,9 @@ function NewUserSheet({ open, onClose }: { open: boolean; onClose: () => void })
   const formId = useId()
 
   const nameOk = /^[A-Za-z0-9_-]{3,50}$/.test(username.trim())
-  const passOk = password.length >= 8 && /[a-z]/.test(password) && /[A-Z]/.test(password) && /\d/.test(password)
+  // 8 to 72 characters (the server's rule: bcrypt reads 72 bytes)
+  const passOk = password.length >= 8 && new TextEncoder().encode(password).length <= 72
+    && /[a-z]/.test(password) && /[A-Z]/.test(password) && /\d/.test(password)
   const valid = nameOk && /^\S+@\S+\.\S+$/.test(email.trim()) && passOk && (duration !== 'date' || !!expiresAt)
 
   function close() {
@@ -158,7 +160,7 @@ function NewUserSheet({ open, onClose }: { open: boolean; onClose: () => void })
         <TextField label="Mot de passe" type="password" value={password} onChange={(e) => { setPassword(e.target.value); setError(null) }}
           autoComplete="new-password"
           hint="Au moins 8 caractères, avec une majuscule, une minuscule et un chiffre"
-          error={password && !passOk ? 'Au moins 8 caractères, avec une majuscule, une minuscule et un chiffre.' : undefined} />
+          error={password && !passOk ? '8 à 72 caractères, avec une majuscule, une minuscule et un chiffre.' : undefined} />
         <div className="flex flex-col gap-1.5">
           <span className="text-subhead text-label2">Accès</span>
           <SegmentedControl<AccountAccess> label="Accès" full value={access} onChange={setAccess} options={ACCESS_OPTIONS} />

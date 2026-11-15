@@ -49,7 +49,7 @@ export function proxied(kind: 'media' | 'episode', id: string, field: string, ur
 // ─── Signed URLs: artwork of download search results (any site) ────────────
 // The server signs the URLs it hands out itself, so /api/images/remote cannot
 // be used as an open proxy by anyone else.
-const signKey = () => `img:${process.env.JWT_SECRET || 'nexus'}`
+const signKey = () => `img:${process.env.JWT_SECRET ?? ''}`
 const signature = (url: string) => crypto.createHmac('sha256', signKey()).update(url).digest('base64url').slice(0, 32)
 
 export function signedImage(url: unknown): string | null {

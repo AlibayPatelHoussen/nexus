@@ -28,14 +28,33 @@ export function errorHandler(
     return
   }
 
+  // Uploads beyond the limits (multer): the limit, not a server error
+  if (err.name === 'MulterError') {
+    const code = (err as { code?: string }).code
+    const tooBig = code === 'LIMIT_FILE_SIZE'
+    res.status(tooBig || code === 'LIMIT_FILE_COUNT' ? 413 : 400).json({
+      success: false,
+      error: tooBig ? 'Fichier trop gros (5 Go au plus)' : code === 'LIMIT_FILE_COUNT' ? 'Trop de fichiers à la fois (500 au plus)' : 'Envoi refusé',
+    })
+    return
+  }
+
+  // A request the server cannot read (bad JSON, body too big…): its own 4xx, never details
+  const status = (err as { status?: unknown }).status
+  if (typeof status === 'number' && status >= 400 && status < 500) {
+    res.status(status).json({ success: false, error: status === 413 ? 'Requête trop grosse' : 'Requête invalide' })
+    return
+  }
+
   // Unexpected errors
   logger.error('Unexpected error', { stack: err.stack, message: err.message })
 
   res.status(500).json({
     success: false,
-    error: process.env.NODE_ENV === 'production'
-      ? 'Internal server error'
-      : err.message,
+    // The details stay in the logs; only a developer's own machine shows them
+    error: process.env.NODE_ENV === 'development' || process.env.NODE_ENV === 'test'
+      ? err.message
+      : 'Internal server error',
   })
 }
 

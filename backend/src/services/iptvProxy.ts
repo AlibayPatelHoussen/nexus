@@ -28,7 +28,7 @@ const HEADER_TIMEOUT = 20_000
 const MAX_PLAYLIST = 2 * 1024 * 1024
 const UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36'
 
-const key = () => `iptv:${process.env.JWT_SECRET || 'nexus'}`
+const key = () => `iptv:${process.env.JWT_SECRET ?? ''}`
 export const signUrl = (id: string, s: number, url: string) =>
   crypto.createHmac('sha256', key()).update(`${id}|${s}|${url}`).digest('base64url').slice(0, 24)
 export function validUrlSignature(id: string, s: number, url: string, sig: unknown): boolean {

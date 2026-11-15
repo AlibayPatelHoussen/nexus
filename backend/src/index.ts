@@ -49,7 +49,9 @@ const BUILD_INFO: { commit: string; builtAt: string | null } = (() => {
 })()
 
 const app    = express()
-app.set('trust proxy', 1)
+// Only the Cloudflare tunnel (cloudflared, on this machine) may say who the visitor is:
+// a device on the local network cannot fake its address (rate limits, journal) with X-Forwarded-For
+app.set('trust proxy', 'loopback')
 const server = createServer(app)
 const io     = new SocketServer(server, {
   cors: { origin: process.env.FRONTEND_URL || 'http://localhost:5173', credentials: true },
@@ -57,8 +59,22 @@ const io     = new SocketServer(server, {
 
 const PORT = parseInt(process.env.PORT || '3001', 10)
 
+// HTTPS everywhere: a visitor who reached Cloudflare over http is sent to https (the local
+// network keeps http, for TVs and casting). Browsers then stay on https (HSTS below).
+app.use((req, res, next) => {
+  if (req.get('x-forwarded-proto') === 'http' && req.get('cf-ray')
+    && req.socket.remoteAddress && /^(127\.|::1$|::ffff:127\.)/.test(req.socket.remoteAddress)
+    && (req.method === 'GET' || req.method === 'HEAD') && req.get('host')) {
+    res.redirect(308, `https://${req.get('host')}${req.originalUrl}`)
+    return
+  }
+  next()
+})
+
 app.use(helmet({
   crossOriginResourcePolicy: { policy: 'cross-origin' },
+  // Ignored by browsers over the local network's http; one year over https
+  strictTransportSecurity: { maxAge: 31_536_000, includeSubDomains: false },
   contentSecurityPolicy: {
     directives: {
       defaultSrc:  ["'self'"],
@@ -75,8 +91,11 @@ app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:5173', cred
 app.use(compression())
 // GitHub webhook: needs the raw body (signature), so before express.json
 app.use('/api/deploy', apiLimiter, deployRoutes)
-app.use(express.json({ limit: '10mb' }))
-app.use(express.urlencoded({ extended: true }))
+// Request bodies: 1 MB, except the file editor (files up to 10 MB)
+const jsonSmall = express.json({ limit: '1mb' })
+const jsonLarge = express.json({ limit: '11mb' })
+app.use((req, res, next) => (req.path === '/api/files/write' ? jsonLarge : jsonSmall)(req, res, next))
+app.use(express.urlencoded({ extended: true, limit: '100kb' }))
 // Never write tokens passed in query strings (media URLs) to the logs
 morgan.token('safe-url', (req) =>
   ((req as express.Request).originalUrl || req.url || '').replace(/([?&]token=)[^&]*/gi, '$1[REDACTED]'))
@@ -146,6 +165,19 @@ app.use(notFound)
 app.use(errorHandler)
 
 if (require.main === module) {
+  // Sessions are signed with JWT_SECRET: never start with none (or a guessable one)
+  const jwtSecret = process.env.JWT_SECRET ?? ''
+  if (!jwtSecret) {
+    logger.error('JWT_SECRET is missing in backend/.env: Nexus will not start without it (create one with "openssl rand -hex 32").')
+    process.exit(1)
+  }
+  // The placeholders of .env.example are public: anyone could sign a session with them
+  if (/^(your_super_secret|another_different_secret)/.test(jwtSecret) || /^(your_super_secret|another_different_secret)/.test(process.env.JWT_REFRESH_SECRET ?? '')) {
+    logger.error('JWT_SECRET / JWT_REFRESH_SECRET still hold the example of .env.example: replace them with "openssl rand -hex 32" (Nexus will not start until then).')
+    process.exit(1)
+  }
+  if (jwtSecret.length < 32) logger.warn('JWT_SECRET is short (under 32 characters): replace it with "openssl rand -hex 32" (every device will sign in again).')
+
   server.on('error', (err: NodeJS.ErrnoException) => {
     if (err.code === 'EADDRINUSE') {
       // Typical after a deploy when an old Nexus process (started by hand, systemd

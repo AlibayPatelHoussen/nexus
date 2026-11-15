@@ -270,6 +270,37 @@ existing account it resets the password and signs it out everywhere). Delete an 
 (admin or user): `bash scripts/delete-account.sh <name>` (asks to type the name again; never
 the last admin).
 
+### Automatic backups
+
+Every night the database (accounts, library, lists, history, IPTV) and the settings
+(`backend/.env`, the Web Push keys) are saved to `/var/backups/nexus` (root only, the last
+14 kept). The media files are not copied: keep them on a second disk.
+```
+sudo bash scripts/backup.sh install      # timer + a first backup now
+sudo bash scripts/backup.sh status       # last backups, next run
+sudo bash scripts/backup.sh restore /var/backups/nexus/nexus-db-….dump   # asks to type RESTAURER
+```
+`/etc/default/nexus-backup`: `KEEP=30`, `COPY_TO=/mnt/disque2/nexus-backups` (a copy on another disk).
+
+### Security
+
+- Secrets only in `backend/.env` (never committed: `.gitignore` covers every `.env` copy; only
+  `.env.example` is tracked). Nexus refuses to start without `JWT_SECRET`.
+- Passwords: bcrypt (12 rounds), 8 to 72 characters with upper case, lower case and a digit,
+  checked by the interface and the server. Sign-in: 10 failed attempts per IP per 15 minutes;
+  an unknown name and a wrong password get the same answer, in the same time.
+- Sessions: access tokens of 15 minutes (an hour at most, whatever `JWT_EXPIRES_IN` says), device
+  sessions of 30 days at most, revocable (*Réglages › Appareils connectés*), all signed out by a new password.
+- Every right is checked by the server (admin, media, IPTV); errors never show internal details
+  in production; request bodies are limited (1 MB, 10 MB for the file editor, 5 GB per uploaded
+  file); the deploy webhook is signed (HMAC SHA-256), Jarvis uses a shared secret.
+- HTTPS: Cloudflare Tunnel; a visitor arriving over http is redirected, then HSTS keeps browsers
+  on https (the local network keeps http for TVs). Only the tunnel on this machine may give the
+  visitor's address (rate limits, sign-in journal).
+- File manager (admins): secrets (`.env`, SSH / VPN keys, Nexus' keys, `/etc/shadow`…) are never
+  read, sent or changed from the browser, even through a link; the Nexus folder (code, `.git`,
+  `.gitignore`) is read-only there. They are managed in the terminal.
+
 ### Troubleshooting
 | Symptom | Fix |
 |---|---|

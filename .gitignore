@@ -16,6 +16,12 @@ out/
 .env.production.local
 backend/.env
 frontend/.env
+# Any other copy of a .env (.env.old, .env.bak, backend/.env.save…); the example stays
+.env.*
+**/.env
+**/.env.*
+!.env.example
+!**/.env.example
 
 # ─── Logs ─────────────────────────────────────────────
 logs/
@@ -48,6 +54,12 @@ Thumbs.db
 
 # ─── Misc ─────────────────────────────────────────────
 *.pem
+*.key
+*.p12
+# Backups (scripts/backup.sh) and database dumps
+*.dump
+*.sql.gz
+nexus-settings-*.tar.gz
 .cache/
 tmp/
 temp/
