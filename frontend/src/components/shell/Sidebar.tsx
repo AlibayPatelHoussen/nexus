@@ -6,6 +6,7 @@ import { spring } from '@/design/motion'
 import { cn } from '@/utils'
 import { NAV, SECTIONS, type NavItem } from './nav'
 import { useSectionStore } from './sectionStore'
+import { canSee, useAccess } from './access'
 
 interface SidebarProps {
   onSearch: () => void
@@ -28,8 +29,9 @@ let lastNav: string | undefined
 export default function Sidebar({ onSearch, onLogout, onNavigate }: SidebarProps) {
   const user = useAuthStore((s) => s.user)
   const { pathname } = useLocation()
-  const isAdmin = user?.role === 'admin'
-  const visible = (i: NavItem) => isAdmin || !i.adminOnly
+  // What this account sees here (its access; the IPTV's subdomain shows the IPTV only)
+  const access = useAccess()
+  const visible = (i: NavItem) => canSee(i, access)
   const isMac = /Mac|iPhone|iPad/.test(navigator.platform)
   // Title pages (/media/…) keep the library they were opened from selected, else their own
   const section = useSectionStore((s) => s.section)

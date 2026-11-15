@@ -11,6 +11,11 @@ import VersionBanner from './VersionBanner'
 import DownloadToasts from './DownloadToasts'
 import { ShellContext, type ShellState } from './shellContext'
 import { useRouteMotion } from './useRouteMotion'
+import { useAccess } from './access'
+import { authService } from '@/services/authService'
+import EmptyState from '@/components/ui/EmptyState'
+import Button from '@/components/ui/Button'
+import { RadioTower } from 'lucide-react'
 
 const HIDDEN_KEY = 'nexus-sidebar-hidden'
 const readHidden = () => { try { return localStorage.getItem(HIDDEN_KEY) === '1' } catch { return false } }
@@ -26,6 +31,23 @@ export default function AppShell() {
   const navigate = useNavigate()
   const { pathname } = useLocation()
   const logout = useAuthStore((s) => s.logout)
+  const updateUser = useAuthStore((s) => s.updateUser)
+  const access = useAccess()
+
+  // The account's role and access as the server knows them now (an admin may have changed them)
+  useEffect(() => {
+    authService.me().then((me) => updateUser({ role: me.role, username: me.username, canMedia: me.canMedia, canIptv: me.canIptv }))
+      .catch(() => { /* signed out: the API client handles it */ })
+  }, [updateUser])
+
+  // « IPTV seulement » accounts use the IPTV's own address: sent there (to sign in again)
+  const iptvOnly = !access.admin && !access.media && !access.iptvHost
+  useEffect(() => {
+    if (!iptvOnly || !access.iptvUrl) return
+    logout()
+    window.location.replace(`${access.iptvUrl}/login?from=nexus`)
+  }, [iptvOnly, access.iptvUrl, logout])
+
   const [desktopHidden, setDesktopHidden] = useState(readHidden)
   const [panelOpen, setPanelOpen] = useState(false)   // tablet
   const [search, setSearch] = useState(false)
@@ -64,8 +86,11 @@ export default function AppShell() {
     device, sidebarOpen, toggleSidebar, openSearch: () => setSearch(true),
   }), [device, sidebarOpen, toggleSidebar])
 
-  // A live toast at the end of each download. Each account hears about its own downloads only (the server sends nothing else)
-  const palette = <><DownloadToasts /><CommandPalette open={search} onClose={() => setSearch(false)} onLogout={handleLogout} /></>
+  // The IPTV's address, opened by an account without the IPTV: nothing to show here
+  if (access.iptvHost && !access.iptv) return <NoIptvAccess onLogout={handleLogout} />
+
+  // A live toast at the end of each download (accounts with the media). Each account hears about its own downloads only
+  const palette = <>{access.media && <DownloadToasts />}<CommandPalette open={search} onClose={() => setSearch(false)} onLogout={handleLogout} /></>
 
   if (device === 'phone') {
     return (
@@ -117,5 +142,19 @@ export default function AppShell() {
       </div>
       {palette}
     </ShellContext.Provider>
+  )
+}
+
+/** The IPTV's address, opened by an account that has no IPTV. */
+function NoIptvAccess({ onLogout }: { onLogout: () => void }) {
+  return (
+    <main className="min-h-[100dvh] grid place-items-center bg-bg px-4">
+      <EmptyState
+        icon={<RadioTower strokeWidth={1.25} />}
+        title="Pas d’accès à l’IPTV"
+        message="Ce compte n’a pas accès à l’IPTV. Ouvre Nexus à son adresse habituelle, ou demande l’accès à l’administrateur."
+        action={<Button onClick={onLogout}>Se déconnecter</Button>}
+      />
+    </main>
   )
 }

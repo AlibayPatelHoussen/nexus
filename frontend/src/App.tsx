@@ -2,6 +2,7 @@ import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { useEffect, lazy, Suspense } from 'react'
 import { applyAppearance, useAuthStore } from '@/stores/authStore'
 import AppShell      from '@/components/shell/AppShell'
+import { homePath, useAccess } from '@/components/shell/access'
 import LoginPage     from '@/pages/login/LoginPage'
 import DashboardPage from '@/pages/dashboard/DashboardPage'
 import NotFoundPage  from '@/pages/NotFoundPage'
@@ -52,10 +53,22 @@ function Guard({ children }: { children: React.ReactNode }) {
   return isAuth ? <>{children}</> : <Navigate to="/login" replace />
 }
 
-/** Server pages: admins only (« user » accounts have médias, manga and the storage). */
+/** Server pages: admins only (and never on the IPTV's subdomain). */
 function AdminOnly({ children }: { children: React.ReactNode }) {
-  const isAdmin = useAuthStore((s) => s.user?.role === 'admin')
-  return isAdmin ? <>{children}</> : <Navigate to="/dashboard" replace />
+  const a = useAccess()
+  return a.admin && !a.iptvHost ? <>{children}</> : <Navigate to={homePath(a)} replace />
+}
+
+/** Pages of the media / of the IPTV: accounts (and addresses) that have them; else home. */
+function Need({ media, iptv, children }: { media?: boolean; iptv?: boolean; children: React.ReactNode }) {
+  const a = useAccess()
+  if ((media && !a.media) || (iptv && !a.iptv)) return <Navigate to={homePath(a)} replace />
+  return <>{children}</>
+}
+
+/** « / »: Aperçu with the media, else the IPTV. */
+function Home() {
+  return <Navigate to={homePath(useAccess())} replace />
 }
 
 function S({ children }: { children: React.ReactNode }) {
@@ -82,29 +95,29 @@ export default function App() {
 
         {/* App frame: sidebar / tab bar */}
         <Route path="/" element={<Guard><AppShell /></Guard>}>
-          <Route index element={<Navigate to="/dashboard" replace />} />
-          <Route path="dashboard" element={<DashboardPage />} />
+          <Route index element={<Home />} />
+          <Route path="dashboard" element={<Need media><DashboardPage /></Need>} />
           <Route path="jarvis"    element={<AdminOnly><S><JarvisPage   /></S></AdminOnly>} />
           <Route path="files"     element={<AdminOnly><S><FilesPage    /></S></AdminOnly>} />
           <Route path="terminal"  element={<AdminOnly><S><TerminalPage /></S></AdminOnly>} />
-          <Route path="cinema"    element={<S><CinemaPage   /></S>} />
-          <Route path="animes"    element={<S><AnimesPage   /></S>} />
-          <Route path="manga"     element={<S><MangaPage    /></S>} />
+          <Route path="cinema"    element={<Need media><S><CinemaPage   /></S></Need>} />
+          <Route path="animes"    element={<Need media><S><AnimesPage   /></S></Need>} />
+          <Route path="manga"     element={<Need media><S><MangaPage    /></S></Need>} />
           <Route path="services"  element={<AdminOnly><S><ServicesPage /></S></AdminOnly>} />
           <Route path="network"   element={<AdminOnly><S><NetworkPage  /></S></AdminOnly>} />
           <Route path="settings"  element={<S><SettingsPage /></S>} />
-          <Route path="downloads" element={<S><DownloadsPage /></S>} />
-          <Route path="youtube"   element={<S><YoutubePage /></S>} />
-          <Route path="ma-liste"  element={<S><MyListPage /></S>} />
-          <Route path="media/:id" element={<S><MediaDetail  /></S>} />
-          <Route path="iptv"       element={<S><IptvPage /></S>} />
-          <Route path="iptv/:view" element={<S><IptvPage /></S>} />
+          <Route path="downloads" element={<Need media><S><DownloadsPage /></S></Need>} />
+          <Route path="youtube"   element={<Need media><S><YoutubePage /></S></Need>} />
+          <Route path="ma-liste"  element={<Need media><S><MyListPage /></S></Need>} />
+          <Route path="media/:id" element={<Need media><S><MediaDetail  /></S></Need>} />
+          <Route path="iptv"       element={<Need iptv><S><IptvPage /></S></Need>} />
+          <Route path="iptv/:view" element={<Need iptv><S><IptvPage /></S></Need>} />
         </Route>
 
         {/* Full-screen — no sidebar */}
-        <Route path="/player/:id" element={<Guard><S><PlayerPage  /></S></Guard>} />
-        <Route path="/reader/:id" element={<Guard><S><MangaReader /></S></Guard>} />
-        <Route path="/iptv/watch/:id" element={<Guard><S><IptvPlayer /></S></Guard>} />
+        <Route path="/player/:id" element={<Guard><Need media><S><PlayerPage  /></S></Need></Guard>} />
+        <Route path="/reader/:id" element={<Guard><Need media><S><MangaReader /></S></Need></Guard>} />
+        <Route path="/iptv/watch/:id" element={<Guard><Need iptv><S><IptvPlayer /></S></Need></Guard>} />
 
         <Route path="*" element={<NotFoundPage />} />
       </Routes>

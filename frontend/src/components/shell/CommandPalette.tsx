@@ -6,6 +6,7 @@ import { useAuthStore } from '@/stores/authStore'
 import { cn } from '@/utils'
 import { useModal, usePresence } from '@/components/ui/useSheetLifecycle'
 import { NAV } from './nav'
+import { canSee, useAccess } from './access'
 
 interface Command { id: string; label: string; group: string; icon: LucideIcon; keywords?: string; run: () => void }
 
@@ -14,7 +15,7 @@ const norm = (s: string) => s.normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCa
 /** Spotlight-like quick search: pages and common actions (⌘K / Ctrl K). */
 export default function CommandPalette({ open, onClose, onLogout }: { open: boolean; onClose: () => void; onLogout: () => void }) {
   const navigate = useNavigate()
-  const isAdmin = useAuthStore((s) => s.user?.role === 'admin')
+  const access = useAccess()
   const setAppearance = useAuthStore((s) => s.setAppearance)
   const [q, setQ] = useState('')
   const [index, setIndex] = useState(0)
@@ -26,14 +27,14 @@ export default function CommandPalette({ open, onClose, onLogout }: { open: bool
   useEffect(() => { if (open) { setQ(''); setIndex(0) } }, [open])
 
   const commands = useMemo<Command[]>(() => [
-    ...NAV.filter((n) => isAdmin || !n.adminOnly).map((n) => ({
+    ...NAV.filter((n) => canSee(n, access)).map((n) => ({
       id: n.to, label: n.label, group: 'Aller à', icon: n.icon, keywords: n.keywords, run: () => navigate(n.to),
     })),
     { id: 'light', label: 'Apparence claire', group: 'Actions', icon: Sun, keywords: 'thème mode clair', run: () => setAppearance('light') },
     { id: 'dark', label: 'Apparence sombre', group: 'Actions', icon: Moon, keywords: 'thème mode sombre nuit', run: () => setAppearance('dark') },
     { id: 'auto', label: 'Apparence automatique', group: 'Actions', icon: Monitor, keywords: 'thème système auto', run: () => setAppearance('auto') },
     { id: 'logout', label: 'Se déconnecter', group: 'Actions', icon: LogOut, keywords: 'déconnexion quitter', run: onLogout },
-  ], [isAdmin, navigate, setAppearance, onLogout])
+  ], [access, navigate, setAppearance, onLogout])
 
   const results = useMemo(() => {
     const n = norm(q.trim())

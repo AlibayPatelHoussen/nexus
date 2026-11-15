@@ -4,6 +4,11 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Added — What each account opens; the IPTV's own address; the VPN switch
+- **Access per account**, chosen when an admin creates it and changed at once on its sheet (*Réglages › Utilisateurs*): « Médias + IPTV », « Médias » (no IPTV) or « IPTV seulement ». Enforced by the server (`requireMedia` / `requireIptv` on the API, streams and sockets: `NO_MEDIA_ACCESS`, `NO_IPTV_ACCESS`), the pages and tabs follow. Admins keep everything; existing accounts keep « Médias + IPTV »
+- **The IPTV's own address** (*IPTV › Paramètres › Adresse de l’IPTV*): a Cloudflare subdomain (e.g. `iptv.mon-domaine.com`) to the same Nexus (`localhost:3001`). Opened there, Nexus shows the IPTV and the settings only (« Se connecter à l’IPTV »), for every account. An « IPTV seulement » account that opens the Nexus address is sent there to sign in; an account without the IPTV sees « Pas d’accès à l’IPTV » there. Any `iptv.` address works the same way
+- **VPN switch** (*IPTV › Paramètres › VPN*, admins): « Utiliser le VPN » turns the installed VPN on or off without the terminal; off, the IPTV uses the server's normal connection
+
 ### Added — A VPN for the IPTV only
 - `sudo bash scripts/iptv-vpn.sh install <provider WireGuard file>`: the IPTV (the streams the relay fetches, the checks, the guide, the YouTube / Twitch / Dailymotion lives) leaves through the VPN — to watch another country's channels — while the library, the downloads, TMDB, Cloudflare Tunnel and the updates keep the normal connection. wireproxy (WireGuard in user space, pinned v1.0.9 checked by SHA-256) opens a local HTTP proxy only the IPTV uses (`IPTV_PROXY`); no change to the server's routes
 - If the VPN is down, the channels stop instead of going out directly

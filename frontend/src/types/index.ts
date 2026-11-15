@@ -7,6 +7,10 @@ export interface User {
   theme:    'dark' | 'light'
   /** Account opened for a limited time: its end (ISO), null for no limit */
   expiresAt?: string | null
+  /** What the account opens: « Médias + IPTV » (all), « Médias », « IPTV seulement » (missing: everything) */
+  access?:   'all' | 'media' | 'iptv'
+  canMedia?: boolean
+  canIptv?:  boolean
 }
 
 export interface AuthState {

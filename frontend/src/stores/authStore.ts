@@ -12,6 +12,8 @@ interface AuthStore {
 
   setAuth:        (user: User, accessToken: string) => void
   setAccessToken: (token: string) => void
+  /** Keeps the account's details up to date (role, access changed by an admin) */
+  updateUser:     (patch: Partial<User>) => void
   setTheme:       (theme: Theme) => void
   setAppearance:  (appearance: Appearance) => void
   logout:         () => void
@@ -32,6 +34,10 @@ export const useAuthStore = create<AuthStore>()(
 
       setAccessToken: (accessToken) => {
         set({ accessToken })
+      },
+
+      updateUser: (patch) => {
+        set((st) => (st.user ? { user: { ...st.user, ...patch } } : {}))
       },
 
       setTheme: (theme) => {

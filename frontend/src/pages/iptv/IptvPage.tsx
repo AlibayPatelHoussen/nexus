@@ -20,6 +20,7 @@ import TextField from '@/components/ui/TextField'
 import { Group, ListRow } from '@/components/ui/GroupedList'
 import { useDebounce } from '@/hooks/useDebounce'
 import { useAuthStore } from '@/stores/authStore'
+import { useAccess } from '@/components/shell/access'
 import { spring } from '@/design/motion'
 import { cn } from '@/utils'
 import { serverError } from '@/utils/errorToast'
@@ -50,6 +51,7 @@ export default function IptvPage() {
   const view: View = (VIEWS.some((v) => v.id === raw) ? raw : 'accueil') as View
   const { device } = useShell()
   const phone = device === 'phone'
+  const { media } = useAccess()
   const current = VIEWS.find((v) => v.id === view)!
 
   const content = (
@@ -69,7 +71,8 @@ export default function IptvPage() {
     <Page
       title={phone || view === 'accueil' ? 'IPTV' : current.label}
       subtitle={!phone && view === 'accueil' ? 'Chaînes de télévision en direct' : undefined}
-      leading={phone ? <SectionMenu value="iptv" /> : undefined}
+      // The media's sections menu with the media only (« IPTV seulement », the IPTV's address: its own tab)
+      leading={phone && media ? <SectionMenu value="iptv" /> : undefined}
       accessory={phone ? <PhoneNav view={view} /> : undefined}
     >
       {phone ? content : (
@@ -514,10 +517,14 @@ function RecentView() {
 // ─── Settings ───────────────────────────────────────────────────────────────
 const SOURCE_NAMES: Record<string, string> = { 'iptv-org': 'iptv-org', 'free-tv': 'Free-TV' }
 
-/** The IPTV's VPN: only the IPTV goes through it (scripts/iptv-vpn.sh). Admins. */
-function VpnGroup() {
+/**
+ * The IPTV's VPN: only the IPTV goes through it (scripts/iptv-vpn.sh). Admins. Once installed,
+ * « Utiliser le VPN » switches it on and off.
+ */
+function VpnGroup({ enabled, onEnabled, saving }: { enabled: boolean; onEnabled: (on: boolean) => void; saving: boolean }) {
   const { data: vpn, refetch, isFetching } = useQuery({ queryKey: ['iptv', 'vpn'], queryFn: () => iptvService.vpn(), refetchInterval: 60_000 })
   if (!vpn) return <Skeleton className="h-24 rounded-group" />
+  const on = vpn.configured && vpn.enabled !== false
   const check = (
     <Button size="small" loading={isFetching} onClick={() => { void iptvService.vpn(true).then(() => refetch()) }} icon={<RefreshCw size={14} />}>Vérifier</Button>
   )
@@ -525,20 +532,32 @@ function VpnGroup() {
     <Group
       header="VPN"
       footer={!vpn.configured
-        ? <>Seule l’IPTV peut passer par un VPN (pour regarder les chaînes d’un autre pays) : le reste de Nexus garde la connexion normale. Pour l’activer, sur le serveur, avec le fichier WireGuard de ton fournisseur : <code className="font-mono">sudo bash scripts/iptv-vpn.sh install fichier.conf</code></>
-        : vpn.ok
-          ? 'Seule l’IPTV passe par le VPN : flux, vérifications, guide. Le reste de Nexus garde la connexion normale.'
-          : <>Tant que le VPN ne répond pas, les chaînes ne se chargent pas (rien ne passe en direct). Sur le serveur : <code className="font-mono">bash scripts/iptv-vpn.sh status</code></>}
+        ? <>Seule l’IPTV peut passer par un VPN (pour regarder les chaînes d’un autre pays) : le reste de Nexus garde la connexion normale. Pour l’installer, sur le serveur, avec le fichier WireGuard de ton fournisseur : <code className="font-mono">sudo bash scripts/iptv-vpn.sh install fichier.conf</code></>
+        : !on
+          ? 'Le VPN est installé mais coupé : l’IPTV passe par la connexion normale du serveur. Rallume-le ici quand tu veux.'
+          : vpn.ok
+            ? 'Seule l’IPTV passe par le VPN : flux, vérifications, guide. Le reste de Nexus garde la connexion normale.'
+            : <>Tant que le VPN ne répond pas, les chaînes ne se chargent pas (rien ne passe en direct) : coupe-le ici pour regarder sans VPN. Sur le serveur : <code className="font-mono">bash scripts/iptv-vpn.sh status</code></>}
     >
-      <ListRow title="VPN de l’IPTV" status={!vpn.configured ? undefined : vpn.ok ? 'ok' : 'error'}
-        detail={!vpn.configured ? 'Désactivé' : vpn.ok ? 'Actif' : 'Injoignable'}>
-        {vpn.configured && check}
+      {vpn.configured && (
+        <ListRow title="Utiliser le VPN">
+          <Toggle label="Utiliser le VPN pour l’IPTV" checked={enabled} disabled={saving} onChange={onEnabled} />
+        </ListRow>
+      )}
+      <ListRow title="VPN de l’IPTV" status={!on ? undefined : vpn.ok ? 'ok' : 'error'}
+        detail={!vpn.configured ? 'Non installé' : !on ? 'Coupé' : vpn.ok ? 'Actif' : 'Injoignable'}>
+        {on && check}
       </ListRow>
-      {vpn.configured && vpn.ok && vpn.countryCode && <ListRow title="Sortie" detail={`${flag(vpn.countryCode)} ${vpn.country ?? vpn.countryCode}`} />}
-      {vpn.configured && vpn.ok && vpn.ip && <ListRow title="Adresse IP" detail={<span className="font-mono">{vpn.ip}</span>} />}
-      {vpn.configured && !vpn.ok && vpn.error && <ListRow wrap title="Erreur" subtitle={vpn.error} />}
+      {on && vpn.ok && vpn.countryCode && <ListRow title="Sortie" detail={`${flag(vpn.countryCode)} ${vpn.country ?? vpn.countryCode}`} />}
+      {on && vpn.ok && vpn.ip && <ListRow title="Adresse IP" detail={<span className="font-mono">{vpn.ip}</span>} />}
+      {on && !vpn.ok && vpn.error && <ListRow wrap title="Erreur" subtitle={vpn.error} />}
     </Group>
   )
+}
+
+/** Whether a typed address is the one this page is open at. */
+function sameHost(url: string) {
+  try { return new URL(/^https?:\/\//i.test(url) ? url : `https://${url}`).host === window.location.host } catch { return false }
 }
 
 function SettingsView() {
@@ -552,6 +571,8 @@ function SettingsView() {
   // What is being typed (null: the saved value)
   const [epg, setEpg] = useState<string | null>(null)
   const [countries, setCountries] = useState<string | null>(null)
+  const [address, setAddress] = useState<string | null>(null)
+  const { iptvHost } = useAccess()
   const save = useMutation({
     mutationFn: iptvService.saveSettings,
     onSuccess: (saved: IptvSettings) => {
@@ -560,7 +581,10 @@ function SettingsView() {
       qc.setQueryData<typeof data>(['iptv', 'settings'], (old) => (old ? { ...old, settings: saved } : old))
       setEpg(null)
       setCountries(null)
+      setAddress(null)
       void qc.invalidateQueries({ queryKey: ['iptv'] })
+      // The IPTV's address decides what Nexus shows at that address
+      void qc.invalidateQueries({ queryKey: ['server-health'] })
     },
     onError: (e) => toast.error(serverError(e)),
   })
@@ -589,7 +613,7 @@ function SettingsView() {
           </ListRow>
         )}
       </Group>
-      {isAdmin && <VpnGroup />}
+      {isAdmin && <VpnGroup enabled={settings.vpnEnabled} saving={save.isPending} onEnabled={(v) => save.mutate({ vpnEnabled: v })} />}
       {isAdmin && (
         <Group header="Affichage">
           <ListRow wrap title="Masquer les indisponibles" subtitle="Celles dont la dernière vérification a échoué.">
@@ -599,8 +623,29 @@ function SettingsView() {
       )}
       <form
         className="flex flex-col gap-8"
-        onSubmit={(e) => { e.preventDefault(); if (isAdmin) save.mutate({ priorityCountries: typed, epgUrl: (epg ?? settings.epgUrl ?? '').trim() || null }) }}
+        onSubmit={(e) => {
+          e.preventDefault()
+          if (isAdmin) {
+            const url = (address ?? settings.publicUrl ?? '').trim()
+            if (!iptvHost && url && sameHost(url)) {
+              toast.error('C’est l’adresse de Nexus que tu utilises en ce moment : choisis une autre adresse pour l’IPTV (par exemple iptv.ton-domaine.com).')
+              return
+            }
+            save.mutate({
+              priorityCountries: typed, epgUrl: (epg ?? settings.epgUrl ?? '').trim() || null,
+              publicUrl: url || null,
+            })
+          }
+        }}
       >
+        {isAdmin && (
+          <Group header="Adresse de l’IPTV" footer={<>Une adresse à part pour l’IPTV, par exemple <span className="font-mono">iptv.ton-domaine.com</span> : crée-la dans Cloudflare (Zero Trust › Réseaux › Tunnels › ton tunnel › Nom d’hôte public) vers le même service que Nexus, <span className="font-mono">http://localhost:3001</span>. À cette adresse, Nexus n’affiche que l’IPTV, et les comptes « IPTV seulement » y sont envoyés.</>}>
+            <div role="listitem" className="nx-row px-4 py-2">
+              <TextField label="Adresse de l’IPTV" hideLabel placeholder="https://iptv.ton-domaine.com" value={address ?? settings.publicUrl ?? ''}
+                onChange={(e) => setAddress(e.target.value)} inputMode="url" autoCapitalize="none" autoCorrect="off" spellCheck={false} />
+            </div>
+          </Group>
+        )}
         <Group header="Pays en priorité" footer="Les chaînes de ces pays passent en premier, dans cet ordre : sur l’accueil, dans les listes et dans les vérifications. Codes de deux lettres séparés par des virgules (FR, CA, US… et UK pour le Royaume-Uni). Un pays sans chaîne dans les sources reste affiché, avec la mention qu’aucune n’est référencée.">
           {isAdmin && (
             <div role="listitem" className="nx-row px-4 py-2">

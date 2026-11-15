@@ -251,7 +251,19 @@ sudo bash scripts/iptv-vpn.sh uninstall
 It installs wireproxy (WireGuard in user space, pinned version checked by SHA-256, no
 change to the server's routes) as `nexus-iptv-vpn.service`, a local HTTP proxy on
 127.0.0.1:25345, and sets `IPTV_PROXY` in `backend/.env`. If the VPN is down, the IPTV
-stops instead of going out directly. *IPTV › Réglages › VPN* shows its state, exit country and IP.
+stops instead of going out directly. *IPTV › Paramètres › VPN* shows its state, exit country and IP,
+and « Utiliser le VPN » switches it off and on again without the terminal.
+
+### The IPTV at its own address
+
+Accounts made in *Réglages › Utilisateurs* open « Médias + IPTV », « Médias » or « IPTV
+seulement » (changed at once on the account's sheet). For the IPTV, add a second public
+hostname to the **same** tunnel and service as Nexus:
+```
+iptv.houssen-serveur.com → localhost:3001
+```
+then enter it in *IPTV › Paramètres › Adresse de l’IPTV*. At that address Nexus shows the IPTV
+only; « IPTV seulement » accounts are sent there to sign in.
 
 Admin accounts: `bash scripts/create-admin.sh` (asks the name, e-mail and password; on an
 existing account it resets the password and signs it out everywhere). Delete an account
