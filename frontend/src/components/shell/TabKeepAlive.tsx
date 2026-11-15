@@ -1,7 +1,8 @@
 import { useRef, type ReactNode } from 'react'
 import { UNSAFE_LocationContext, useLocation, useNavigationType, useOutlet } from 'react-router-dom'
-import { tabFor } from './nav'
+import { tabFor, tabsFor } from './nav'
 import { PageActiveContext } from './shellContext'
+import { useAccess } from './access'
 
 /**
  * iPhone: like iOS, each tab keeps its screen alive while another tab is shown. Coming back
@@ -15,13 +16,14 @@ import { PageActiveContext } from './shellContext'
  */
 export default function TabKeepAlive() {
   const outlet = useOutlet()
+  const access = useAccess()
   const location = useLocation()
   const navigationType = useNavigationType()
   const lastKey = useRef('')
   const pages = useRef(new Map<string, { at: string; node: ReactNode }>())
 
   // Pages outside the tabs (a title page…) belong to the tab they were opened from
-  const key = tabFor(location.pathname)?.to ?? (lastKey.current || location.pathname)
+  const key = tabFor(location.pathname, tabsFor(access))?.to ?? (lastKey.current || location.pathname)
   lastKey.current = key
   const at = location.pathname + location.search
   const kept = pages.current.get(key)

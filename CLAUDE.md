@@ -42,6 +42,11 @@ npm workspaces (`frontend`, `backend`); run from the repo root unless noted.
   from Cloudflare headers via `utils/device.ts`) and is journaled (`login_events`). Tokens carry the session
   (`sid`) and the account's `session_version` (`sv`); `services/sessions.ts` checks them on every request, stream
   and socket (5 s cache, `forgetSessions()` after a change): a new password bumps the version (other devices out).
+  Each `user` account's access (`users.can_media`, `can_iptv`: « Médias + IPTV », « Médias », « IPTV seulement »)
+  is enforced by `requireMedia` / `requireIptv` (routes, streams, socket `guard('media')`) and followed by the
+  frontend (`components/shell/access.ts`: `useAccess`, `canSee`, `need` in `nav.ts`, `Need` routes). Nexus opened at
+  the IPTV's own address (IPTV settings `publicUrl`, given by `/api/health.iptvUrl`, or any `iptv.` host) shows the
+  IPTV and the settings only; « IPTV seulement » accounts are sent there.
 - **Database**: `backend/src/db/schema.sql` is the full current schema (fresh installs); every change also gets a
   numbered file in `backend/src/db/migrations/` (see its README). Both must stay in sync.
 - **Media library**: `services/scanner.ts` walks the media folders, looks titles up on TMDB / AniList /
@@ -63,7 +68,8 @@ npm workspaces (`frontend`, `backend`); run from the repo root unless noted.
   (`services/iptvConvert.ts`; the player's side is `pages/iptv/picture.ts`). Pages in `pages/iptv/`.
   Optional VPN for the IPTV only (`services/iptvVpn.ts`): with `IPTV_PROXY` (the local HTTP proxy of wireproxy,
   installed by `scripts/iptv-vpn.sh`), the relay (`iptvFetch`, undici ProxyAgent) and the Python module (HTTP(S)_PROXY)
-  go through it, nothing else of Nexus; VPN down = IPTV stops, never direct.
+  go through it, nothing else of Nexus; VPN down = IPTV stops, never direct. Admins switch it off / on in the IPTV
+  settings (`vpnEnabled`).
 - **Deploy**: GitHub webhook `routes/deploy.ts` only writes a request file; `scripts/auto-deploy.sh`
   (systemd path unit) runs `scripts/deploy.sh` outside the app (build, `scripts/migrate-db.sh`, restart).
   Settings › Version compares interface and server commits.

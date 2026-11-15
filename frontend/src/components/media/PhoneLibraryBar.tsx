@@ -4,6 +4,7 @@ import { motion } from 'framer-motion'
 import { ChevronDown, Search, X } from 'lucide-react'
 import PullDownMenu from '@/components/ui/PullDownMenu'
 import { spring } from '@/design/motion'
+import { useAccess } from '@/components/shell/access'
 
 export const VIDEO_SECTIONS = [
   { value: 'films',   label: 'Films',   to: '/cinema' },
@@ -15,8 +16,12 @@ export const VIDEO_SECTIONS = [
 /** iPhone: « Films ⌄ » at the top left, a pull-down menu to switch section (the tab bar already says « Médias »). */
 export function SectionMenu({ value }: { value: string }) {
   const navigate = useNavigate()
-  // « Ma liste » too: on iPhone the tab bar has no room for it (desktop: in the sidebar)
-  const sections = [...VIDEO_SECTIONS, { value: 'iptv', label: 'IPTV', to: '/iptv' }, { value: 'ma-liste', label: 'Ma liste', to: '/ma-liste' }]
+  const access = useAccess()
+  // « Ma liste » too: on iPhone the tab bar has no room for it (desktop: in the sidebar).
+  // The IPTV with the account's access only
+  const sections = [
+    ...VIDEO_SECTIONS, ...(access.iptv ? [{ value: 'iptv', label: 'IPTV', to: '/iptv' }] : []), { value: 'ma-liste', label: 'Ma liste', to: '/ma-liste' },
+  ]
   const current = sections.find((s) => s.value === value) ?? sections[0]
   return (
     <PullDownMenu

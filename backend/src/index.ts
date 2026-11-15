@@ -36,7 +36,7 @@ import castRoutes     from './routes/cast'
 import iptvRoutes     from './routes/iptv'
 import jarvisRoutes   from './routes/jarvis'
 import usersRoutes    from './routes/users'
-import { startIptvWorker } from './services/iptv'
+import { iptvPublicUrl, startIptvWorker } from './services/iptv'
 import { registerSocketHandlers } from './socket'
 
 const STARTED_AT = new Date().toISOString()
@@ -103,13 +103,17 @@ app.use('/api/iptv', iptvRoutes)
 app.use('/api/jarvis', jarvisRoutes)
 app.use('/api/users', usersRoutes)
 app.use('/api/terminal', terminalRoutes)
-app.get('/api/health',   (_req, res) => res.json({
-  status:    'ok',
-  timestamp: new Date().toISOString(),
-  // Lets the UI detect a backend that was not rebuilt / restarted after a deploy
-  build:     BUILD_INFO,
-  startedAt: STARTED_AT,
-}))
+app.get('/api/health', (_req, res) => {
+  void iptvPublicUrl().catch(() => null).then((iptvUrl) => res.json({
+    status:    'ok',
+    timestamp: new Date().toISOString(),
+    // Lets the UI detect a backend that was not rebuilt / restarted after a deploy
+    build:     BUILD_INFO,
+    startedAt: STARTED_AT,
+    // The IPTV's own subdomain: Nexus opened there shows the IPTV only
+    iptvUrl:   iptvUrl ?? null,
+  }))
+})
 
 // Unknown API routes are real 404s (never the SPA's index.html)
 app.use('/api', notFound)

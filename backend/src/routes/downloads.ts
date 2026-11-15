@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express'
 import asyncHandler from 'express-async-handler'
-import { authenticate, requireAdmin } from '../middleware/auth'
+import { authenticate, requireAdmin, requireMedia } from '../middleware/auth'
 import {
   actOn, assertOwner, createDownload, deleteDownload, getDetails, listDownloads, openTarget, startSearch, type CreateInput,
 } from '../services/downloads'
@@ -12,7 +12,7 @@ import { checkDueFollows, followTarget, getFollow, listFollows, setFollow, type 
 // acts on its own downloads only, admins on all. Automatic downloads (one per title, shared
 // like the library): every account. Rebuilding the catalogue, checking every follow now: admins.
 const router = Router()
-router.use(authenticate)
+router.use(authenticate, requireMedia)
 
 /** Starts the four scripts; results arrive over Socket.io (download:search_result). */
 router.post('/search', asyncHandler(async (req: Request, res: Response) => {

@@ -1,10 +1,12 @@
-import { useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { Eye, EyeOff } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 import { authService } from '@/services/authService'
 import { takeSignOutReason } from '@/services/api'
 import { resyncPush } from '@/services/pushService'
+import { isIptvHost, rememberedIptvUrl } from '@/components/shell/access'
+import { getServerHealth } from '@/services/versionService'
 
 const SIGNED_OUT = {
   expired: 'Ce compte a expiré. Demande à l’administrateur de le prolonger.',
@@ -27,6 +29,14 @@ export default function LoginPage() {
     const reason = takeSignOutReason()
     return reason ? SIGNED_OUT[reason] : null
   })
+  // The IPTV's own address: its sign-in (an « IPTV seulement » account sent here from Nexus is told why).
+  // Known on this device, else asked to the server (a subdomain opened for the first time)
+  const [iptvUrl, setIptvUrl] = useState(rememberedIptvUrl)
+  useEffect(() => {
+    getServerHealth().then((h) => setIptvUrl(h.iptvUrl ?? null)).catch(() => { /* offline: the remembered one */ })
+  }, [])
+  const iptv = isIptvHost(iptvUrl)
+  const fromNexus = iptv && new URLSearchParams(window.location.search).get('from') === 'nexus'
   const passRef = useRef<HTMLInputElement>(null)
 
   async function handleSubmit(e: React.FormEvent) {
@@ -41,7 +51,8 @@ export default function LoginPage() {
       setTheme(result.user.theme)
       // Notifications already allowed on this device: they now belong to this account
       void resyncPush().catch(() => {})
-      navigate('/dashboard', { replace: true })
+      // Home by access: Aperçu with the media, else the IPTV
+      navigate('/', { replace: true })
     } catch (err: unknown) {
       const e2 = err as { response?: { status?: number; data?: { error?: string; code?: string } } }
       setError(
@@ -62,7 +73,8 @@ export default function LoginPage() {
     <main className="min-h-[100dvh] grid place-items-center bg-bg px-4 safe-x" style={{ paddingTop: 'env(safe-area-inset-top, 0px)', paddingBottom: 'env(safe-area-inset-bottom, 0px)' }}>
       <div className="w-full max-w-[340px] flex flex-col items-center" style={{ animation: 'nx-fade-in 250ms var(--ease-out) both' }}>
         <img src="/icons/icon-192.png" alt="" width={72} height={72} className="rounded-[16px] mb-5" />
-        <h1 className="text-[26px] font-semibold tracking-[-0.02em] text-label text-center">Se connecter à Nexus</h1>
+        <h1 className="text-[26px] font-semibold tracking-[-0.02em] text-label text-center">{iptv ? 'Se connecter à l’IPTV' : 'Se connecter à Nexus'}</h1>
+        {fromNexus && <p className="text-subhead text-label2 text-center mt-2">Ton compte s’ouvre ici, à l’adresse de l’IPTV.</p>}
         <p className="text-subhead text-label2 mt-1 mb-7">{window.location.hostname}</p>
 
         <form onSubmit={handleSubmit} className="w-full flex flex-col gap-4" noValidate>

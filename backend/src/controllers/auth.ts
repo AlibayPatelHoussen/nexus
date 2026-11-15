@@ -38,6 +38,7 @@ export const registerValidators = [
     .matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)/)
     .withMessage('Password must contain uppercase, lowercase, and a number'),
   // Account opened for a limited time: its end (ISO date, in the future), or null
+  body('access').optional().isIn(['all', 'media', 'iptv']).withMessage('Access must be all, media or iptv'),
   body('expiresAt').optional({ values: 'null' }).isISO8601().withMessage('Invalid expiry date')
     .custom((v: string) => new Date(v).getTime() > Date.now()).withMessage('The expiry date must be in the future'),
 ]
@@ -74,8 +75,8 @@ export async function refresh(req: Request, res: Response): Promise<void> {
 
 export async function register(req: Request, res: Response): Promise<void> {
   validate(req)
-  const { username, email, password, expiresAt } = req.body
-  const user = await AuthService.register({ username, email, password, expiresAt: expiresAt ? new Date(expiresAt) : null })
+  const { username, email, password, expiresAt, access } = req.body
+  const user = await AuthService.register({ username, email, password, access, expiresAt: expiresAt ? new Date(expiresAt) : null })
   res.status(201).json({ success: true, data: user })
 }
 

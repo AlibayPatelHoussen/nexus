@@ -18,12 +18,16 @@ async function authenticateSocket(socket: Socket): Promise<JwtPayload | null> {
 
 type Guard = (socket: Socket, next: (err?: Error) => void) => void
 
-/** Signed-in accounts only (adminOnly: admins only). The socket keeps its user in socket.data. */
-function guard(adminOnly: boolean): Guard {
+/**
+ * Signed-in accounts only; 'admin': admins only; 'media': accounts with the media (the storage,
+ * the downloads). The socket keeps its user in socket.data.
+ */
+function guard(need: 'any' | 'admin' | 'media'): Guard {
   return (socket, next) => {
     void authenticateSocket(socket).then((user) => {
       if (!user) { next(new Error('unauthorized')); return }
-      if (adminOnly && user.role !== 'admin') { next(new Error('forbidden')); return }
+      if (need === 'admin' && user.role !== 'admin') { next(new Error('forbidden')); return }
+      if (need === 'media' && user.role !== 'admin' && user.canMedia === false) { next(new Error('forbidden')); return }
       socket.data = { userId: user.userId, role: user.role, sid: user.sid, sv: user.sv } satisfies SocketUser
       next()
     })
@@ -50,7 +54,7 @@ export function registerSocketHandlers(io: Server): void {
 
   // ─── Stats namespace ────────────────────────────
   const statsNs = io.of('/stats')
-  statsNs.use(guard(false))
+  statsNs.use(guard('media'))
 
   statsNs.on('connection', (socket) => {
     logger.info(`Stats socket connected: ${socket.id}`)
@@ -76,7 +80,7 @@ export function registerSocketHandlers(io: Server): void {
 
   // ─── Terminal namespace ──────────────────────────
   const termNs = io.of('/terminal')
-  termNs.use(guard(true))
+  termNs.use(guard('admin'))
 
   termNs.on('connection', (socket) => {
     watchSession(socket)
@@ -86,7 +90,7 @@ export function registerSocketHandlers(io: Server): void {
   // ─── Downloads namespace (search results, progress) ─
   // Everyone signed in downloads; each account only hears about its own downloads, admins about all
   const dlNs = io.of('/downloads')
-  dlNs.use(guard(false))
+  dlNs.use(guard('media'))
 
   dlNs.on('connection', (socket) => {
     watchSession(socket)

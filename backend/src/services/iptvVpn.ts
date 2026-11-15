@@ -13,8 +13,19 @@ import { countryName } from '../utils/device'
  * instead of going out directly (a stream never leaves outside the VPN once it is set).
  */
 
-/** The IPTV's proxy address, or null (no VPN: direct). Only http://host:port is accepted. */
-export function iptvProxyUrl(): string | null {
+let cached: { at: number; proxy: string; status: VpnStatus } | null = null
+
+/** Réglages › IPTV › VPN switch (iptv settings vpnEnabled, kept here by iptv.ts) */
+let enabled = true
+export function setVpnEnabled(on: boolean) {
+  if (on !== enabled) logger.info(`IPTV VPN ${on ? 'switched on' : 'switched off: the IPTV goes out directly'}`)
+  enabled = on
+  cached = null
+}
+export const vpnEnabled = () => enabled
+
+/** The installed VPN's proxy address (IPTV_PROXY), whether it is switched on or not. Only http://host:port. */
+export function installedProxyUrl(): string | null {
   const raw = (process.env.IPTV_PROXY || '').trim()
   if (!raw) return null
   try {
@@ -25,6 +36,11 @@ export function iptvProxyUrl(): string | null {
     logger.warn('IPTV_PROXY ignored: expected http://host:port')
     return null
   }
+}
+
+/** The proxy the IPTV goes through now: the installed VPN when it is switched on, else null (direct). */
+export function iptvProxyUrl(): string | null {
+  return enabled ? installedProxyUrl() : null
 }
 
 let agent: { url: string; dispatcher: ProxyAgent } | null = null
@@ -51,7 +67,10 @@ export function iptvProxyEnv(): Record<string, string> {
 }
 
 export interface VpnStatus {
+  /** A VPN is installed (IPTV_PROXY) */
   configured: boolean
+  /** Switched on in Réglages (off: the IPTV goes out directly) */
+  enabled?: boolean
   /** The VPN answers */
   ok?: boolean
   /** Where the IPTV comes out: its public IP and country */
@@ -63,12 +82,13 @@ export interface VpnStatus {
 }
 
 const CHECK_URL = () => process.env.IPTV_VPN_CHECK_URL || 'https://www.cloudflare.com/cdn-cgi/trace'
-let cached: { at: number; proxy: string; status: VpnStatus } | null = null
 
 /** Is the VPN up, and where does the IPTV come out? (Cloudflare's trace, through the VPN; kept 60 s) */
 export async function vpnStatus(force = false): Promise<VpnStatus> {
-  const proxy = iptvProxyUrl()
-  if (!proxy) return { configured: false }
+  const installed = installedProxyUrl()
+  if (!installed) return { configured: false }
+  if (!enabled) return { configured: true, enabled: false }
+  const proxy = installed
   if (!force && cached && cached.proxy === proxy && Date.now() - cached.at < 60_000) return cached.status
   let status: VpnStatus
   try {
@@ -76,10 +96,10 @@ export async function vpnStatus(force = false): Promise<VpnStatus> {
     if (!res.ok) throw new Error(`HTTP ${res.status}`)
     const trace = Object.fromEntries((await res.text()).split('\n').map((l) => l.split('=')).filter((p) => p.length === 2)) as Record<string, string>
     const code = (trace.loc || '').toUpperCase()
-    status = { configured: true, ok: true, ip: trace.ip || undefined, countryCode: code || undefined, country: countryName(code) ?? undefined }
+    status = { configured: true, enabled: true, ok: true, ip: trace.ip || undefined, countryCode: code || undefined, country: countryName(code) ?? undefined }
   } catch (err) {
     const e = err as Error & { cause?: { code?: string; message?: string } }
-    status = { configured: true, ok: false, error: e.cause?.code || e.cause?.message || e.message }
+    status = { configured: true, enabled: true, ok: false, error: e.cause?.code || e.cause?.message || e.message }
   }
   status.checkedAt = new Date().toISOString()
   cached = { at: Date.now(), proxy, status }

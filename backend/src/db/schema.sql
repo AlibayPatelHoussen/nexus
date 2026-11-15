@@ -21,7 +21,11 @@ CREATE TABLE IF NOT EXISTS users (
   -- In every token: changing the password (or « Déconnecter tous les appareils ») increases
   -- it, which ends every other session of the account at once
   session_version INTEGER NOT NULL DEFAULT 1,
-  expires_at  TIMESTAMPTZ           -- account opened for a limited time (NULL: no limit)
+  expires_at  TIMESTAMPTZ,          -- account opened for a limited time (NULL: no limit)
+  -- What a « user » account opens: media (films, series, animes, manga, downloads) and/or IPTV
+  can_media   BOOLEAN NOT NULL DEFAULT TRUE,
+  can_iptv    BOOLEAN NOT NULL DEFAULT TRUE,
+  CONSTRAINT users_some_access CHECK (can_media OR can_iptv)
 );
 
 -- ─── SESSIONS (refresh tokens): one per signed-in device ─

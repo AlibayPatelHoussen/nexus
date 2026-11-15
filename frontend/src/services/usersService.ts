@@ -14,7 +14,12 @@ export interface Account {
   expired:   boolean
   /** Devices signed in right now */
   devices:   number
+  /** What it opens: « Médias + IPTV » (all), « Médias », « IPTV seulement » */
+  access:    AccountAccess
 }
+
+export type AccountAccess = 'all' | 'media' | 'iptv'
+export const ACCESS_LABEL: Record<AccountAccess, string> = { all: 'Médias + IPTV', media: 'Médias', iptv: 'IPTV seulement' }
 
 export interface DeviceSession {
   id:           string
@@ -50,12 +55,15 @@ export interface NewAccount {
   email:     string
   password:  string
   expiresAt: string | null
+  access:    AccountAccess
 }
 
 export const usersService = {
   list: async () => (await api.get<{ data: Account[] }>('/users')).data.data,
   create: async (body: NewAccount) => (await api.post<{ data: { id: string } }>('/users', body)).data.data,
   setExpiry: async (id: string, expiresAt: string | null) => { await api.patch(`/users/${id}`, { expiresAt }) },
+  /** What the account opens, at once */
+  setAccess: async (id: string, access: AccountAccess) => { await api.patch(`/users/${id}`, { access }) },
   remove: async (id: string) => { await api.delete(`/users/${id}`) },
   signOutEverywhere: async (id: string) => (await api.post<{ data: { removed: number } }>(`/users/${id}/sign-out`)).data.data,
   sessions: async () => (await api.get<{ data: DeviceSession[] }>('/users/sessions')).data.data,

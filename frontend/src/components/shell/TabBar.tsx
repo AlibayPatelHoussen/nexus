@@ -1,11 +1,11 @@
 import { startTransition, useEffect, useLayoutEffect, useRef, useState } from 'react'
 import { Link, useLocation, useNavigate } from 'react-router-dom'
 import { motion, useMotionValue, useReducedMotion, useSpring, useTransform, type MotionValue } from 'framer-motion'
-import { useAuthStore } from '@/stores/authStore'
 import type { LucideIcon } from 'lucide-react'
-import { TABS, tabFor, type Tab } from './nav'
+import { tabsFor, tabFor, type Tab } from './nav'
 import { useSectionStore } from './sectionStore'
 import { selectionHaptic } from '@/utils/haptics'
+import { useAccess } from './access'
 
 const PAD = 4           // the bar's inner inset (62 pt bar, 54 pt tabs)
 const LENS = 1.45       // lens width, in tabs (Apple Music: ~1.4–1.5)
@@ -46,14 +46,14 @@ const lastPathByTab: Record<string, string> = {}
 export default function TabBar() {
   const { pathname, search } = useLocation()
   const navigate = useNavigate()
-  const isAdmin = useAuthStore((s) => s.user?.role === 'admin')
+  // The tabs of this account here (an « IPTV seulement » account: IPTV and Réglages)
+  const tabs = tabsFor(useAccess())
   // Title pages (/media/…) stay under the tab they were opened from; opened directly
   // (app reopened on it…), under the tab of their library (a manga → Manga)
   const section = useSectionStore((s) => s.section)
-  const found = tabFor(pathname)
+  const found = tabFor(pathname, tabs)
   if (found) lastTab = found
-  const current = found ?? lastTab ?? (section ? tabFor(section) : undefined)
-  const tabs = TABS.filter((t) => isAdmin || !t.adminOnly)
+  const current = found ?? lastTab ?? (section ? tabFor(section, tabs) : undefined)
   const active = tabs.findIndex((t) => t.to === current?.to)
   useEffect(() => { if (found) lastPathByTab[found.to] = pathname + search }, [found, pathname, search])
   const reduced = useReducedMotion()

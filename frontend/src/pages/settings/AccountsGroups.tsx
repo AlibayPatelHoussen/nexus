@@ -4,8 +4,8 @@ import toast from 'react-hot-toast'
 import { isAxiosError } from 'axios'
 import { CheckCircle2, Laptop, Smartphone, Tablet, Trash2, UserPlus, XCircle, type LucideIcon } from 'lucide-react'
 import {
-  DURATIONS, SIGN_IN_REASON, endOf, endOfDay, firstEndDay, usersService,
-  type Account, type DeviceSession, type Duration, type SignInEvent,
+  ACCESS_LABEL, DURATIONS, SIGN_IN_REASON, endOf, endOfDay, firstEndDay, usersService,
+  type Account, type AccountAccess, type DeviceSession, type Duration, type SignInEvent,
 } from '@/services/usersService'
 import { useContextMenu } from '@/components/ui/useContextMenu'
 import { useAuthStore } from '@/stores/authStore'
@@ -43,6 +43,16 @@ function expiryLabel(a: Pick<Account, 'expiresAt' | 'expired'>): string | null {
   return a.expired ? `expiré le ${formatDay(a.expiresAt)}` : `jusqu’au ${formatDay(a.expiresAt)}`
 }
 
+/** The access control: « Médias + IPTV », « Médias », « IPTV » (short enough for an iPhone). */
+const ACCESS_OPTIONS: { value: AccountAccess; label: string }[] = [
+  { value: 'all', label: 'Médias + IPTV' }, { value: 'media', label: 'Médias' }, { value: 'iptv', label: 'IPTV' },
+]
+const ACCESS_NOTE: Record<AccountAccess, string> = {
+  all: 'Films, séries, animes, manga, ses téléchargements et l’IPTV.',
+  media: 'Films, séries, animes, manga et ses téléchargements, sans l’IPTV.',
+  iptv: 'L’IPTV seulement : le compte s’ouvre à l’adresse de l’IPTV (IPTV › Paramètres).',
+}
+
 const placeOf = (s: { location: string | null; ip: string | null }) => s.location ?? s.ip ?? 'Lieu inconnu'
 
 /* ── Utilisateurs ────────────────────────────────────────────────────────── */
@@ -58,7 +68,7 @@ export function UsersGroup() {
       <Group
         id="utilisateurs"
         header="Utilisateurs"
-        footer={<>Un compte « Utilisateur » a les médias, le manga, ses téléchargements et le stockage. Les comptes administrateur se créent dans le terminal : <code className="font-mono">bash scripts/create-admin.sh</code></>}
+        footer={<>Un compte « Utilisateur » a, selon son accès, les médias (films, séries, manga, ses téléchargements, le stockage) et l’IPTV. Les comptes administrateur se créent dans le terminal : <code className="font-mono">bash scripts/create-admin.sh</code></>}
       >
         {isError ? (
           <EmptyState className="py-8" title="Comptes indisponibles" message="Le serveur n’a pas répondu. Réessaie dans un instant." />
@@ -66,7 +76,7 @@ export function UsersGroup() {
           <ListRow
             key={a.id}
             title={a.username}
-            subtitle={[roleLabel(a), expiryLabel(a)].filter(Boolean).join(' · ')}
+            subtitle={[roleLabel(a), a.role === 'user' ? ACCESS_LABEL[a.access] : null, expiryLabel(a)].filter(Boolean).join(' · ')}
             status={a.expired ? 'error' : undefined}
             detail={a.devices ? `${a.devices} appareil${a.devices > 1 ? 's' : ''}` : 'Aucun appareil'}
             accessory="chevron"
@@ -91,6 +101,7 @@ function NewUserSheet({ open, onClose }: { open: boolean; onClose: () => void })
   // A ready-made duration, or « Autre » : the end day of your choice
   const [duration, setDuration] = useState<Duration | 'date'>('1y')
   const [day, setDay] = useState('')
+  const [access, setAccess] = useState<AccountAccess>('all')
   const expiresAt = duration === 'date' ? endOfDay(day) : endOf(duration)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -103,14 +114,14 @@ function NewUserSheet({ open, onClose }: { open: boolean; onClose: () => void })
   function close() {
     if (saving) return
     onClose()
-    setUsername(''); setEmail(''); setPassword(''); setDuration('1y'); setDay(''); setError(null)
+    setUsername(''); setEmail(''); setPassword(''); setDuration('1y'); setDay(''); setAccess('all'); setError(null)
   }
 
   async function submit() {
     if (!valid || saving) return
     setSaving(true); setError(null)
     try {
-      await usersService.create({ username: username.trim(), email: email.trim(), password, expiresAt })
+      await usersService.create({ username: username.trim(), email: email.trim(), password, expiresAt, access })
       await qc.invalidateQueries({ queryKey: ['accounts'] })
       toast.success(`Compte « ${username.trim()} » créé`)
       setSaving(false)
@@ -148,6 +159,11 @@ function NewUserSheet({ open, onClose }: { open: boolean; onClose: () => void })
           autoComplete="new-password"
           hint="Au moins 8 caractères, avec une majuscule, une minuscule et un chiffre"
           error={password && !passOk ? 'Au moins 8 caractères, avec une majuscule, une minuscule et un chiffre.' : undefined} />
+        <div className="flex flex-col gap-1.5">
+          <span className="text-subhead text-label2">Accès</span>
+          <SegmentedControl<AccountAccess> label="Accès" full value={access} onChange={setAccess} options={ACCESS_OPTIONS} />
+          <p className="text-caption text-label2">{ACCESS_NOTE[access]}</p>
+        </div>
         <div className="flex flex-col gap-1.5">
           <span className="text-subhead text-label2" id={`${formId}-d`}>Durée du compte</span>
           {/* The ready-made durations; « Choisir une date… » for any other (no segment selected then) */}
@@ -206,6 +222,12 @@ function AccountSheet({ account, onClose }: { account: Account | null; onClose: 
   }
 
   const saved = (end: string | null) => (end ? `Compte ouvert jusqu’au ${formatDay(end)}` : 'Compte sans limite de durée')
+
+  /** What the account opens, at once (its pages follow at its next request). */
+  async function changeAccess(access: AccountAccess) {
+    if (access === a!.access || busy) return
+    await run(() => usersService.setAccess(a!.id, access), `Accès : ${ACCESS_LABEL[access]}`)
+  }
 
   /** Corrects the limit: no limit, or the chosen duration from today. */
   async function setDuration(duration: Duration) {
@@ -269,10 +291,19 @@ function AccountSheet({ account, onClose }: { account: Account | null; onClose: 
         <Group>
           <ListRow title="E-mail" detail={a.email} />
           <ListRow title="Type de compte" detail={roleLabel(a)} />
+          {!isUser && <ListRow title="Accès" detail="Tout" />}
           <ListRow title="Créé le" detail={formatDay(a.createdAt)} />
           <ListRow title="Dernière connexion" detail={a.lastLogin ? formatWhen(a.lastLogin) : 'Jamais'} />
           {isUser && <ListRow title={a.expired ? 'Expiré le' : 'Fin du compte'} detail={a.expiresAt ? formatDay(a.expiresAt) : 'Sans limite'} status={a.expired ? 'error' : undefined} />}
         </Group>
+
+        {isUser && (
+          <Group header="Accès" footer={ACCESS_NOTE[a.access]}>
+            <div role="listitem" className="nx-row relative px-4 py-3">
+              <SegmentedControl<AccountAccess> label="Accès" full value={a.access} onChange={(v) => void changeAccess(v)} options={ACCESS_OPTIONS} />
+            </div>
+          </Group>
+        )}
 
         {isUser && (
           <Group

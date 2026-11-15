@@ -1,6 +1,6 @@
 import { Router, Request, Response } from 'express'
 import asyncHandler from 'express-async-handler'
-import { authenticate, requireAdmin } from '../middleware/auth'
+import { authenticate, requireAdmin, requireMedia } from '../middleware/auth'
 import { enrichNewTitles, syncImdb } from '../services/imdb'
 import { indexLibrarySoon } from '../services/keyframeIndexer'
 import { logger } from '../utils/logger'
@@ -11,7 +11,8 @@ import { isLibraryType, scanLibrary } from '../services/libraryScan'
 import { ConflictError } from '../utils/errors'
 
 const router = Router()
-router.use(authenticate)
+// The media library: accounts that have the media
+router.use(authenticate, requireMedia)
 
 router.get('/', asyncHandler(async (req: Request, res: Response) => {
   const { type, genre, year, search, page, limit, sortBy, sortDir } = req.query

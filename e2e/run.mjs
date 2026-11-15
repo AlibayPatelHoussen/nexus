@@ -904,6 +904,87 @@ test('accounts: an admin creates an account for 1 year, sees its device and plac
   await page.context().close()
 })
 
+test('accounts: what each opens — « IPTV seulement » at the IPTV address, « Médias » without the IPTV', async () => {
+  sql(`DELETE FROM users WHERE username = 'tele'`)
+  // The IPTV's own address (a Cloudflare subdomain to the same Nexus); *.localhost is this machine
+  const port = new URL(B).port
+  const iptvUrl = `http://iptv.localhost:${port}`
+  eq((await api('/api/iptv/settings', { token: admin.accessToken, method: 'PUT', body: { publicUrl: iptvUrl } })).status, 200, 'IPTV address saved')
+  eq((await api('/api/health')).json.iptvUrl, iptvUrl, 'given to every page')
+  try {
+    // Created « IPTV seulement » in Réglages › Utilisateurs
+    const page = await newPage(admin, { width: 1280, height: 860 })
+    await page.goto(`${B}/settings`, { waitUntil: 'networkidle' })
+    await page.click('text=Ajouter un utilisateur…')
+    const sheet = page.locator('[role="dialog"]')
+    await sheet.locator('input[maxlength="50"]').fill('tele')
+    await sheet.locator('input[type="email"]').fill('tele@example.com')
+    await sheet.locator('input[autocomplete="new-password"]').fill('Tele12345')
+    await sheet.locator('[role="radiogroup"][aria-label="Accès"] >> text="IPTV"').click()
+    await page.waitForSelector('[role="dialog"] >> text=L’IPTV seulement')
+    await page.click('[role="dialog"] button[type="submit"]:visible')
+    await page.waitForSelector('text=Compte « tele » créé')
+    eq(sql(`SELECT can_media::text || ',' || can_iptv::text FROM users WHERE username = 'tele'`), 'false,true', 'IPTV only')
+    await page.waitForSelector('section[aria-labelledby="utilisateurs-h"] >> text=Utilisateur · IPTV seulement')
+
+    const tele = await login('tele', 'Tele12345')
+    eq(tele.user.access, 'iptv', 'the access, at sign-in')
+    eq((await api('/api/media', { token: tele.accessToken })).json?.code, 'NO_MEDIA_ACCESS', 'no media')
+    eq((await api('/api/iptv/summary', { token: tele.accessToken })).status, 200, 'the IPTV')
+
+    // At the Nexus address: sent to the IPTV's, to sign in there
+    const phone = await newPage(tele)
+    await phone.goto(`${B}/`)
+    await phone.waitForURL(`${iptvUrl}/login?from=nexus`)
+    await phone.waitForSelector('h1:has-text("Se connecter à l’IPTV")')
+    await phone.waitForSelector('text=Ton compte s’ouvre ici, à l’adresse de l’IPTV.')
+    await phone.context().close()
+    // Signed in there (a browser without the old session, which newPage would put back at each load)
+    const tv = await newPage(null)
+    await tv.goto(`${iptvUrl}/login?from=nexus`)
+    await tv.fill('input[autocomplete="username"]', 'tele')
+    await tv.fill('input[type="password"]', 'Tele12345')
+    await tv.click('button:has-text("Se connecter")')
+    await tv.waitForURL(`${iptvUrl}/iptv`)
+    // The IPTV and the settings only
+    const tabs = await tv.locator('nav[aria-label] a').allTextContents()
+    assert(tabs.some((x) => /IPTV/.test(x)) && tabs.some((x) => /Réglages/.test(x)), `tabs: ${tabs.join('|')}`)
+    assert(!tabs.some((x) => /Médias|Aperçu|Manga/.test(x)), `no media tab: ${tabs.join('|')}`)
+    await tv.goto(`${iptvUrl}/cinema`)
+    await tv.waitForURL(`${iptvUrl}/iptv`)
+
+    // Changed at once to « Médias »: the IPTV closes for it
+    await page.reload({ waitUntil: 'networkidle' })
+    await page.click('section[aria-labelledby="utilisateurs-h"] button:has-text("tele")')
+    await page.click('[role="dialog"] [role="radiogroup"][aria-label="Accès"] >> text="Médias"')
+    await page.waitForSelector('text=Accès : Médias')
+    eq(sql(`SELECT can_media::text || ',' || can_iptv::text FROM users WHERE username = 'tele'`), 'true,false', 'media only')
+    // (the session given to the browser was signed out when it was sent to the IPTV address)
+    eq((await api('/api/auth/me', { token: tele.accessToken })).status, 401, 'sent away = signed out there')
+    const now = await login('tele', 'Tele12345')
+    eq((await api('/api/iptv/summary', { token: now.accessToken })).json?.code, 'NO_IPTV_ACCESS', 'the IPTV is closed at once')
+    eq((await api('/api/media', { token: now.accessToken })).status, 200, 'the media are open')
+    await tv.reload()
+    await tv.waitForSelector('text=Pas d’accès à l’IPTV')
+
+    // An admin at the IPTV address: the IPTV only too
+    const adminIptv = await newPage(null, { width: 1280, height: 860 })
+    await adminIptv.goto(`${iptvUrl}/login`)
+    await adminIptv.fill('input[autocomplete="username"]', 'admin')
+    await adminIptv.fill('input[type="password"]', 'Admin1234')
+    await adminIptv.click('button:has-text("Se connecter")')
+    await adminIptv.waitForURL(`${iptvUrl}/iptv`)
+    const side = await adminIptv.locator('aside a').allTextContents()
+    assert(!side.some((x) => /Terminal|Fichiers|Films/.test(x)), `IPTV address sidebar: ${side.join('|')}`)
+    await adminIptv.goto(`${iptvUrl}/terminal`)
+    await adminIptv.waitForURL(`${iptvUrl}/iptv`)
+    await Promise.all([page.context().close(), tv.context().close(), adminIptv.context().close()])
+  } finally {
+    await api('/api/iptv/settings', { token: admin.accessToken, method: 'PUT', body: { publicUrl: null } })
+    sql(`DELETE FROM users WHERE username = 'tele'`)
+  }
+})
+
 test('UI: theme toggle and no horizontal overflow on phones', async () => {
   const page = await newPage(admin, { width: 375, height: 812 })
   const show = sql(`SELECT id FROM media_items WHERE file_path LIKE '%Georgie%'`)

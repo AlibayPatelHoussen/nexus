@@ -6,7 +6,7 @@ import fs from 'fs'
 import os from 'os'
 import { owner, sudoRun, withSudo } from '../utils/sudo'
 
-import { authenticate, authenticateStream, requireAdmin } from '../middleware/auth'
+import { authenticate, authenticateStream, requireAdmin, requireMedia } from '../middleware/auth'
 import { forgetPaths } from '../services/libraryDelete'
 import { sudoLimiter } from '../middleware/rateLimit'
 import { elevatedDelete } from '../services/elevatedDelete'
@@ -87,7 +87,7 @@ async function statFile(filePath: string): Promise<fs.Stats> {
 }
 
 // ─── STREAM (video, PDF, images) — used by players & manga reader ──────────
-router.get('/stream', authenticateStream, asyncHandler(async (req: Request, res: Response) => {
+router.get('/stream', authenticateStream, requireMedia, asyncHandler(async (req: Request, res: Response) => {
   const filePath = await resolveReadable(req)
   const { size } = await statFile(filePath)
   const ext = path.extname(filePath).toLowerCase()
@@ -131,7 +131,7 @@ router.get('/stream', authenticateStream, asyncHandler(async (req: Request, res:
 const capsFrom = (req: Request): ClientCaps => ({ webm: req.query.webm === '1' })
 
 /** How the player should read this video: direct stream, or converted (remux/transcode). */
-router.get('/play-info', authenticateStream, asyncHandler(async (req: Request, res: Response) => {
+router.get('/play-info', authenticateStream, requireMedia, asyncHandler(async (req: Request, res: Response) => {
   const filePath = await resolveReadable(req)
   await statFile(filePath)
   if (!(await hasFfmpeg())) {
@@ -148,7 +148,7 @@ router.get('/play-info', authenticateStream, asyncHandler(async (req: Request, r
 }))
 
 /** Start a conversion at `start` seconds; returns the HLS playlist URL. */
-router.post('/transcode', authenticateStream, asyncHandler(async (req: Request, res: Response) => {
+router.post('/transcode', authenticateStream, requireMedia, asyncHandler(async (req: Request, res: Response) => {
   const filePath = await resolveReadable(req)
   await statFile(filePath)
   if (!(await hasFfmpeg())) throw new AppError('ffmpeg is not installed on the server', 501)
@@ -181,11 +181,11 @@ function ownJob(req: Request) {
 }
 
 /** Conversion progress: a remux is played once complete (the whole film is then seekable). */
-router.get('/transcode/:id/status', authenticateStream, asyncHandler(async (req: Request, res: Response) => {
+router.get('/transcode/:id/status', authenticateStream, requireMedia, asyncHandler(async (req: Request, res: Response) => {
   res.json({ success: true, data: await jobStatus(ownJob(req)) })
 }))
 
-router.get('/transcode/:id/index.m3u8', authenticateStream, asyncHandler(async (req: Request, res: Response) => {
+router.get('/transcode/:id/index.m3u8', authenticateStream, requireMedia, asyncHandler(async (req: Request, res: Response) => {
   const job = ownJob(req)
   // Remux on demand: the playlist needs the file's keyframe index (the player waits for it)
   if (job.indexing) await job.indexing
@@ -202,7 +202,7 @@ router.get('/transcode/:id/index.m3u8', authenticateStream, asyncHandler(async (
   res.send(rewritePlaylist(text, String(req.query.token ?? '')))
 }))
 
-router.get('/transcode/:id/:segment', authenticateStream, asyncHandler(async (req: Request, res: Response) => {
+router.get('/transcode/:id/:segment', authenticateStream, requireMedia, asyncHandler(async (req: Request, res: Response) => {
   const m = /^seg(\d{5})\.ts$/.exec(req.params.segment)
   if (!m) throw new NotFoundError('Segment')
   const job = ownJob(req)
@@ -214,14 +214,14 @@ router.get('/transcode/:id/:segment', authenticateStream, asyncHandler(async (re
 }))
 
 /** Player closed / seeked elsewhere: stop ffmpeg right away. */
-router.delete('/transcode/:id', authenticateStream, asyncHandler((req: Request, res: Response) => {
+router.delete('/transcode/:id', authenticateStream, requireMedia, asyncHandler((req: Request, res: Response) => {
   const job = getJob(req.params.id)
   if (job && job.userId === req.user!.userId) stopJob(job.id, 'client closed the player')
   res.json({ success: true })
 }))
 
 // ─── One page of a CBZ / ZIP manga chapter (used by <img> in the reader) ────
-router.get('/archive-page', authenticateStream, asyncHandler(async (req: Request, res: Response) => {
+router.get('/archive-page', authenticateStream, requireMedia, asyncHandler(async (req: Request, res: Response) => {
   const { rows } = await query('SELECT folder_path FROM chapters WHERE id = $1', [String(req.query.chapter ?? '')])
   const file = rows[0]?.folder_path as string | undefined
   if (!file || chapterKind(file) !== 'archive') throw new NotFoundError('Chapter')
@@ -238,7 +238,7 @@ router.get('/archive-page', authenticateStream, asyncHandler(async (req: Request
 }))
 
 // ─── DOWNLOAD ───────────────────────────────────────────────────────────────
-router.get('/download', authenticateStream, asyncHandler(async (req: Request, res: Response) => {
+router.get('/download', authenticateStream, requireMedia, asyncHandler(async (req: Request, res: Response) => {
   const filePath = await resolveReadable(req)
   await statFile(filePath)
   res.download(filePath, path.basename(filePath))

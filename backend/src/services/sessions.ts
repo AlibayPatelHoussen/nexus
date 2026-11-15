@@ -24,6 +24,9 @@ export interface SessionUser {
   role: 'admin' | 'user'
   sessionVersion: number
   expiresAt: Date | null
+  /** What the account opens (admins: everything) */
+  canMedia: boolean
+  canIptv: boolean
 }
 
 const TTL_MS = 5_000
@@ -48,8 +51,8 @@ async function load(userId: string, sid: string | undefined) {
   const key = `${userId}|${sid ?? ''}`
   const hit = cache.get(key)
   if (hit && Date.now() - hit.at < TTL_MS) return hit
-  const { rows } = await query<{ username: string; role: 'admin' | 'user'; session_version: number; expires_at: Date | null; has_session: boolean }>(
-    `SELECT u.username, u.role, u.session_version, u.expires_at,
+  const { rows } = await query<{ username: string; role: 'admin' | 'user'; session_version: number; expires_at: Date | null; has_session: boolean; can_media: boolean; can_iptv: boolean }>(
+    `SELECT u.username, u.role, u.session_version, u.expires_at, u.can_media, u.can_iptv,
             EXISTS (SELECT 1 FROM refresh_tokens r
                      WHERE r.id = $2::uuid AND r.user_id = u.id AND r.expires_at > NOW()
                        AND r.session_version = u.session_version) AS has_session
@@ -59,7 +62,10 @@ async function load(userId: string, sid: string | undefined) {
   const r = rows[0]
   const entry = {
     at: Date.now(),
-    user: r ? { username: r.username, role: r.role, sessionVersion: r.session_version, expiresAt: r.expires_at } : null,
+    user: r ? {
+      username: r.username, role: r.role, sessionVersion: r.session_version, expiresAt: r.expires_at,
+      canMedia: r.role === 'admin' || r.can_media, canIptv: r.role === 'admin' || r.can_iptv,
+    } : null,
     session: !!r?.has_session,
   }
   cache.set(key, entry)

@@ -14,6 +14,8 @@ import Button from '@/components/ui/Button'
 import { useConfirm } from '@/components/ui/useConfirm'
 import type { Appearance } from '@/types'
 import NotificationsGroup from './NotificationsGroup'
+import { useAccess } from '@/components/shell/access'
+import { ACCESS_LABEL } from '@/services/usersService'
 import { DevicesGroup, SignInsGroup, UsersGroup } from './AccountsGroups'
 import { formatDay } from '@/utils'
 
@@ -26,8 +28,10 @@ export default function SettingsPage() {
   const confirm = useConfirm()
   const { device } = useShell()
   const phone = device === 'phone'
-  // « user » accounts: everything but the server (accounts, devices, journal, version)
+  // « user » accounts: everything but the server (accounts, devices, journal, version); without the
+  // media (« IPTV seulement », the IPTV's address): the account and its appearance only
   const isAdmin = user?.role === 'admin'
+  const access = useAccess()
   const [scanning, setScanning] = useState(false)
   const [pruning, setPruning] = useState(false)
 
@@ -74,7 +78,7 @@ export default function SettingsPage() {
             </span>
             <span className="min-w-0">
               <span className="block text-headline text-label truncate">{user?.username}</span>
-              <span className="block text-subhead text-label2 truncate">{user?.email} · {isAdmin ? 'Administrateur' : 'Utilisateur'}</span>
+              <span className="block text-subhead text-label2 truncate">{user?.email} · {isAdmin ? 'Administrateur' : ACCESS_LABEL[user?.canMedia === false ? 'iptv' : user?.canIptv === false ? 'media' : 'all']}</span>
               {user?.expiresAt && <span className="block text-subhead text-label2 truncate">Compte ouvert jusqu’au {formatDay(user.expiresAt)}</span>}
             </span>
           </div>
@@ -97,17 +101,18 @@ export default function SettingsPage() {
           </div>
         </Group>
 
-        <Group header="Bibliothèque">
+        {access.media && <Group header="Bibliothèque">
           <ListRow wrap title="Analyser les médias" subtitle="Ajoute les fichiers trouvés dans les dossiers de la bibliothèque.">
             <Button size="small" loading={scanning} onClick={handleScan}>Analyser</Button>
           </ListRow>
           <ListRow wrap title="Nettoyer la bibliothèque" subtitle="Retire les titres dont le fichier n’existe plus.">
             <Button size="small" variant="destructive" loading={pruning} onClick={handlePrune}>Nettoyer…</Button>
           </ListRow>
-        </Group>
+        </Group>}
 
-        <NotificationsGroup />
-        {isAdmin && (
+        {/* Notifications: the downloads (and, for admins, new devices): with the media */}
+        {access.media && <NotificationsGroup />}
+        {isAdmin && !access.iptvHost && (
           <>
             <UsersGroup />
             <DevicesGroup />
@@ -116,7 +121,7 @@ export default function SettingsPage() {
         )}
         <UsernameGroup />
         <PasswordGroup />
-        {isAdmin && <VersionGroup />}
+        {isAdmin && !access.iptvHost && <VersionGroup />}
 
         <Group>
           <ListRow title="Se déconnecter" destructive onClick={handleLogout} className="justify-center [&>span]:text-center" />

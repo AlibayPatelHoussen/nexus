@@ -21,8 +21,9 @@ export const authService = {
     await api.post('/auth/logout', { refreshToken })
   },
 
-  async me(): Promise<User> {
-    const { data } = await api.get<{ success: boolean; data: User }>('/auth/me')
+  /** The account as the server knows it now (role, what it opens) */
+  async me(): Promise<{ userId: string; username: string; role: User['role']; canMedia?: boolean; canIptv?: boolean }> {
+    const { data } = await api.get<{ success: boolean; data: { userId: string; username: string; role: User['role']; canMedia?: boolean; canIptv?: boolean } }>('/auth/me')
     return data.data
   },
 

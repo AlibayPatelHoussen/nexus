@@ -58,7 +58,13 @@ export interface PictureAnswer {
   convert: boolean
   reason: PictureReason | null
 }
-export interface IptvSettings { autoRefresh: boolean; hideOffline: boolean; epgUrl: string | null; priorityCountries: string[] }
+export interface IptvSettings {
+  autoRefresh: boolean; hideOffline: boolean; epgUrl: string | null; priorityCountries: string[]
+  /** The VPN switch (IPTV › Paramètres › VPN), when one is installed */
+  vpnEnabled: boolean
+  /** The IPTV's own address (a Cloudflare subdomain to the same Nexus): there, the IPTV only */
+  publicUrl: string | null
+}
 /** 'top': priority countries, verified channels and the Free-TV selection first */
 export type ChannelSort = 'top' | 'name' | '-name'
 export interface ChannelQuery {
@@ -72,6 +78,8 @@ const enc = encodeURIComponent
 /** The IPTV's VPN (scripts/iptv-vpn.sh) */
 export interface IptvVpn {
   configured: boolean
+  /** false: installed but switched off in the settings (the IPTV goes direct) */
+  enabled?: boolean
   ok?: boolean
   ip?: string
   country?: string

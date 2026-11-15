@@ -2,7 +2,7 @@ import { Router, Request, Response } from 'express'
 import asyncHandler from 'express-async-handler'
 import fs from 'fs'
 import path from 'path'
-import { authenticate } from '../middleware/auth'
+import { authenticate, requireMedia } from '../middleware/auth'
 import { AuthService } from '../services/auth'
 import { isInsideDir, sanitizePath } from '../services/files'
 import { baseUrlFor, castControl, castPlay, castStatus, discover, getDevice, listDevices } from '../services/cast'
@@ -10,7 +10,7 @@ import { ForbiddenError, NotFoundError, ValidationError } from '../utils/errors'
 
 const MEDIA_ROOT = process.env.MEDIA_ROOT || '/media'
 const router = Router()
-router.use(authenticate)
+router.use(authenticate, requireMedia)
 
 const view = (d: ReturnType<typeof listDevices>[number]) => ({ id: d.id, name: d.name, kind: d.kind, model: d.model })
 

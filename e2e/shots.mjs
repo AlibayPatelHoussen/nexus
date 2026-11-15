@@ -8,6 +8,7 @@
  *   THEMES=dark node e2e/shots.mjs cinema   one theme
  *   AS=alice:User12345 node e2e/shots.mjs dashboard   as another account (files end in -alice)
  *   FULL=1 node e2e/shots.mjs settings      the whole page, not only the screen
+ *   BASE=http://iptv.localhost:3101 node e2e/shots.mjs iptv=/iptv   Nexus at another address (the IPTV's)
  *
  * Needs the E2E environment (bash e2e/setup.sh); after a frontend change,
  * `npm run build -w frontend` is enough (the backend serves frontend/dist).
@@ -22,6 +23,8 @@ const { chromium, devices } = require('playwright')
 const E2E = process.env.E2E_DIR || '/tmp/nexus-e2e'
 const cfg = JSON.parse(fs.readFileSync(`${E2E}/config.json`, 'utf8'))
 const OUT = `${E2E}/shots/design`
+// The pages' address: the E2E server, or another name for it (BASE)
+const BASE = process.env.BASE || cfg.base
 fs.mkdirSync(OUT, { recursive: true })
 
 const PAGES = {
@@ -57,7 +60,7 @@ for (const vp of VIEWPORTS) {
     for (const [name, path] of pages) {
       const page = await ctx.newPage()
       if (name === 'login') await ctx.clearCookies()
-      await page.goto(cfg.base + path, { waitUntil: 'networkidle' }).catch(() => {})
+      await page.goto(BASE + path, { waitUntil: 'networkidle' }).catch(() => {})
       await page.waitForTimeout(900)             // entrance animations
       const file = `${OUT}/${name}-${vp.name}-${theme}${suffix}.png`
       await page.screenshot({ path: file, fullPage: process.env.FULL === '1' })

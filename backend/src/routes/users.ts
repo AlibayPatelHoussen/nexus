@@ -4,7 +4,7 @@ import { authenticate, requireAdmin } from '../middleware/auth'
 import * as controller from '../controllers/auth'
 import { AuthService } from '../services/auth'
 import {
-  deleteAccount, deleteLoginEvents, listAccounts, listLoginEvents, listSessions, revokeSession, setExpiry,
+  deleteAccount, deleteLoginEvents, listAccounts, listLoginEvents, listSessions, revokeSession, setAccess, setExpiry,
 } from '../services/users'
 
 // Réglages › Utilisateurs, Appareils connectés, Journal des connexions: admins only
@@ -31,8 +31,12 @@ router.delete('/logins', asyncHandler(async (req: Request, res: Response) => {
   res.json({ success: true, data: { removed: await deleteLoginEvents({ userId: user }) } })
 }))
 
+/** Changes an account's end date (expiresAt) and / or what it opens (access). */
 router.patch('/:id', asyncHandler(async (req: Request, res: Response) => {
-  await setExpiry(req.params.id, req.body?.expiresAt)
+  const body = (req.body ?? {}) as Record<string, unknown>
+  if (!('expiresAt' in body) && !('access' in body)) { res.status(422).json({ success: false, error: 'Rien à changer' }); return }
+  if ('access' in body) await setAccess(req.params.id, body.access)
+  if ('expiresAt' in body) await setExpiry(req.params.id, body.expiresAt)
   res.json({ success: true })
 }))
 
