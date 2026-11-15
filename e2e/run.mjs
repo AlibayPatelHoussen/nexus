@@ -846,9 +846,9 @@ test('accounts: an admin creates an account for 1 year, sees its device and plac
   await sheet.locator('input[maxlength="50"]').fill('invite')
   await sheet.locator('input[type="email"]').fill('invite@example.com')
   await sheet.locator('input[autocomplete="new-password"]').fill('Invite123')
-  // A duration of your choice: until 30 June next year
+  // A date of your choice: until 30 June next year
   const lastDay = `${new Date().getFullYear() + 1}-06-30`
-  await page.click('[role="radiogroup"][aria-label="Durée du compte"] >> text=Autre')
+  await page.click('[role="dialog"] button:has-text("Choisir une date…")')
   await sheet.locator('input[type="date"]').fill(lastDay)
   await page.waitForSelector('[role="dialog"] >> text=Le compte se ferme le 30 juin')
   await page.click('[role="dialog"] button[type="submit"]:visible')

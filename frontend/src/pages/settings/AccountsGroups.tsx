@@ -150,12 +150,15 @@ function NewUserSheet({ open, onClose }: { open: boolean; onClose: () => void })
           error={password && !passOk ? 'Au moins 8 caractères, avec une majuscule, une minuscule et un chiffre.' : undefined} />
         <div className="flex flex-col gap-1.5">
           <span className="text-subhead text-label2" id={`${formId}-d`}>Durée du compte</span>
+          {/* The ready-made durations; « Choisir une date… » for any other (no segment selected then) */}
           <SegmentedControl<Duration | 'date'> label="Durée du compte" full value={duration} onChange={setDuration}
-            options={[...DURATIONS.map((d) => ({ value: d.value, label: d.label })), { value: 'date' as const, label: 'Autre' }]} />
-          {duration === 'date' && (
-            <TextField label="Fin du compte" hideLabel type="date" min={firstEndDay()} value={day}
-              onChange={(e) => { setDay(e.target.value); setError(null) }} aria-label="Date de fin du compte"
+            options={DURATIONS.map((d) => ({ value: d.value, label: d.label }))} />
+          {duration === 'date' ? (
+            <TextField label="Dernier jour du compte" hideLabel type="date" min={firstEndDay()} value={day}
+              onChange={(e) => { setDay(e.target.value); setError(null) }} aria-label="Dernier jour du compte"
               error={day && !expiresAt ? 'Choisis une date après aujourd’hui.' : undefined} />
+          ) : (
+            <Button size="small" variant="plain" className="self-start" onClick={() => setDuration('date')}>Choisir une date…</Button>
           )}
           <p className="text-caption text-label2">
             {duration === 'none' ? 'Le compte reste ouvert jusqu’à ce que tu le supprimes.'
@@ -265,7 +268,7 @@ function AccountSheet({ account, onClose }: { account: Account | null; onClose: 
         </Group>
 
         {isUser && (
-          <Group header={a.expired ? 'Rouvrir le compte' : 'Prolonger'} footer="La durée s’ajoute à la date de fin actuelle (à partir d’aujourd’hui si elle est passée).">
+          <Group header={a.expired ? 'Rouvrir le compte' : 'Prolonger'} footer="« + 1 mois »… s’ajoute à la date de fin actuelle (à partir d’aujourd’hui si elle est passée) ; « Choisir une date… » fixe le dernier jour.">
             <div role="listitem" className="nx-row relative flex flex-wrap items-center gap-2 px-4 py-3">
               {DURATIONS.filter((d) => d.value !== 'none').map((d) => (
                 <Button key={d.value} size="small" disabled={busy} onClick={() => void extend(d.value)}>+ {d.label}</Button>
@@ -274,12 +277,14 @@ function AccountSheet({ account, onClose }: { account: Account | null; onClose: 
               {!picking && <Button size="small" variant="plain" disabled={busy} onClick={() => setPicking(true)}>Choisir une date…</Button>}
             </div>
             {picking && (
-              <form role="listitem" className="nx-row relative flex flex-wrap items-center gap-2 px-4 py-3"
+              <form role="listitem" className="nx-row relative flex flex-col gap-2 px-4 py-3"
                 onSubmit={(e) => { e.preventDefault(); void setDayEnd() }}>
                 <TextField label="Dernier jour du compte" hideLabel type="date" min={firstEndDay()} value={day}
-                  onChange={(e) => setDay(e.target.value)} aria-label="Dernier jour du compte" className="flex-1 min-w-[160px]" />
-                <Button size="small" variant="primary" type="submit" disabled={busy || !endOfDay(day)}>Enregistrer</Button>
-                <Button size="small" variant="plain" onClick={() => { setPicking(false); setDay('') }}>Annuler</Button>
+                  onChange={(e) => setDay(e.target.value)} aria-label="Dernier jour du compte" />
+                <div className="flex justify-end gap-2">
+                  <Button size="small" variant="plain" onClick={() => { setPicking(false); setDay('') }}>Annuler</Button>
+                  <Button size="small" variant="primary" type="submit" disabled={busy || !endOfDay(day)}>Enregistrer</Button>
+                </div>
               </form>
             )}
           </Group>
@@ -412,6 +417,7 @@ function SignInRow({ e, withName = true, menu, trash }: { e: SignInEvent; withNa
 }
 
 export function SignInsGroup() {
+  const phone = useShell().device === 'phone'
   const qc = useQueryClient()
   const confirm = useConfirm()
   const menu = useContextMenu()
@@ -448,7 +454,7 @@ export function SignInsGroup() {
           ? <ListRow title={<span className="text-label2">Aucune connexion pour l’instant</span>} />
           : shown.map((e) => <SignInRow key={e.id} e={e} menu={menu} />)}
       </Group>
-      <Sheet open={all} onClose={() => setAll(false)} title="Journal des connexions" size="md"
+      <Sheet open={all} onClose={() => setAll(false)} title={phone ? 'Connexions' : 'Journal des connexions'} size="md"
         phoneHeader={{
           left: <Button variant="destructive-plain" onClick={() => void clearAll()} disabled={!events?.length}>Tout effacer</Button>,
           right: <Button variant="plain" className="font-semibold" onClick={() => setAll(false)}>OK</Button>,
