@@ -2,13 +2,13 @@ import {
   Activity, BookOpen, Bot, Download, Film, Folder, Gauge, ListPlus, RadioTower, Settings, SquareTerminal, Tv, Wifi, Youtube,
   type LucideIcon,
 } from 'lucide-react'
-import { canSee, type Access } from './access'
+import { canSee, iptvTab, type Access } from './access'
 
 export interface NavItem {
   to:        string
   label:     string
   icon:      LucideIcon
-  section:   'server' | 'media' | 'settings'
+  section:   'server' | 'media' | 'tv' | 'settings'
   /** Not for « user » accounts (médias, manga, their downloads and the storage only) */
   adminOnly?: boolean
   /** Shown to accounts that have the media / the IPTV (components/shell/access.ts) */
@@ -39,7 +39,13 @@ export const NAV: NavItem[] = [
 export const SECTIONS: { id: NavItem['section']; label: string }[] = [
   { id: 'server', label: 'Serveur' },
   { id: 'media',  label: 'Médias' },
+  { id: 'tv',     label: 'Télévision' },
 ]
+
+/** The sidebar section of an item for this account: the IPTV apart for « user » accounts. */
+export function sectionOf(item: NavItem, a: Access): NavItem['section'] {
+  return item.to === '/iptv' && iptvTab(a) ? 'tv' : item.section
+}
 
 export interface Tab {
   to:      string
@@ -50,15 +56,15 @@ export interface Tab {
   adminOnly?: boolean
   need?:   'media' | 'iptv'
   settings?: boolean
-  /** Only without the media (« IPTV seulement », the IPTV's subdomain): with them, the IPTV is under Médias */
-  withoutMedia?: boolean
+  /** The IPTV's own tab: « user » accounts and accounts without the media (admins: under Médias) */
+  ownIptv?: boolean
 }
 
 /** Tab Bar (phone). Jarvis, files, services and network open from "Aperçu"; downloads from "Médias". */
 export const TABS: Tab[] = [
   { to: '/dashboard', label: 'Aperçu',   icon: Gauge,          match: ['/dashboard', '/jarvis', '/files', '/services', '/network'], need: 'media' },
   { to: '/cinema',    label: 'Médias',   icon: Film,           match: ['/cinema', '/animes', '/youtube', '/downloads', '/ma-liste', '/iptv'], need: 'media' },
-  { to: '/iptv',      label: 'IPTV',     icon: RadioTower,     match: ['/iptv'], need: 'iptv', withoutMedia: true },
+  { to: '/iptv',      label: 'IPTV',     icon: RadioTower,     match: ['/iptv'], need: 'iptv', ownIptv: true },
   { to: '/manga',     label: 'Manga',    icon: BookOpen,       match: ['/manga'], need: 'media' },
   { to: '/terminal',  label: 'Terminal', icon: SquareTerminal, match: ['/terminal'], adminOnly: true },
   { to: '/settings',  label: 'Réglages', icon: Settings,       match: ['/settings'], settings: true },
@@ -74,9 +80,13 @@ export const PHONE_PARENT: Record<string, { to: string; label: string }> = {
   '/ma-liste':  { to: '/cinema', label: 'Médias' },
 }
 
-/** The tabs this account sees here (the IPTV tab only without the media). */
+/** The tabs this account sees here (the IPTV's own tab: see iptvTab). */
 export function tabsFor(a: Access): Tab[] {
-  return TABS.filter((t) => canSee(t, a) && (!t.withoutMedia || !a.media))
+  const own = iptvTab(a)
+  return TABS
+    .filter((t) => canSee(t, a) && (!t.ownIptv || own))
+    // With a tab of its own, the IPTV is no longer inside Médias
+    .map((t) => (own && !t.ownIptv && t.match.includes('/iptv') ? { ...t, match: t.match.filter((m) => m !== '/iptv') } : t))
 }
 
 export function tabFor(pathname: string, tabs: Tab[] = TABS): Tab | undefined {

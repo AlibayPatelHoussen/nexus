@@ -64,6 +64,12 @@ export function useAccess(): Access {
   return useMemo(() => accessOf(user, iptvUrl), [user, iptvUrl])
 }
 
+/**
+ * The IPTV has a tab (and a sidebar section) of its own for « user » accounts and accounts
+ * without the media; admins find it under Médias.
+ */
+export const iptvTab = (a: Access) => a.iptv && (!a.media || !a.admin)
+
 /** Where « / » leads: Aperçu with the media, else the IPTV. */
 export const homePath = (a: Access) => (a.media ? '/dashboard' : '/iptv')
 

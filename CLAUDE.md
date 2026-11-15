@@ -47,7 +47,8 @@ npm workspaces (`frontend`, `backend`); run from the repo root unless noted.
   is enforced by `requireMedia` / `requireIptv` (routes, streams, socket `guard('media')`) and followed by the
   frontend (`components/shell/access.ts`: `useAccess`, `canSee`, `need` in `nav.ts`, `Need` routes). Nexus opened at
   the IPTV's own address (IPTV settings `publicUrl`, given by `/api/health.iptvUrl`, or any `iptv.` host) shows the
-  IPTV and the settings only; « IPTV seulement » accounts are sent there.
+  IPTV and the settings only; « IPTV seulement » accounts are sent there. « user » accounts (and accounts without the
+  media) have the IPTV apart: its own iPhone tab and sidebar section « Télévision » (`iptvTab`); admins find it under Médias.
 - **Database**: `backend/src/db/schema.sql` is the full current schema (fresh installs); every change also gets a
   numbered file in `backend/src/db/migrations/` (see its README). Both must stay in sync.
 - **Media library**: `services/scanner.ts` walks the media folders, looks titles up on TMDB / AniList /

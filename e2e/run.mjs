@@ -809,7 +809,11 @@ test('UI: « user » account — médias, manga and its downloads; Aperçu shows
   await page.goto(`${B}/dashboard`, { waitUntil: 'networkidle' })
   // Each tab draws its label twice (plain and tinted, cross-faded): the visible name is the one not hidden
   const tabs = await page.locator('nav[aria-label="Onglets"] a').evaluateAll((as) => as.map((a) => a.querySelector('span:not([aria-hidden]) > span:not([aria-hidden]) span')?.textContent?.trim() ?? a.textContent))
-  eq(tabs, ['Aperçu', 'Médias', 'Manga', 'Réglages'], 'tabs')
+  eq(tabs, ['Aperçu', 'Médias', 'IPTV', 'Manga', 'Réglages'], 'tabs (the IPTV apart from Médias)')
+  // The IPTV's pages light the IPTV tab, never Médias
+  await page.goto(`${B}/iptv/chaines`, { waitUntil: 'networkidle' })
+  await page.waitForSelector('nav[aria-label="Onglets"] a[aria-current="page"][href="/iptv"]')
+  await page.goto(`${B}/dashboard`, { waitUntil: 'networkidle' })
   await page.waitForSelector('text=Stockage')
   await page.waitForSelector('text=Films')                       // Bibliothèque: every library's size
   for (const hidden of ['Processeur', 'Mémoire', 'Jarvis', 'Services', 'Système']) {
