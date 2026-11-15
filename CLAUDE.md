@@ -61,6 +61,9 @@ npm workspaces (`frontend`, `backend`); run from the repo root unless noted.
   through signed addresses (a stream address never reaches the browser). A stream that plays with sound
   only (MPEG-2, HEVC…) is converted live by ffmpeg, which reads it through the relay
   (`services/iptvConvert.ts`; the player's side is `pages/iptv/picture.ts`). Pages in `pages/iptv/`.
+  Optional VPN for the IPTV only (`services/iptvVpn.ts`): with `IPTV_PROXY` (the local HTTP proxy of wireproxy,
+  installed by `scripts/iptv-vpn.sh`), the relay (`iptvFetch`, undici ProxyAgent) and the Python module (HTTP(S)_PROXY)
+  go through it, nothing else of Nexus; VPN down = IPTV stops, never direct.
 - **Deploy**: GitHub webhook `routes/deploy.ts` only writes a request file; `scripts/auto-deploy.sh`
   (systemd path unit) runs `scripts/deploy.sh` outside the app (build, `scripts/migrate-db.sh`, restart).
   Settings › Version compares interface and server commits.

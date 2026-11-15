@@ -11,6 +11,7 @@ import { makeToken } from '../helpers'
 import { checkChannel, checkDueChannels, importCatalogue, refreshCatalogue } from '../../src/services/iptv'
 import { dropSoundOnlyVariants, rewritePlaylist } from '../../src/services/iptvProxy'
 import { convertJobs, stopConversions } from '../../src/services/iptvConvert'
+import net from 'net'
 
 /*
  * IPTV: catalogue queries and filters, favourites / history per user, settings, the stream
@@ -294,6 +295,90 @@ describe('IPTV relay (player)', () => {
   it('rewritePlaylist keeps comments, data: keys and blank lines', () => {
     const out = rewritePlaylist('#EXTM3U\n\n#EXT-X-KEY:METHOD=AES-128,URI="data:text/plain;base64,AA"\n#EXTINF:4,\na.ts', 'https://h.example/x/i.m3u8', (a) => `R(${a})`)
     expect(out).toBe('#EXTM3U\n\n#EXT-X-KEY:METHOD=AES-128,URI="data:text/plain;base64,AA"\n#EXTINF:4,\nR(https://h.example/x/a.ts)')
+  })
+})
+
+describe('IPTV through its VPN (IPTV_PROXY, scripts/iptv-vpn.sh)', () => {
+  // A local HTTP proxy like the one wireproxy opens: CONNECT tunnels (Node) and absolute URLs (Python)
+  const through: string[] = []
+  const proxy = http.createServer((req, res) => {
+    through.push(`GET ${req.url}`)
+    const target = new URL(req.url!)
+    const up = http.request(target, { method: req.method, headers: { ...req.headers, host: target.host } }, (r) => {
+      res.writeHead(r.statusCode!, r.headers); r.pipe(res)
+    })
+    up.on('error', () => { res.writeHead(502); res.end() })
+    req.pipe(up)
+  })
+  proxy.on('connect', (req: http.IncomingMessage, socket: net.Socket, head: Buffer) => {
+    through.push(`CONNECT ${req.url}`)
+    const [host, port] = req.url!.split(':')
+    const up = net.connect(Number(port), host, () => {
+      socket.write('HTTP/1.1 200 Connection Established\r\n\r\n'); up.write(head); up.pipe(socket); socket.pipe(up)
+    })
+    up.on('error', () => socket.destroy()); socket.on('error', () => up.destroy())
+  })
+  // Cloudflare's trace, as seen from the VPN's exit
+  const trace = http.createServer((_req, res) => { res.end('fl=1\nip=203.0.113.9\nloc=FR\nwarp=off\n') })
+  let proxyUrl = ''
+  beforeAll(async () => {
+    await new Promise<void>((r) => proxy.listen(0, '127.0.0.1', r))
+    await new Promise<void>((r) => trace.listen(0, '127.0.0.1', r))
+    proxyUrl = `http://127.0.0.1:${(proxy.address() as AddressInfo).port}`
+    process.env.IPTV_VPN_CHECK_URL = `http://127.0.0.1:${(trace.address() as AddressInfo).port}/cdn-cgi/trace`
+  })
+  afterEach(() => { delete process.env.IPTV_PROXY })
+  afterAll(() => { proxy.close(); trace.close(); delete process.env.IPTV_VPN_CHECK_URL })
+  const token = () => makeToken('user', 'stream')
+  const port = () => new URL(base).port
+
+  it('the player\'s streams go through the VPN; without it, directly', async () => {
+    through.length = 0
+    expect((await request(app).get(`/api/iptv/play/TF1.fr/0/index.m3u8?token=${token()}`)).status).toBe(200)
+    expect(through).toHaveLength(0)
+
+    process.env.IPTV_PROXY = proxyUrl
+    const master = await request(app).get(`/api/iptv/play/TF1.fr/0/index.m3u8?token=${token()}`)
+    expect(master.status).toBe(200)
+    const variant = await request(app).get(master.text.split('\n')[2])
+    expect(variant.status).toBe(200)
+    // A video segment, streamed through the tunnel
+    const seg = await request(app).get(variant.text.split('\n').find((l) => l.includes('seg1.ts'))!).buffer(true)
+    expect(seg.status).toBe(200)
+    expect(seg.body.length).toBe(376)
+    expect(through.filter((t) => t === `CONNECT 127.0.0.1:${port()}`).length).toBeGreaterThanOrEqual(1)
+  })
+
+  it('the VPN down: the IPTV stops, it never goes out directly', async () => {
+    process.env.IPTV_PROXY = 'http://127.0.0.1:9'          // nothing listens there
+    hits.length = 0
+    const res = await request(app).get(`/api/iptv/play/TF1.fr/0/index.m3u8?token=${token()}`)
+    expect(res.status).toBe(502)
+    expect(hits).toHaveLength(0)                           // the IPTV server never heard from Nexus
+  })
+
+  it('the checks (Python module) go through the VPN too', async () => {
+    process.env.IPTV_PROXY = proxyUrl
+    through.length = 0
+    const tf1 = await checkChannel(aliceId, 'TF1.fr')
+    expect(tf1.status).toBe('online')
+    expect(through.some((t) => t.startsWith(`GET http://127.0.0.1:${port()}/`))).toBe(true)
+  }, 60_000)
+
+  it('Réglages › IPTV: is the VPN up, where does the IPTV come out (admins)', async () => {
+    expect((await request(app).get('/api/iptv/vpn').set(admin)).body.data).toEqual({ configured: false })
+    process.env.IPTV_PROXY = proxyUrl
+    const up = (await request(app).get('/api/iptv/vpn?refresh=1').set(admin)).body.data
+    expect(up).toMatchObject({ configured: true, ok: true, ip: '203.0.113.9', countryCode: 'FR', country: 'France' })
+    expect(through.some((t) => t.startsWith('CONNECT 127.0.0.1:'))).toBe(true)
+    process.env.IPTV_PROXY = 'http://127.0.0.1:9'
+    const down = (await request(app).get('/api/iptv/vpn?refresh=1').set(admin)).body.data
+    expect(down).toMatchObject({ configured: true, ok: false })
+    expect(down.error).toBeTruthy()
+    expect((await request(app).get('/api/iptv/vpn').set(alice)).status).toBe(403)
+    // Only http://host:port is taken
+    process.env.IPTV_PROXY = 'socks5://127.0.0.1:1080'
+    expect((await request(app).get('/api/iptv/vpn').set(admin)).body.data).toEqual({ configured: false })
   })
 })
 

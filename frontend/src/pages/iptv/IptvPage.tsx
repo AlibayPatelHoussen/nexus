@@ -514,6 +514,33 @@ function RecentView() {
 // ─── Settings ───────────────────────────────────────────────────────────────
 const SOURCE_NAMES: Record<string, string> = { 'iptv-org': 'iptv-org', 'free-tv': 'Free-TV' }
 
+/** The IPTV's VPN: only the IPTV goes through it (scripts/iptv-vpn.sh). Admins. */
+function VpnGroup() {
+  const { data: vpn, refetch, isFetching } = useQuery({ queryKey: ['iptv', 'vpn'], queryFn: () => iptvService.vpn(), refetchInterval: 60_000 })
+  if (!vpn) return <Skeleton className="h-24 rounded-group" />
+  const check = (
+    <Button size="small" loading={isFetching} onClick={() => { void iptvService.vpn(true).then(() => refetch()) }} icon={<RefreshCw size={14} />}>Vérifier</Button>
+  )
+  return (
+    <Group
+      header="VPN"
+      footer={!vpn.configured
+        ? <>Seule l’IPTV peut passer par un VPN (pour regarder les chaînes d’un autre pays) : le reste de Nexus garde la connexion normale. Pour l’activer, sur le serveur, avec le fichier WireGuard de ton fournisseur : <code className="font-mono">sudo bash scripts/iptv-vpn.sh install fichier.conf</code></>
+        : vpn.ok
+          ? 'Seule l’IPTV passe par le VPN : flux, vérifications, guide. Le reste de Nexus garde la connexion normale.'
+          : <>Tant que le VPN ne répond pas, les chaînes ne se chargent pas (rien ne passe en direct). Sur le serveur : <code className="font-mono">bash scripts/iptv-vpn.sh status</code></>}
+    >
+      <ListRow title="VPN de l’IPTV" status={!vpn.configured ? undefined : vpn.ok ? 'ok' : 'error'}
+        detail={!vpn.configured ? 'Désactivé' : vpn.ok ? 'Actif' : 'Injoignable'}>
+        {vpn.configured && check}
+      </ListRow>
+      {vpn.configured && vpn.ok && vpn.countryCode && <ListRow title="Sortie" detail={`${flag(vpn.countryCode)} ${vpn.country ?? vpn.countryCode}`} />}
+      {vpn.configured && vpn.ok && vpn.ip && <ListRow title="Adresse IP" detail={<span className="font-mono">{vpn.ip}</span>} />}
+      {vpn.configured && !vpn.ok && vpn.error && <ListRow wrap title="Erreur" subtitle={vpn.error} />}
+    </Group>
+  )
+}
+
 function SettingsView() {
   const qc = useQueryClient()
   const isAdmin = useAuthStore((s) => s.user?.role === 'admin')
@@ -562,6 +589,7 @@ function SettingsView() {
           </ListRow>
         )}
       </Group>
+      {isAdmin && <VpnGroup />}
       {isAdmin && (
         <Group header="Affichage">
           <ListRow wrap title="Masquer les indisponibles" subtitle="Celles dont la dernière vérification a échoué.">

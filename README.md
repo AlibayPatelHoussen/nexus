@@ -238,6 +238,21 @@ turn on **Add visitor location headers** once in the Cloudflare dashboard (*Rule
 Managed Transforms*). Nexus only trusts those headers when the request comes through the
 tunnel (from the same machine).
 
+### VPN for the IPTV only
+
+To watch another country's channels, the IPTV (streams, checks, guide, YouTube / Twitch
+lives) can leave through a WireGuard VPN while the rest of Nexus keeps the normal
+connection. With the WireGuard file of your provider (Mullvad, Proton VPN…):
+```
+sudo bash scripts/iptv-vpn.sh install /path/to/provider.conf   # changing country: install again
+bash scripts/iptv-vpn.sh status
+sudo bash scripts/iptv-vpn.sh uninstall
+```
+It installs wireproxy (WireGuard in user space, pinned version checked by SHA-256, no
+change to the server's routes) as `nexus-iptv-vpn.service`, a local HTTP proxy on
+127.0.0.1:25345, and sets `IPTV_PROXY` in `backend/.env`. If the VPN is down, the IPTV
+stops instead of going out directly. *IPTV › Réglages › VPN* shows its state, exit country and IP.
+
 Admin accounts: `bash scripts/create-admin.sh` (asks the name, e-mail and password; on an
 existing account it resets the password and signs it out everywhere). Delete an account
 (admin or user): `bash scripts/delete-account.sh <name>` (asks to type the name again; never
