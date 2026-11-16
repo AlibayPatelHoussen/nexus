@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest'
-import { accessOf, canSee, homePath, isIptvHost } from './access'
-import { NAV, tabsFor } from './nav'
+import { accessOf, canSee, homePath, iptvTab, isIptvHost } from './access'
+import { NAV, sectionOf, tabFor, tabsFor } from './nav'
 
 const nexus = { host: 'nexus.exemple.com', hostname: 'nexus.exemple.com' }
 const iptv = { host: 'iptv.exemple.com', hostname: 'iptv.exemple.com' }
@@ -58,5 +58,34 @@ describe('what the navigation shows', () => {
   it('an admin at the IPTV address: the IPTV and the settings only', () => {
     const a = accessOf({ role: 'admin' }, URL_, iptv)
     expect(paths(a).sort()).toEqual(['/iptv', '/settings'])
+  })
+})
+
+describe('the IPTV: its own tab for « user » accounts, under Médias for admins', () => {
+  const user = accessOf({ role: 'user', canMedia: true, canIptv: true }, URL_, nexus)
+  const admin = accessOf({ role: 'admin' }, URL_, nexus)
+
+  it('a « Médias + IPTV » user: Aperçu, Médias, IPTV, Manga, Réglages', () => {
+    expect(iptvTab(user)).toBe(true)
+    const tabs = tabsFor(user)
+    expect(tabs.map((t) => t.label)).toEqual(['Aperçu', 'Médias', 'IPTV', 'Manga', 'Réglages'])
+    // The IPTV's pages light its own tab, never Médias
+    expect(tabFor('/iptv/chaines', tabs)?.label).toBe('IPTV')
+    expect(tabFor('/cinema', tabs)?.label).toBe('Médias')
+    expect(sectionOf(NAV.find((n) => n.to === '/iptv')!, user)).toBe('tv')
+  })
+
+  it('an admin keeps it under Médias (no extra tab)', () => {
+    expect(iptvTab(admin)).toBe(false)
+    const tabs = tabsFor(admin)
+    expect(tabs.map((t) => t.label)).toEqual(['Aperçu', 'Médias', 'Manga', 'Terminal', 'Réglages'])
+    expect(tabFor('/iptv', tabs)?.label).toBe('Médias')
+    expect(sectionOf(NAV.find((n) => n.to === '/iptv')!, admin)).toBe('media')
+  })
+
+  it('a « Médias » user has no IPTV anywhere', () => {
+    const media = accessOf({ role: 'user', canMedia: true, canIptv: false }, URL_, nexus)
+    expect(iptvTab(media)).toBe(false)
+    expect(tabsFor(media).map((t) => t.label)).toEqual(['Aperçu', 'Médias', 'Manga', 'Réglages'])
   })
 })

@@ -20,7 +20,7 @@ import TextField from '@/components/ui/TextField'
 import { Group, ListRow } from '@/components/ui/GroupedList'
 import { useDebounce } from '@/hooks/useDebounce'
 import { useAuthStore } from '@/stores/authStore'
-import { useAccess } from '@/components/shell/access'
+import { iptvTab, useAccess } from '@/components/shell/access'
 import { spring } from '@/design/motion'
 import { cn } from '@/utils'
 import { serverError } from '@/utils/errorToast'
@@ -51,7 +51,7 @@ export default function IptvPage() {
   const view: View = (VIEWS.some((v) => v.id === raw) ? raw : 'accueil') as View
   const { device } = useShell()
   const phone = device === 'phone'
-  const { media } = useAccess()
+  const access = useAccess()
   const current = VIEWS.find((v) => v.id === view)!
 
   const content = (
@@ -71,8 +71,8 @@ export default function IptvPage() {
     <Page
       title={phone || view === 'accueil' ? 'IPTV' : current.label}
       subtitle={!phone && view === 'accueil' ? 'Chaînes de télévision en direct' : undefined}
-      // The media's sections menu with the media only (« IPTV seulement », the IPTV's address: its own tab)
-      leading={phone && media ? <SectionMenu value="iptv" /> : undefined}
+      // Admins reach the IPTV from the media's sections menu; the others have an IPTV tab of their own
+      leading={phone && access.media && !iptvTab(access) ? <SectionMenu value="iptv" /> : undefined}
       accessory={phone ? <PhoneNav view={view} /> : undefined}
     >
       {phone ? content : (

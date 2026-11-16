@@ -4,7 +4,7 @@ import { motion } from 'framer-motion'
 import { ChevronDown, Search, X } from 'lucide-react'
 import PullDownMenu from '@/components/ui/PullDownMenu'
 import { spring } from '@/design/motion'
-import { useAccess } from '@/components/shell/access'
+import { iptvTab, useAccess } from '@/components/shell/access'
 
 export const VIDEO_SECTIONS = [
   { value: 'films',   label: 'Films',   to: '/cinema' },
@@ -18,9 +18,10 @@ export function SectionMenu({ value }: { value: string }) {
   const navigate = useNavigate()
   const access = useAccess()
   // « Ma liste » too: on iPhone the tab bar has no room for it (desktop: in the sidebar).
-  // The IPTV with the account's access only
+  // The IPTV only for admins (« user » accounts have an IPTV tab of their own)
   const sections = [
-    ...VIDEO_SECTIONS, ...(access.iptv ? [{ value: 'iptv', label: 'IPTV', to: '/iptv' }] : []), { value: 'ma-liste', label: 'Ma liste', to: '/ma-liste' },
+    ...VIDEO_SECTIONS, ...(access.iptv && !iptvTab(access) ? [{ value: 'iptv', label: 'IPTV', to: '/iptv' }] : []),
+    { value: 'ma-liste', label: 'Ma liste', to: '/ma-liste' },
   ]
   const current = sections.find((s) => s.value === value) ?? sections[0]
   return (

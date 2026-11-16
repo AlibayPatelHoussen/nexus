@@ -4,7 +4,7 @@ import { LogOut, Search } from 'lucide-react'
 import { useAuthStore } from '@/stores/authStore'
 import { spring } from '@/design/motion'
 import { cn } from '@/utils'
-import { NAV, SECTIONS, type NavItem } from './nav'
+import { NAV, SECTIONS, sectionOf, type NavItem } from './nav'
 import { useSectionStore } from './sectionStore'
 import { canSee, useAccess } from './access'
 
@@ -91,7 +91,7 @@ export default function Sidebar({ onSearch, onLogout, onNavigate }: SidebarProps
 
         <nav className="flex-1 overflow-y-auto px-3.5 pb-3 scrollbar-none">
           {SECTIONS.map((s, i) => {
-            const items = NAV.filter((n) => n.section === s.id && visible(n))
+            const items = NAV.filter((n) => sectionOf(n, access) === s.id && visible(n))
             if (!items.length) return null
             return (
               <div key={s.id}>

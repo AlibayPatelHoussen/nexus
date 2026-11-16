@@ -4,6 +4,9 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Changed — The IPTV apart for « user » accounts
+- iPhone: « user » accounts get an **IPTV** tab of its own (Aperçu, Médias, IPTV, Manga, Réglages); the IPTV leaves the Médias tab and its sections menu. Desktop: the IPTV gets its own sidebar section, « Télévision ». Admins keep it under Médias (`iptvTab` in `components/shell/access.ts`)
+
 ### Changed — Admin account scripts off GitHub
 - `scripts/create-admin.sh` and `scripts/delete-account.sh` leave the repository (`.gitignore`): they stay on the server only. `deploy.sh` puts them back once, from the last commit that had them (the update that removes them from Git would otherwise delete them there too), and the nightly backup (`scripts/backup.sh`) saves them
 
