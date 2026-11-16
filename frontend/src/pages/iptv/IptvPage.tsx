@@ -821,8 +821,8 @@ function SettingsView() {
           </ListRow>
         )}
         {isAdmin && (
-          <ListRow title="Actualisation quotidienne">
-            <Toggle label="Actualisation quotidienne" checked={settings.autoRefresh} onChange={(v) => save.mutate({ autoRefresh: v })} />
+          <ListRow wrap title="Actualisation automatique" subtitle="Dès qu’iptv-org ou Free-TV publient une nouvelle version (vérifié chaque heure), au moins une fois par jour.">
+            <Toggle label="Actualisation automatique" checked={settings.autoRefresh} onChange={(v) => save.mutate({ autoRefresh: v })} />
           </ListRow>
         )}
       </Group>

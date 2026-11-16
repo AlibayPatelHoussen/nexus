@@ -253,6 +253,23 @@ class FreeTv(unittest.TestCase):
         self.assertNotIn('Dash.ca', self.channels)
         self.assertEqual(self.stats, {'entries': 8, 'matched': 3, 'added': 4, 'blocked': 2, 'dash': 1, 'pages': 2})
 
+    def test_a_free_tv_entry_of_another_language_does_not_come_first(self):
+        # France 24: one channel, French its main feed; Free-TV lists the Spanish feed's address
+        api = {
+            'channels': [{'id': 'France24.fr', 'name': 'France 24', 'country': 'FR', 'categories': ['news']}],
+            'feeds': [{'channel': 'France24.fr', 'id': 'French', 'is_main': True, 'languages': ['fra']},
+                      {'channel': 'France24.fr', 'id': 'Spanish', 'is_main': False, 'languages': ['spa']}],
+            'streams': [{'channel': 'France24.fr', 'feed': 'Spanish', 'title': 'France 24 Español', 'quality': '1080p', 'url': 'https://f24.example/es.m3u8'},
+                        {'channel': 'France24.fr', 'feed': 'French', 'title': 'France 24', 'quality': '720p', 'url': 'https://f24.example/fr.m3u8'}],
+            'countries': [{'code': 'FR', 'name': 'France'}], 'logos': [], 'blocklist': [],
+        }
+        built = catalogue.build_from_api(api)
+        entries = parse_m3u('#EXTM3U\n#EXTINF:-1 tvg-name="France 24" tvg-country="ES" group-title="Spain",France 24 Español\nhttps://f24.example/es.m3u8\n'
+                            '#EXTINF:-1 tvg-name="France 24" tvg-id="France24.fr" tvg-country="FR" group-title="France",France 24\nhttps://f24.example/fr-free.m3u8\n')
+        channels, _ = freetv.merge(built, entries, api)
+        f24 = next(c for c in channels if c.id == 'France24.fr')
+        self.assertEqual([st.url.rsplit('/', 1)[-1] for st in f24.streams], ['fr-free.m3u8', 'fr.m3u8', 'es.m3u8'])
+
     def test_merge_is_stable_and_works_alone(self):
         again, _ = freetv.merge(catalogue.build_from_api(self.api, parse_m3u(M3U)), parse_m3u(FREETV), self.api)
         self.assertEqual([c.to_json() for c in again], [c.to_json() for c in sorted(self.channels.values(), key=lambda c: c.name.casefold())])
@@ -265,19 +282,23 @@ class _Handler(http.server.BaseHTTPRequestHandler):
     routes = {}
     hits = []
 
-    def do_GET(self):
+    def do_HEAD(self):
+        self.do_GET(body=False)
+
+    def do_GET(self, body=True):
         _Handler.hits.append((self.path, self.headers.get('User-Agent'), self.headers.get('Referer'), self.headers.get('If-None-Match')))
         route = _Handler.routes.get(self.path.split('?')[0])
         if route is None:
             self.send_response(404); self.end_headers(); return
-        status, body, headers = route
+        status, payload, headers = route
         if self.headers.get('If-None-Match') and self.headers.get('If-None-Match') == headers.get('ETag'):
             self.send_response(304); self.end_headers(); return
         self.send_response(status)
         for k, v in headers.items():
             self.send_header(k, v)
         self.end_headers()
-        self.wfile.write(body)
+        if body:
+            self.wfile.write(payload)
 
     def log_message(self, *a):
         pass
@@ -358,6 +379,33 @@ class Sources(LocalServer):
     def test_gzip_answers(self):
         _Handler.routes['/g.json'] = (200, gzip.compress(b'[3]'), {'Content-Encoding': 'gzip'})
         self.assertEqual(sources.fetch(f'{self.base}/g.json'), b'[3]')
+
+
+class Changed(LocalServer):
+    def test_asks_without_downloading(self):
+        url = f'{self.base}/streams.json'
+        _Handler.routes['/streams.json'] = (200, b'[1]', {'ETag': '"v1"'})
+        self.assertTrue(sources.changed([url]))                      # never downloaded
+        sources.fetch(url)
+        _Handler.hits = []
+        self.assertFalse(sources.changed([url]))                     # 304: the same
+        self.assertEqual(_Handler.hits[0][3], '"v1"')
+        _Handler.routes['/streams.json'] = (200, b'[1, 2]', {'ETag': '"v2"'})
+        self.assertTrue(sources.changed([url]))                      # a new version
+        del _Handler.routes['/streams.json']
+        self.assertIsNone(sources.changed([url]))                    # no answer: unknown
+
+    def test_command_after_a_refresh(self):
+        for name, data in API.items():
+            _Handler.routes[f'/api/{name}.json'] = (200, json.dumps(data).encode(), {'ETag': f'"{name}-1"'})
+        _Handler.routes['/index.m3u'] = (200, M3U.encode(), {'ETag': '"m3u-1"'})
+        env = {**os.environ, 'IPTV_API_BASE': f'{self.base}/api', 'IPTV_PLAYLIST_URL': f'{self.base}/index.m3u'}
+        cli = [sys.executable, str(HERE.parent / 'iptv_cli.py'), '--json']
+        subprocess.run([*cli, 'refresh'], capture_output=True, text=True, env=env, timeout=60, check=True)
+        ask = lambda: json.loads(subprocess.run([*cli, 'changed'], capture_output=True, text=True, env=env, timeout=60).stdout.splitlines()[0])
+        self.assertEqual((ask()['changed'], ask()['sources']), (False, []))
+        _Handler.routes['/api/streams.json'] = (200, b'[]', {'ETag': '"streams-2"'})
+        self.assertEqual((ask()['changed'], ask()['sources']), (True, ['iptv-org']))
 
 
 class Checker(LocalServer):

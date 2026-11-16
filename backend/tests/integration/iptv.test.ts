@@ -8,7 +8,7 @@ import request from 'supertest'
 import { app } from '../../src/index'
 import { query } from '../../src/config/database'
 import { makeToken } from '../helpers'
-import { checkChannel, checkDueChannels, importCatalogue, refreshCatalogue } from '../../src/services/iptv'
+import { checkChannel, checkDueChannels, importCatalogue, refreshCatalogue, sourcesChanged } from '../../src/services/iptv'
 import { dropSoundOnlyVariants, rewritePlaylist } from '../../src/services/iptvProxy'
 import { convertJobs, stopConversions } from '../../src/services/iptvConvert'
 import net from 'net'
@@ -424,6 +424,8 @@ describe('IPTV with the Python module', () => {
       const state = await refreshCatalogue()
       expect(state).toMatchObject({ ok: true, source: 'api', sources: ['iptv-org'] })
       expect(state.stats).toMatchObject({ channels: 1, imported: 1 })
+      // Every hour: has a source published a new version? (this test server gives no version mark: unknown, so no)
+      expect(await sourcesChanged()).toBe(false)
       expect((await list('')).items.map((c: { id: string }) => c.id)).toEqual(['Remote.fr'])
       const { rows } = await query('SELECT COUNT(*)::int AS n FROM iptv_favorites WHERE user_id = $1', [aliceId])
       expect(rows[0].n).toBe(2)                       // kept even while their channels are gone
