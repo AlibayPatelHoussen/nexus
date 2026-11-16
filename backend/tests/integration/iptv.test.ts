@@ -66,6 +66,20 @@ const server = http.createServer((req, res) => {
   }
   if (u in api) return send(200, JSON.stringify(api[u]), 'application/json')
   if (u === '/index.m3u') return send(200, '#EXTM3U\n')
+  // A provider's playlist (IPTV › Paramètres › Playlists): credentials in its address, separators,
+  // a film on demand, the same channel twice
+  if (u === '/provider/get.php') {
+    if (!req.url!.includes('password=s3cret-pass')) return send(401, 'no', 'text/plain')
+    return send(200, [
+      '#EXTM3U',
+      '#EXTINF:-1,[COLOR green]--- FRANCE TV ---[/COLOR]', 'http://0.8.6.0:1024177',
+      '#EXTINF:-1,FR - TF1 HD', `${base}/live/master.m3u8?ch=1`,
+      '#EXTINF:-1,FR - M6 HD', `${base}/live/master.m3u8?ch=2`,
+      '#EXTINF:-1,FR - TF1 FHD', `${base}/live/master.m3u8?ch=3`,
+      '#EXTINF:-1 group-title="Films",Un film', `${base}/movie/me/pass/9.mkv`,
+      '#EXTINF:-1,Sport', `${base}/live/master.m3u8?ch=4`,
+    ].join('\n'), 'audio/x-mpegurl')
+  }
   if (u.startsWith('/gen/') && !u.includes('..') && fs.existsSync(path.join(genDir, u.slice(5)))) {
     return send(200, fs.readFileSync(path.join(genDir, u.slice(5))), u.endsWith('.m3u8') ? 'application/vnd.apple.mpegurl' : 'video/mp2t')
   }
@@ -722,4 +736,88 @@ if (!hasFfmpeg) console.warn('ffmpeg not installed: IPTV conversion tests skippe
     expect((await request(app).get(`/api/iptv/play/Old.fr/0/converted/index.m3u8?token=${token()}`)).status).toBe(410)
     expect((await request(app).get(`/api/iptv/play/Old.fr/0/converted/seg000000.ts?token=${token()}`)).status).toBe(410)
   }, 60_000)
+})
+
+describe('IPTV playlists added in Nexus (IPTV › Paramètres, admins)', () => {
+  const SECRET = 's3cret-pass'
+  const useLocalSources = () => {
+    process.env.IPTV_API_BASE = `${base}/api`
+    process.env.IPTV_PLAYLIST_URL = `${base}/index.m3u`
+    process.env.IPTV_DATA_DIR = `/tmp/nexus-iptv-test-${process.pid}`
+    process.env.IPTV_FREETV_URL = 'off'
+  }
+  afterAll(async () => {
+    delete process.env.IPTV_API_BASE; delete process.env.IPTV_PLAYLIST_URL; delete process.env.IPTV_DATA_DIR; delete process.env.IPTV_FREETV_URL
+    await query('DELETE FROM iptv_playlists')
+    await query('DELETE FROM iptv_channels WHERE playlist IS NOT NULL')
+  })
+
+  it('admins only; what is sent is checked', async () => {
+    expect((await request(app).get('/api/iptv/playlists').set(alice)).status).toBe(403)
+    expect((await request(app).post('/api/iptv/playlists').set(alice).send({ name: 'X', url: 'https://tv.example/x.m3u' })).status).toBe(403)
+    const status = async (body: object) => (await request(app).post('/api/iptv/playlists').set(admin).send(body)).status
+    expect(await status({ url: 'https://tv.example/x.m3u' })).toBe(422)                                  // no name
+    expect(await status({ name: 'X', url: 'ftp://tv.example/x.m3u' })).toBe(422)
+    expect(await status({ name: 'X', url: 'https://tv.example/x.m3u', content: '#EXTM3U' })).toBe(422)    // one or the other
+    expect(await status({ name: 'X', content: 'hello, not a playlist' })).toBe(422)
+    expect((await query('SELECT COUNT(*)::int AS n FROM iptv_playlists')).rows[0].n).toBe(0)
+  })
+
+  it('its live channels join the catalogue in its order, on the home page and as a filter; its address stays on the server', async () => {
+    useLocalSources()
+    const added = await request(app).post('/api/iptv/playlists').set(admin)
+      .send({ name: 'Mon abonnement', url: `${base}/provider/get.php?username=me&password=${SECRET}` })
+    expect(added.status).toBe(201)
+    expect(added.body.data).toMatchObject({ name: 'Mon abonnement', kind: 'url', host: new URL(base).host })
+    const file = await request(app).post('/api/iptv/playlists').set(admin)
+      .send({ name: 'Mon fichier', content: `#EXTM3U\n#EXTINF:-1,FR - Ma chaîne\n${base}/live/master.m3u8?ch=9\n` })
+    expect(file.status).toBe(201)
+    const state = await refreshCatalogue()         // the one the addition started, or a new one
+    expect(state.sources).toEqual(['iptv-org', 'playlist'])
+    const playlists = (await request(app).get('/api/iptv/playlists').set(admin)).body.data
+    expect(playlists.map((p: { name: string; channels: number; error: string | null }) => [p.name, p.channels, p.error]))
+      .toEqual([['Mon abonnement', 3, null], ['Mon fichier', 1, null]])
+
+    // In the playlist's order; separators and films on demand left out; « TF1 HD » + « TF1 FHD »: one channel
+    const id = added.body.data.id as string
+    const mine = (await list(`playlist=${id}`)).items
+    expect(mine.map((c: { name: string; country: string | null; playlist: string }) => [c.name, c.country, c.playlist]))
+      .toEqual([['TF1 HD', 'FR', id], ['M6 HD', 'FR', id], ['Sport', null, id]])
+    expect(mine[0].streams.map((x: { source: string }) => x.source)).toEqual(['playlist', 'playlist'])
+    // Home: a shelf per playlist, and a filter, for every IPTV account
+    const home = (await request(app).get('/api/iptv/summary').set(alice)).body.data
+    expect(home.playlists.map((p: { name: string; count: number; items: unknown[] }) => [p.name, p.count, p.items.length]))
+      .toEqual([['Mon abonnement', 3, 3], ['Mon fichier', 1, 1]])
+    expect((await request(app).get('/api/iptv/facets').set(alice)).body.data.playlists.map((p: { name: string }) => p.name))
+      .toEqual(['Mon abonnement', 'Mon fichier'])
+    // Played through the relay
+    expect((await request(app).get(`/api/iptv/play/${mine[0].id}/0/index.m3u8`).set(alice)).status).toBe(200)
+
+    // The address (and its credentials) never reaches a browser, and the private file is gone
+    for (const body of [added.body, playlists, mine, home]) expect(JSON.stringify(body)).not.toContain(SECRET)
+    expect(fs.readdirSync(os.tmpdir()).filter((f) => f.startsWith('nexus-iptv-playlists-'))).toEqual([])
+
+    // Never checked in the background (a provider counts each connection): only when opened
+    await query(`UPDATE iptv_channels SET checked_at = NOW() WHERE playlist IS NULL`)
+    await query(`UPDATE iptv_channels SET checked_at = NULL WHERE playlist IS NOT NULL`)
+    expect(await checkDueChannels(50)).toBe(0)
+
+    // Removed: its channels leave the catalogue
+    expect((await request(app).delete(`/api/iptv/playlists/${id}`).set(admin)).status).toBe(200)
+    await refreshCatalogue()
+    expect((await list(`playlist=${id}`)).total).toBe(0)
+    expect((await list(`playlist=${file.body.data.id}`)).total).toBe(1)
+  }, 180_000)
+
+  it('a playlist that cannot be read says why, without its address', async () => {
+    useLocalSources()
+    await query('DELETE FROM iptv_playlists')
+    const added = await request(app).post('/api/iptv/playlists').set(admin)
+      .send({ name: 'Expiré', url: `${base}/provider/get.php?username=me&password=wrong-${SECRET}` })
+    await refreshCatalogue()
+    const [p] = (await request(app).get('/api/iptv/playlists').set(admin)).body.data
+    expect(p).toMatchObject({ id: added.body.data.id, channels: 0 })
+    expect(p.error).toMatch(/HTTP 401/)
+    expect(JSON.stringify(p)).not.toContain(SECRET)
+  }, 120_000)
 })

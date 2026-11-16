@@ -332,13 +332,31 @@ CREATE TABLE IF NOT EXISTS iptv_channels (
   checked_at  TIMESTAMPTZ,
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   curated     INTEGER,
-  best_stream SMALLINT
+  best_stream SMALLINT,
+  -- A playlist added in Nexus (iptv_playlists) and the channel's place in it
+  playlist      UUID,
+  playlist_rank INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_iptv_channels_country    ON iptv_channels(country);
 CREATE INDEX IF NOT EXISTS idx_iptv_channels_curated    ON iptv_channels(curated) WHERE curated IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_iptv_channels_categories ON iptv_channels USING GIN (categories);
 CREATE INDEX IF NOT EXISTS idx_iptv_channels_languages  ON iptv_channels USING GIN (languages);
 CREATE INDEX IF NOT EXISTS idx_iptv_channels_name       ON iptv_channels (lower(name));
+CREATE INDEX IF NOT EXISTS idx_iptv_channels_playlist   ON iptv_channels(playlist, playlist_rank) WHERE playlist IS NOT NULL;
+
+-- Playlists added in Nexus (IPTV › Paramètres, admins): the owner's own M3U lists, by address
+-- (often with the account's credentials: never sent to a browser) or as a file
+CREATE TABLE IF NOT EXISTS iptv_playlists (
+  id           UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name         TEXT NOT NULL,
+  url          TEXT,
+  content      TEXT,
+  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  refreshed_at TIMESTAMPTZ,
+  channels     INTEGER,
+  error        TEXT,
+  CONSTRAINT iptv_playlists_one_source CHECK ((url IS NULL) <> (content IS NULL))
+);
 
 -- No foreign key to iptv_channels: a channel can leave the catalogue for a while (stream
 -- down) and come back; the user's favourites and history are kept meanwhile.

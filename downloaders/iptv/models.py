@@ -42,9 +42,14 @@ class Channel:
     alt_names: list = field(default_factory=list)
     streams: list = field(default_factory=list)      # list[Stream], best first
     curated: Optional[int] = None                    # place in the Free-TV playlist (hand-picked channels)
+    playlist: Optional[str] = None                   # a playlist added in Nexus: its id…
+    rank: Optional[int] = None                       # …and the channel's place in it
 
     def to_json(self) -> dict:
         data = asdict(self)
+        for key in ('playlist', 'rank'):                 # only for the channels of a playlist
+            if data[key] is None:
+                del data[key]
         # The usual values are left out: an iptv-org stream reads the same as before Free-TV
         # was added (the server checks again only the channels whose streams really changed)
         for stream in data['streams']:

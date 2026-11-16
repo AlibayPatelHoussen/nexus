@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import {
-  ArrowUpDown, ChevronDown, ChevronRight, ChevronUp, Globe, Heart, History, House, Languages, LayoutGrid, RefreshCw,
+  ArrowUpDown, ChevronDown, ChevronRight, ChevronUp, Globe, Heart, History, House, Languages, LayoutGrid, ListPlus, RefreshCw,
   Settings2, Shapes, Tv,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -17,6 +17,9 @@ import EmptyState from '@/components/ui/EmptyState'
 import Skeleton from '@/components/ui/Skeleton'
 import Toggle from '@/components/ui/Toggle'
 import TextField from '@/components/ui/TextField'
+import Sheet from '@/components/ui/Sheet'
+import SegmentedControl from '@/components/ui/SegmentedControl'
+import { useConfirm } from '@/components/ui/useConfirm'
 import { Group, ListRow } from '@/components/ui/GroupedList'
 import { useDebounce } from '@/hooks/useDebounce'
 import { useAuthStore } from '@/stores/authStore'
@@ -24,7 +27,7 @@ import { iptvTab, useAccess } from '@/components/shell/access'
 import { spring } from '@/design/motion'
 import { cn } from '@/utils'
 import { serverError } from '@/utils/errorToast'
-import { iptvService, type ChannelSort, type IptvChannel, type IptvSettings, type IptvSummary } from '@/services/iptvService'
+import { iptvService, type ChannelSort, type IptvChannel, type IptvPlaylist, type IptvSettings, type IptvSummary } from '@/services/iptvService'
 import { CHANNEL_GRID, ChannelLogo, ChannelTile, useInfiniteTrigger, useOpenChannel } from './ChannelTile'
 import { MAIN_CATEGORIES, categoryName, countryName, flag, languageName } from './labels'
 
@@ -176,6 +179,10 @@ function HomeView() {
 
       {data.recent.length > 0 && <Shelf title="Récemment regardées" items={data.recent} onOpen={open} more="/iptv/recents" />}
       {data.favorites.length > 0 && <Shelf title="Favoris" items={data.favorites} onOpen={open} more="/iptv/favoris" />}
+      {/* The playlists added in Nexus (IPTV › Paramètres), each in its own order */}
+      {(data.playlists ?? []).map((p) => (
+        <Shelf key={p.id} id={`iptv-playlist-${p.id}`} title={p.name} items={p.items} onOpen={open} more={`/iptv/chaines?playlist=${p.id}`} />
+      ))}
       {/* The priority countries, in the owner's order. One without any channel says so: nothing is made up */}
       {data.priority.map((p) => (p.count > 0 ? (
         <Shelf key={p.code} id={`iptv-pays-${p.code}`} lead={p.flag ?? flag(p.code)} title={countryName(p.code, p.name)} items={p.items}
@@ -345,6 +352,7 @@ function ChannelsView() {
   const country = params.get('country') ?? ''
   const category = params.get('category') ?? ''
   const language = params.get('language') ?? ''
+  const playlist = params.get('playlist') ?? ''
   const sort: ChannelSort = SORTS.find((o) => o.value === params.get('sort'))?.value ?? 'top'
   const online = params.get('online') === '1'
   const set = (key: string, value: string) => {
@@ -355,7 +363,7 @@ function ChannelsView() {
   useEffect(() => { if ((params.get('q') ?? '') !== q) set('q', q) }, [q]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const facets = useQuery({ queryKey: ['iptv', 'facets'], queryFn: iptvService.facets, staleTime: 5 * 60_000 })
-  const filters = { q, country, category, language, sort, status: online ? 'online' as const : 'all' as const }
+  const filters = { q, country, category, language, playlist, sort, status: online ? 'online' as const : 'all' as const }
   const list = useInfiniteQuery({
     queryKey: ['iptv', 'channels', filters],
     queryFn: ({ pageParam }) => iptvService.channels({ ...filters, page: pageParam, limit: 60 }),
@@ -367,12 +375,17 @@ function ChannelsView() {
   const more = useInfiniteTrigger(() => { if (list.hasNextPage && !list.isFetchingNextPage) void list.fetchNextPage() }, !!list.hasNextPage)
   const open = useOpenChannel()
   const f = facets.data
-  const anyFilter = !!(q || country || category || language || online)
+  const anyFilter = !!(q || country || category || language || playlist || online)
 
   return (
     <div className="flex flex-col gap-4">
       <SearchField value={text} onChange={setText} label="Rechercher une chaîne" placeholder="Rechercher une chaîne" />
       <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filtres">
+        {/* The playlists added in Nexus (each in its own order) */}
+        {!!f?.playlists?.length && (
+          <FilterMenu label="Playlist" value={playlist} onChange={(v) => set('playlist', v)}
+            options={f.playlists.map((p) => ({ value: p.id, label: `${p.name} (${p.count})` }))} />
+        )}
         <FilterMenu label="Pays" value={country} onChange={(v) => set('country', v)}
           options={(f?.countries ?? []).map((c) => ({ value: c.code, label: `${c.flag ?? flag(c.code)} ${countryName(c.code, c.name)} (${c.count})` }))} />
         <FilterMenu label="Catégorie" value={category} onChange={(v) => set('category', v)}
@@ -515,7 +528,7 @@ function RecentView() {
 }
 
 // ─── Settings ───────────────────────────────────────────────────────────────
-const SOURCE_NAMES: Record<string, string> = { 'iptv-org': 'iptv-org', 'free-tv': 'Free-TV' }
+const SOURCE_NAMES: Record<string, string> = { 'iptv-org': 'iptv-org', 'free-tv': 'Free-TV', playlist: 'tes playlists' }
 
 /**
  * The IPTV's VPN: only the IPTV goes through it (scripts/iptv-vpn.sh). Admins. Once installed,
@@ -552,6 +565,136 @@ function VpnGroup({ enabled, onEnabled, saving }: { enabled: boolean; onEnabled:
       {on && vpn.ok && vpn.ip && <ListRow title="Adresse IP" detail={<span className="font-mono">{vpn.ip}</span>} />}
       {on && !vpn.ok && vpn.error && <ListRow wrap title="Erreur" subtitle={vpn.error} />}
     </Group>
+  )
+}
+
+/**
+ * Playlists added in Nexus (admins): the owner's own M3U lists (a subscription, free channels…),
+ * by address or as a file. Kept on this server: their addresses (often with the account's
+ * credentials) never come back to a browser, only their host.
+ */
+function PlaylistsGroup({ refreshing }: { refreshing: boolean }) {
+  const qc = useQueryClient()
+  const confirm = useConfirm()
+  const [adding, setAdding] = useState(false)
+  const { data: lists, isError } = useQuery({
+    queryKey: ['iptv', 'playlists'], queryFn: iptvService.playlists, refetchInterval: refreshing ? 3000 : false,
+  })
+
+  async function remove(p: IptvPlaylist) {
+    const ok = await confirm({
+      title: `Retirer « ${p.name} » ?`,
+      message: 'Ses chaînes quittent le catalogue à la mise à jour qui suit. Les favoris qui en venaient restent, au cas où elle reviendrait.',
+      confirmLabel: 'Retirer', danger: true,
+    })
+    if (!ok) return
+    try {
+      await iptvService.removePlaylist(p.id)
+      toast.success('Playlist retirée : le catalogue se met à jour')
+      void qc.invalidateQueries({ queryKey: ['iptv'] })
+    } catch (e) { toast.error(serverError(e)) }
+  }
+
+  const detail = (p: IptvPlaylist) => [
+    p.kind === 'url' ? p.host : 'Fichier',
+    p.error ? null : p.channels == null ? (refreshing ? 'lecture en cours…' : 'lue à la prochaine mise à jour')
+      : `${p.channels.toLocaleString('fr-FR')} chaîne${p.channels > 1 ? 's' : ''}`,
+  ].filter(Boolean).join(' · ')
+
+  return (
+    <>
+      <Group header="Playlists" footer="Une playlist que tu as le droit d’utiliser : ton abonnement, une liste de chaînes gratuites… Elle reste sur ce serveur (jamais sur GitHub ni dans un navigateur) et ses chaînes passent par le relais de Nexus, et par le VPN s’il est actif. Seules les chaînes en direct sont gardées ; elles ne sont vérifiées qu’à l’ouverture (un fournisseur compte chaque connexion).">
+        {isError ? <ListRow wrap title="Playlists indisponibles" subtitle="Le serveur n’a pas répondu." />
+          : !lists ? <ListRow title={<span className="text-label2">Chargement…</span>} />
+            : lists.map((p) => (
+              <ListRow key={p.id} wrap title={p.name} status={p.error ? 'error' : undefined}
+                subtitle={p.error ? <><span className="text-danger-text">{p.error}</span>{detail(p) && ` · ${detail(p)}`}</> : detail(p)}>
+                <Button size="small" variant="destructive" onClick={() => void remove(p)} aria-label={`Retirer la playlist ${p.name}`}>Retirer</Button>
+              </ListRow>
+            ))}
+        <ListRow title={<span className="text-accent-text">Ajouter une playlist…</span>} icon={<ListPlus strokeWidth={1.75} />} onClick={() => setAdding(true)} />
+      </Group>
+      <AddPlaylistSheet open={adding} onClose={() => setAdding(false)} />
+    </>
+  )
+}
+
+const MAX_PLAYLIST_FILE = 10 * 1024 * 1024
+
+function AddPlaylistSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const qc = useQueryClient()
+  const phone = useShell().device === 'phone'
+  const [name, setName] = useState('')
+  const [kind, setKind] = useState<'url' | 'file'>('url')
+  const [url, setUrl] = useState('')
+  const [file, setFile] = useState<File | null>(null)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const urlOk = /^https?:\/\/\S+$/i.test(url.trim())
+  const fileOk = !!file && file.size > 0 && file.size <= MAX_PLAYLIST_FILE
+  const valid = name.trim().length > 0 && name.trim().length <= 60 && (kind === 'url' ? urlOk : fileOk)
+
+  function close() {
+    if (saving) return
+    onClose()
+    setName(''); setKind('url'); setUrl(''); setFile(null); setError(null)
+  }
+
+  async function submit() {
+    if (!valid || saving) return
+    setSaving(true); setError(null)
+    try {
+      await iptvService.addPlaylist(kind === 'url' ? { name: name.trim(), url: url.trim() } : { name: name.trim(), content: await file!.text() })
+      toast.success('Playlist ajoutée : le catalogue se met à jour')
+      void qc.invalidateQueries({ queryKey: ['iptv'] })
+      setSaving(false)
+      close()
+    } catch (e) {
+      setError(serverError(e))
+      setSaving(false)
+    }
+  }
+
+  const formId = 'iptv-playlist-form'
+  return (
+    <Sheet open={open} onClose={close} title="Nouvelle playlist" size="sm" dismissible={!saving}
+      phoneHeader={{
+        left: <Button variant="plain" onClick={close}>Annuler</Button>,
+        right: <Button variant="plain" className="font-semibold" loading={saving} disabled={!valid} type="submit" form={formId}>Ajouter</Button>,
+      }}
+      footer={phone ? undefined : <><Button onClick={close}>Annuler</Button><Button variant="primary" loading={saving} disabled={!valid} type="submit" form={formId}>Ajouter</Button></>}>
+      <form id={formId} className="flex flex-col gap-4" onSubmit={(e) => { e.preventDefault(); void submit() }}>
+        <TextField label="Nom" value={name} maxLength={60} onChange={(e) => { setName(e.target.value); setError(null) }}
+          placeholder="Mon abonnement" hint="Le titre de son étagère sur l’accueil de l’IPTV" />
+        <div className="flex flex-col gap-1.5">
+          <span className="text-subhead text-label2">Source</span>
+          <SegmentedControl<'url' | 'file'> label="Source de la playlist" full value={kind} onChange={(v) => { setKind(v); setError(null) }}
+            options={[{ value: 'url', label: 'Adresse' }, { value: 'file', label: 'Fichier' }]} />
+        </div>
+        {kind === 'url' ? (
+          <TextField label="Adresse de la playlist (M3U)" type="url" inputMode="url" value={url} placeholder="https://…/playlist.m3u"
+            autoCapitalize="none" autoCorrect="off" spellCheck={false} onChange={(e) => { setUrl(e.target.value); setError(null) }}
+            hint="Relue à chaque mise à jour du catalogue. Elle reste sur ce serveur : seul son domaine est affiché ensuite."
+            error={url && !urlOk ? 'Une adresse qui commence par http:// ou https://' : undefined} />
+        ) : (
+          <div className="flex flex-col gap-1.5">
+            <label className="self-start">
+              <span className="sr-only">Fichier de la playlist (.m3u)</span>
+              <input type="file" accept=".m3u,.m3u8,.txt,audio/x-mpegurl,audio/mpegurl,application/vnd.apple.mpegurl" className="sr-only peer"
+                onChange={(e) => { setFile(e.target.files?.[0] ?? null); setError(null) }} />
+              <span className="inline-flex h-11 items-center rounded-pill bg-fill px-4 text-label text-[15px] font-semibold cursor-pointer peer-focus-visible:ring-2 peer-focus-visible:ring-accent">
+                {file ? 'Choisir un autre fichier…' : 'Choisir un fichier…'}
+              </span>
+            </label>
+            <p className="text-caption text-label2">
+              {file ? `${file.name} · ${(file.size / 1024).toLocaleString('fr-FR', { maximumFractionDigits: 0 })} Ko${file.size > MAX_PLAYLIST_FILE ? ' : trop gros (10 Mo au plus)' : ''}`
+                : 'Un fichier .m3u ou .m3u8 (10 Mo au plus), gardé tel quel sur ce serveur.'}
+            </p>
+          </div>
+        )}
+        {error && <p role="alert" className="text-subhead text-danger-text">{error}</p>}
+      </form>
+    </Sheet>
   )
 }
 
@@ -614,6 +757,7 @@ function SettingsView() {
         )}
       </Group>
       {isAdmin && <VpnGroup enabled={settings.vpnEnabled} saving={save.isPending} onEnabled={(v) => save.mutate({ vpnEnabled: v })} />}
+      {isAdmin && <PlaylistsGroup refreshing={state.running} />}
       {isAdmin && (
         <Group header="Affichage">
           <ListRow wrap title="Masquer les indisponibles" subtitle="Celles dont la dernière vérification a échoué.">
