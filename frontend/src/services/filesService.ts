@@ -1,5 +1,5 @@
 import { api } from './api'
-import { getStreamToken, withStreamToken } from './streamToken'
+import { withStreamToken } from './streamToken'
 import type { FileEntry } from '@/types'
 
 export interface DeleteResult {
@@ -67,19 +67,15 @@ export const filesService = {
     return withStreamToken(`/api/files/stream?path=${encodeURIComponent(path)}`, streamToken)
   },
 
-  async getStreamUrl(path: string): Promise<string> {
-    return this.buildStreamUrl(path, await getStreamToken())
-  },
-
-  async getDownloadUrl(path: string): Promise<string> {
-    return withStreamToken(`/api/files/download?path=${encodeURIComponent(path)}`, await getStreamToken())
+  buildDownloadUrl(path: string, streamToken: string): string {
+    return withStreamToken(`/api/files/download?path=${encodeURIComponent(path)}`, streamToken)
   },
 
   /** Several items of `dir` (or the whole folder) as one .zip, for a link */
-  async getZipUrl(dir: string, names: string[] = []): Promise<string> {
+  buildZipUrl(dir: string, names: string[], streamToken: string): string {
     const q = new URLSearchParams({ dir })
     names.forEach((n) => q.append('name', n))
-    return withStreamToken(`/api/files/zip?${q.toString()}`, await getStreamToken())
+    return withStreamToken(`/api/files/zip?${q.toString()}`, streamToken)
   },
 
   async upload(destPath: string, files: File[], onProgress?: (loaded: number, total: number) => void, signal?: AbortSignal): Promise<void> {

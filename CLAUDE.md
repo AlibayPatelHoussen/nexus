@@ -85,7 +85,10 @@ npm workspaces (`frontend`, `backend`); run from the repo root unless noted.
   clean-up. The file manager's `/api/files/zip` streams folders / selections as a stored .zip (yazl,
   `services/zipDownload.ts`). Downloads name files with `utils/contentDisposition.ts` (UTF-8 `filename*`).
   Frontend: `pages/dashboard/TransfersGroup.tsx`, `components/shell/TransferToasts.tsx`, `hooks/useUploads.ts`
-  (progress, « Annuler », drag & drop), `components/files/UploadRows.tsx`.
+  (progress, « Annuler », drag & drop), `components/files/UploadRows.tsx`. Every download goes through
+  `utils/saveFile.tsx` with a link built inside the tap (`hooks/useStreamToken.ts`, token fetched ahead): in place in a
+  browser; in the iPhone home-screen app the share sheet (≤ 1 GB) or the in-app browser sheet — never a page opened
+  first and filled later (it stays « about:blank » there).
 - **Security**: secrets only in `backend/.env` (Nexus refuses to start without `JWT_SECRET`); the file manager never
   reads or changes secrets and leaves the Nexus folder read-only (`assertAllowed` in `services/files.ts`, code
   `PROTECTED_FILE`); `trust proxy` = loopback (cloudflared on this machine); http visitors via Cloudflare are
