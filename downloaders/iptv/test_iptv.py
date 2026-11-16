@@ -253,6 +253,23 @@ class FreeTv(unittest.TestCase):
         self.assertNotIn('Dash.ca', self.channels)
         self.assertEqual(self.stats, {'entries': 8, 'matched': 3, 'added': 4, 'blocked': 2, 'dash': 1, 'pages': 2})
 
+    def test_a_free_tv_entry_of_another_language_does_not_come_first(self):
+        # France 24: one channel, French its main feed; Free-TV lists the Spanish feed's address
+        api = {
+            'channels': [{'id': 'France24.fr', 'name': 'France 24', 'country': 'FR', 'categories': ['news']}],
+            'feeds': [{'channel': 'France24.fr', 'id': 'French', 'is_main': True, 'languages': ['fra']},
+                      {'channel': 'France24.fr', 'id': 'Spanish', 'is_main': False, 'languages': ['spa']}],
+            'streams': [{'channel': 'France24.fr', 'feed': 'Spanish', 'title': 'France 24 Español', 'quality': '1080p', 'url': 'https://f24.example/es.m3u8'},
+                        {'channel': 'France24.fr', 'feed': 'French', 'title': 'France 24', 'quality': '720p', 'url': 'https://f24.example/fr.m3u8'}],
+            'countries': [{'code': 'FR', 'name': 'France'}], 'logos': [], 'blocklist': [],
+        }
+        built = catalogue.build_from_api(api)
+        entries = parse_m3u('#EXTM3U\n#EXTINF:-1 tvg-name="France 24" tvg-country="ES" group-title="Spain",France 24 Español\nhttps://f24.example/es.m3u8\n'
+                            '#EXTINF:-1 tvg-name="France 24" tvg-id="France24.fr" tvg-country="FR" group-title="France",France 24\nhttps://f24.example/fr-free.m3u8\n')
+        channels, _ = freetv.merge(built, entries, api)
+        f24 = next(c for c in channels if c.id == 'France24.fr')
+        self.assertEqual([st.url.rsplit('/', 1)[-1] for st in f24.streams], ['fr-free.m3u8', 'fr.m3u8', 'es.m3u8'])
+
     def test_merge_is_stable_and_works_alone(self):
         again, _ = freetv.merge(catalogue.build_from_api(self.api, parse_m3u(M3U)), parse_m3u(FREETV), self.api)
         self.assertEqual([c.to_json() for c in again], [c.to_json() for c in sorted(self.channels.values(), key=lambda c: c.name.casefold())])

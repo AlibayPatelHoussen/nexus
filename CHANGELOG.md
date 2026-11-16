@@ -4,6 +4,9 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Fixed — France 24 started in Spanish
+- iptv-org keeps all of France 24's languages in one channel, French its main version; Free-TV lists the Spanish version with the very address of one of those streams, and Free-TV's streams came first: the French channel played Spanish. A channel's main version now always comes first (Free-TV's streams first inside it). 34 other channels started on another version the same way (Canale 5, AXN Black, CCTV-6…)
+
 ### Changed — The IPTV follows iptv-org within the hour
 - iptv-org publishes its links once a day (its files are rebuilt at midnight UTC), Free-TV whenever its maintainers edit it. Nexus used to download the catalogue 24 hours after its previous download, so a new version could wait up to a day: now it asks **every hour** whether a source published a new version — a conditional request (ETag, « 304 Not Modified »), nothing downloaded — and refreshes as soon as one did; once a day at the latest
 - *IPTV › Paramètres*: « Actualisation automatique » (was « quotidienne ») says so

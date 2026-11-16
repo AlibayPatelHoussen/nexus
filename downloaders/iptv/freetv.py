@@ -16,7 +16,8 @@ How an entry joins the catalogue (nothing is made up: what Free-TV does not say 
 - otherwise a new channel, with the name, country and logo of the playlist;
 - left out: entries of channels on the iptv-org blocklist (withdrawn on the rights holder's
   request, or adult content), and DASH streams (.mpd), which the player cannot read.
-Streams of a channel: Free-TV's first (hand-picked), then iptv-org's, web pages last.
+Streams of a channel: its main version first (its main feed: France 24 in French, not the Spanish
+feed Free-TV lists with the same address), Free-TV's first inside it (hand-picked), web pages last.
 `curated` keeps the place in the playlist: the channels people expect, in the order they expect.
 """
 from __future__ import annotations
@@ -198,6 +199,14 @@ def merge(channels: List[Channel], entries: List[PlaylistEntry], api: Dict[str, 
         if not ch.logo and logo and _is_web_url(logo):
             ch.logo = logo
 
-    for ch in touched.values():       # sorted() keeps the order inside each group
-        ch.streams = sorted(ch.streams, key=lambda st: 2 if st.kind == 'page' else (0 if st.source == SOURCE else 1))
+    # Order: the channel's main version first (a Free-TV entry with the address of another
+    # language's stream must not put that language first: France 24's Spanish feed was), Free-TV's
+    # streams first inside it, web pages last. sorted() keeps the order inside each group.
+    for ch in touched.values():
+        main = (feeds_main.get(ch.id) or {}).get('id')
+        ch.streams = sorted(ch.streams, key=lambda st: (
+            1 if st.kind == 'page' else 0,
+            0 if (st.feed is None or main is None or st.feed == main) else 1,
+            0 if st.source == SOURCE else 1,
+        ))
     return sorted(by_id.values(), key=lambda c: c.name.casefold()), stats
