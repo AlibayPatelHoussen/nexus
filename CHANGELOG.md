@@ -4,6 +4,10 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Changed — The IPTV follows iptv-org within the hour
+- iptv-org publishes its links once a day (its files are rebuilt at midnight UTC), Free-TV whenever its maintainers edit it. Nexus used to download the catalogue 24 hours after its previous download, so a new version could wait up to a day: now it asks **every hour** whether a source published a new version — a conditional request (ETag, « 304 Not Modified »), nothing downloaded — and refreshes as soon as one did; once a day at the latest
+- *IPTV › Paramètres*: « Actualisation automatique » (was « quotidienne ») says so
+
 ### Added — « Mes chaînes » (IPTV channels added with their link)
 - *IPTV › Paramètres › Mes chaînes* (admins): **Ajouter une chaîne…** with its name and stream link (.m3u8), and optionally its country and logo; **Ajouter plusieurs chaînes…** by pasting an M3U list or choosing a file; « Retirer » on each. Up to 2 000
 - Shown at once **like the other channels**: in their country, first (home shelves and lists), in search, favourites, the player. A « FR - » prefix gives the country; Kodi tags are removed; from a list, films / series on demand, separators (dummy addresses), adult groups and links already added are left out, and counted

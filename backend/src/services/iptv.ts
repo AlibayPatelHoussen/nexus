@@ -710,6 +710,24 @@ export async function guideFor(id: string) {
 let timers: NodeJS.Timeout[] = []
 let checking = false
 
+/** Whether iptv-org or Free-TV published a new version since the last refresh (conditional
+ * requests: nothing downloaded). iptv-org rebuilds its published files once a day. */
+export async function sourcesChanged(): Promise<boolean> {
+  try {
+    const { events } = await collect('iptv', ['changed'], 90_000)
+    return (events.find((e) => e.type === 'changed') as { changed?: unknown } | undefined)?.changed === true
+  } catch { return false }
+}
+
+/** When the catalogue is downloaded again (asked every hour): within the hour after a source
+ * publishes a new version, once a day at the latest; at once when it is empty. */
+export async function refreshDue(o: { autoRefresh: boolean; ageMs: number; empty: boolean; changed: () => Promise<boolean> }): Promise<boolean> {
+  if (o.empty && o.ageMs > 3600_000) return true
+  if (!o.autoRefresh) return false
+  if (o.ageMs > 24 * 3600_000) return true
+  return o.ageMs > 3600_000 && await o.changed()
+}
+
 export function startIptvWorker() {
   // The VPN switch and the subdomain known from the start
   void getSettings().catch(() => {})
@@ -718,9 +736,10 @@ export function startIptvWorker() {
     const settings = await getSettings()
     const state = await refreshState()
     const age = state.at ? Date.now() - new Date(state.at).getTime() : Infinity
-    // Daily catalogue refresh (and at once on the first start: the catalogue is empty)
+    // As soon as iptv-org / Free-TV publish a new version (asked every hour), daily at the latest;
+    // at once on the first start (the catalogue is empty)
     const empty = Number((await query<{ n: string }>('SELECT COUNT(*) AS n FROM iptv_channels')).rows[0].n) === 0
-    if ((settings.autoRefresh && age > 24 * 3600_000) || (empty && age > 3600_000)) await refreshCatalogue().catch(() => {})
+    if (await refreshDue({ autoRefresh: settings.autoRefresh, ageMs: age, empty, changed: sourcesChanged })) await refreshCatalogue().catch(() => {})
     if (settings.epgUrl) {
       const epg = await getMeta<{ at?: string }>('epg', {})
       if (!epg.at || Date.now() - new Date(epg.at).getTime() > 6 * 3600_000) await refreshEpg().catch((err) => logger.warn(`IPTV guide: ${err.message}`))

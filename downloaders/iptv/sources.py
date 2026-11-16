@@ -112,6 +112,36 @@ def fetch(url: str, timeout: float = 30) -> bytes:
         raise FetchError(f'{url}: {getattr(err, "reason", err)}') from err
 
 
+def changed(urls: List[str], timeout: float = 20) -> Optional[bool]:
+    """Whether a source published a new version since the copy kept here: a conditional HEAD
+    (If-None-Match / If-Modified-Since), nothing downloaded. True: new version, or never
+    downloaded; False: still the same (304); None: no mirror answered."""
+    copies = [u for u in urls if all(p.exists() for p in _cache_paths(u))]
+    if not copies:
+        return True
+    for url in copies:
+        try:
+            meta = json.loads(_cache_paths(url)[1].read_text())
+        except (OSError, ValueError):
+            return True
+        headers = {'User-Agent': USER_AGENT}
+        if meta.get('etag'):
+            headers['If-None-Match'] = meta['etag']
+        if meta.get('last_modified'):
+            headers['If-Modified-Since'] = meta['last_modified']
+        if len(headers) == 1:
+            continue                         # no version mark to compare with: unknown
+        try:
+            with urllib.request.urlopen(urllib.request.Request(url, headers=headers, method='HEAD'), timeout=timeout):
+                return True                  # 200: a new version
+        except urllib.error.HTTPError as err:
+            if err.code == 304:
+                return False
+        except (urllib.error.URLError, OSError, ValueError):
+            pass
+    return None
+
+
 def cached(url: str) -> Optional[bytes]:
     body_path, _ = _cache_paths(url)
     try:

@@ -265,19 +265,23 @@ class _Handler(http.server.BaseHTTPRequestHandler):
     routes = {}
     hits = []
 
-    def do_GET(self):
+    def do_HEAD(self):
+        self.do_GET(body=False)
+
+    def do_GET(self, body=True):
         _Handler.hits.append((self.path, self.headers.get('User-Agent'), self.headers.get('Referer'), self.headers.get('If-None-Match')))
         route = _Handler.routes.get(self.path.split('?')[0])
         if route is None:
             self.send_response(404); self.end_headers(); return
-        status, body, headers = route
+        status, payload, headers = route
         if self.headers.get('If-None-Match') and self.headers.get('If-None-Match') == headers.get('ETag'):
             self.send_response(304); self.end_headers(); return
         self.send_response(status)
         for k, v in headers.items():
             self.send_header(k, v)
         self.end_headers()
-        self.wfile.write(body)
+        if body:
+            self.wfile.write(payload)
 
     def log_message(self, *a):
         pass
@@ -358,6 +362,33 @@ class Sources(LocalServer):
     def test_gzip_answers(self):
         _Handler.routes['/g.json'] = (200, gzip.compress(b'[3]'), {'Content-Encoding': 'gzip'})
         self.assertEqual(sources.fetch(f'{self.base}/g.json'), b'[3]')
+
+
+class Changed(LocalServer):
+    def test_asks_without_downloading(self):
+        url = f'{self.base}/streams.json'
+        _Handler.routes['/streams.json'] = (200, b'[1]', {'ETag': '"v1"'})
+        self.assertTrue(sources.changed([url]))                      # never downloaded
+        sources.fetch(url)
+        _Handler.hits = []
+        self.assertFalse(sources.changed([url]))                     # 304: the same
+        self.assertEqual(_Handler.hits[0][3], '"v1"')
+        _Handler.routes['/streams.json'] = (200, b'[1, 2]', {'ETag': '"v2"'})
+        self.assertTrue(sources.changed([url]))                      # a new version
+        del _Handler.routes['/streams.json']
+        self.assertIsNone(sources.changed([url]))                    # no answer: unknown
+
+    def test_command_after_a_refresh(self):
+        for name, data in API.items():
+            _Handler.routes[f'/api/{name}.json'] = (200, json.dumps(data).encode(), {'ETag': f'"{name}-1"'})
+        _Handler.routes['/index.m3u'] = (200, M3U.encode(), {'ETag': '"m3u-1"'})
+        env = {**os.environ, 'IPTV_API_BASE': f'{self.base}/api', 'IPTV_PLAYLIST_URL': f'{self.base}/index.m3u'}
+        cli = [sys.executable, str(HERE.parent / 'iptv_cli.py'), '--json']
+        subprocess.run([*cli, 'refresh'], capture_output=True, text=True, env=env, timeout=60, check=True)
+        ask = lambda: json.loads(subprocess.run([*cli, 'changed'], capture_output=True, text=True, env=env, timeout=60).stdout.splitlines()[0])
+        self.assertEqual((ask()['changed'], ask()['sources']), (False, []))
+        _Handler.routes['/api/streams.json'] = (200, b'[]', {'ETag': '"streams-2"'})
+        self.assertEqual((ask()['changed'], ask()['sources']), (True, ['iptv-org']))
 
 
 class Checker(LocalServer):

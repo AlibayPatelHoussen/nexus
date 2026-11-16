@@ -5,6 +5,9 @@ download scripts; human messages on stderr).
         downloads the iptv-org files (API, playlist) and the Free-TV playlist, builds the
         catalogue, writes it to FILE (default data/iptv/catalogue.json)
         -> {"type": "done", "file", "stats", "notes", "source", "sources"}
+    python3 iptv_cli.py --json changed
+        whether iptv-org (API, playlist) or Free-TV published a new version since the last
+        refresh (conditional requests, nothing downloaded) -> {"type": "changed", "changed", "sources"}
     python3 iptv_cli.py --json check [--in items.json]      (else the list on stdin)
         items: [{id, url, kind?, user_agent?, referrer?}] -> one {"type": "check", …} per stream
     python3 iptv_cli.py --json resolve --url PAGE
@@ -92,6 +95,27 @@ def cmd_refresh(args) -> int:
     return 0
 
 
+def cmd_changed(args) -> int:
+    """iptv-org rebuilds its published files once a day (and Free-TV whenever its maintainers
+    edit it): the server asks every hour, and refreshes as soon as one of them changed."""
+    groups = {
+        'iptv-org': [[f'{b}/{name}.json' for b in sources.api_bases()] for name in ('streams', 'channels')] + [sources.playlist_urls()],
+        'free-tv': [sources.freetv_urls()] if sources.freetv_urls() else [],
+    }
+    found, unknown = [], False
+    for name, lists in groups.items():
+        for urls in lists:
+            state = sources.changed(urls, timeout=args.timeout)
+            if state is None:
+                unknown = True
+            elif state:
+                found.append(name)
+                break
+    emit('changed', changed=bool(found), sources=found, unknown=unknown)
+    emit('done')
+    return 0
+
+
 def cmd_check(args) -> int:
     try:
         items = json.loads(Path(args.input).read_text()) if args.input else json.load(sys.stdin)
@@ -142,12 +166,13 @@ def main(argv=None) -> int:
     p.add_argument('--json', action='store_true', help='machine-readable output (always JSON lines)')
     sub = p.add_subparsers(dest='cmd', required=True)
     r = sub.add_parser('refresh'); r.add_argument('--out'); r.add_argument('--timeout', type=float, default=60)
+    sub.add_parser('changed').add_argument('--timeout', type=float, default=20)
     c = sub.add_parser('check'); c.add_argument('--in', dest='input'); c.add_argument('--workers', type=int, default=4); c.add_argument('--timeout', type=float, default=8)
     v = sub.add_parser('resolve'); v.add_argument('--url', required=True); v.add_argument('--timeout', type=float, default=45)
     e = sub.add_parser('epg'); e.add_argument('--url', required=True); e.add_argument('--ids', required=True)
     e.add_argument('--out'); e.add_argument('--hours', type=float, default=36); e.add_argument('--timeout', type=float, default=120)
     args = p.parse_args(argv)
-    return {'refresh': cmd_refresh, 'check': cmd_check, 'resolve': cmd_resolve, 'epg': cmd_epg}[args.cmd](args)
+    return {'refresh': cmd_refresh, 'changed': cmd_changed, 'check': cmd_check, 'resolve': cmd_resolve, 'epg': cmd_epg}[args.cmd](args)
 
 
 if __name__ == '__main__':

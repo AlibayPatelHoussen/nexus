@@ -64,7 +64,8 @@ npm workspaces (`frontend`, `backend`); run from the repo root unless noted.
 - **IPTV**: `downloaders/iptv/` (standard library only) builds one catalogue from the iptv-org API and the
   Free-TV playlist (`freetv.py`), checks streams, and looks up the stream behind a YouTube / Twitch /
   Dailymotion live page with yt-dlp (`resolver.py`). `services/iptv.ts` keeps it in the `iptv_*` tables
-  (priority countries first, background checks a few at a time); `services/iptvProxy.ts` relays streams
+  (priority countries first, background checks a few at a time; every hour `iptv_cli.py changed` asks the sources
+  with conditional requests, and the catalogue is refreshed as soon as one published a new version, daily at the latest); `services/iptvProxy.ts` relays streams
   through signed addresses (a stream address never reaches the browser). A stream that plays with sound
   only (MPEG-2, HEVC…) is converted live by ffmpeg, which reads it through the relay
   (`services/iptvConvert.ts`; the player's side is `pages/iptv/picture.ts`). Pages in `pages/iptv/`.
