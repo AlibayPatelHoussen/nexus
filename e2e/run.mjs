@@ -839,14 +839,16 @@ test('UI: file manager — a file dropped on the window is sent with its progres
 
   // A folder: « Télécharger (.zip) » in its menu, a real zip with its files
   await page.locator('tr', { hasText: 'Marty Supreme (2025)' }).click({ button: 'right' })
-  const asked = page.context().waitForEvent('request', { predicate: (r) => r.url().includes('/api/files/zip?'), timeout: 10000 })
-  await page.click('text=Télécharger (.zip)')
-  const zipUrl = (await asked).url()
+  // Downloaded in place (no new page)
+  const [dl] = await Promise.all([page.waitForEvent('download', { timeout: 10000 }), page.click('text=Télécharger (.zip)')])
+  const zipUrl = dl.url()
   assert(/\/api\/files\/zip\?dir=.*Marty/.test(decodeURIComponent(zipUrl)), `zip url: ${zipUrl}`)
+  eq(dl.suggestedFilename(), 'Marty Supreme (2025).zip', 'zip name')
+  assert(page.url().includes('/files?path='), 'the page stays on Fichiers')
   const zip = await fetch(zipUrl)
   eq(zip.status, 200, 'zip status')
   eq(zip.headers.get('content-type'), 'application/zip', 'zip type')
-  const buf = Buffer.from(await zip.arrayBuffer())
+  const buf = fs.readFileSync(await dl.path())
   eq(buf.length, Number(zip.headers.get('content-length')), 'zip size known in advance')
   assert(buf.includes(Buffer.from('Marty Supreme (2025)/Marty.Supreme.2025.1080p.WEB.mp4')), 'the film is in the zip')
   await page.context().close()
@@ -886,6 +888,44 @@ test('UI: Aperçu › Transferts — sent from the iPhone, it appears at once on
   // « user » accounts have no transfers
   eq((await api('/api/transfers', { token: al.accessToken })).status, 403, 'user account: 403')
   await desk.context().close(); await phone.context().close()
+})
+
+test('UI: iPhone home-screen app — a download goes to the share sheet (never a blank page), a big one to the in-app browser with its real link', async () => {
+  admin = await login('admin', 'Admin1234')
+  sql('DELETE FROM transfers')
+  const up = await fetch(`${B}/api/transfers`, {
+    method: 'POST', headers: { Authorization: `Bearer ${admin.accessToken}` },
+    body: (() => { const f = new FormData(); f.append('files', new Blob(['jpeg-bytes'], { type: 'image/jpeg' }), 'Photo été.jpg'); return f })(),
+  })
+  eq(up.status, 201, 'transfer sent')
+  const page = await newPage(admin)
+  // The app from the home screen: navigator.standalone, and a share sheet that records what it gets
+  await page.context().addInitScript(() => {
+    Object.defineProperty(navigator, 'standalone', { value: true })
+    window.__shared = []
+    window.__opened = []
+    navigator.canShare = () => true
+    navigator.share = async ({ files }) => { for (const f of files) window.__shared.push({ name: f.name, type: f.type, text: await f.text() }) }
+    window.open = (u) => { window.__opened.push(String(u)); return null }
+  })
+  await page.goto(`${B}/dashboard`, { waitUntil: 'networkidle' })
+  const row = page.locator('#transferts [role="listitem"]', { hasText: 'Photo été.jpg' })
+  await row.locator('a[download]').click()
+  await page.waitForFunction(() => window.__shared.length === 1, null, { timeout: 10000 })
+  eq(await page.evaluate(() => window.__shared), [{ name: 'Photo été.jpg', type: 'image/jpeg', text: 'jpeg-bytes' }], 'shared file')
+  assert(page.url().endsWith('/dashboard'), `the app stays on Aperçu: ${page.url()}`)
+  eq(await page.evaluate(() => window.__opened), [], 'no page opened')
+
+  // Fichiers: a folder as .zip (size unknown) opens the in-app browser on the real link at once
+  await page.goto(`${B}/files?path=${encodeURIComponent(`${cfg.media}/films`)}`, { waitUntil: 'networkidle' })
+  await page.locator('[role="listitem"]', { hasText: 'Marty Supreme (2025)' }).waitFor()
+  await page.click('button[aria-label="Options du dossier"]')
+  await page.click('[role="menu"] >> text=Télécharger le dossier (.zip)')
+  const opened = await page.evaluate(() => window.__opened)
+  eq(opened.length, 1, 'one page opened')
+  assert(/^\/api\/files\/zip\?dir=.*&token=/.test(opened[0]), `real link, not about:blank: ${opened[0]}`)
+  sql('DELETE FROM transfers')
+  await page.context().close()
 })
 
 test('UI: settings shows matching interface/server versions', async () => {

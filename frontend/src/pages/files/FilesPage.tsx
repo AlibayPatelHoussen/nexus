@@ -7,6 +7,9 @@ import {
 import { Group } from '@/components/ui/GroupedList'
 import UploadRows from '@/components/files/UploadRows'
 import { useFileDrop, useUploads } from '@/hooks/useUploads'
+import { useStreamToken } from '@/hooks/useStreamToken'
+import { getStreamToken } from '@/services/streamToken'
+import { saveFile } from '@/utils/saveFile'
 import toast from 'react-hot-toast'
 import { useConfirm } from '@/components/ui/useConfirm'
 import { useContextMenu } from '@/components/ui/useContextMenu'
@@ -46,17 +49,6 @@ function FileIcon({ entry, size = 16 }: { entry: FileEntry; size?: number }) {
   return <Icon size={size} strokeWidth={1.5} className="text-label2 flex-shrink-0" aria-hidden="true" />
 }
 
-/**
- * Open a URL that needs an async stream token. The tab is opened
- * synchronously (inside the click) so popup blockers allow it.
- */
-function openInNewTab(urlPromise: Promise<string>) {
-  const tab = window.open('about:blank', '_blank')
-  urlPromise
-    .then((url) => { if (tab) tab.location.href = url; else window.location.href = url })
-    .catch(() => { tab?.close(); toast.error('Impossible d’ouvrir le fichier') })
-}
-
 const parentOf = (p: string) => p.split('/').slice(0, -1).join('/') || '/'
 const nameOf = (p: string) => (p === '/' ? 'Racine' : p.split('/').filter(Boolean).pop() ?? p)
 const VIEW_KEY = 'nexus-files-view'
@@ -68,6 +60,18 @@ export default function FilesPage() {
   const phone = device === 'phone'
   const confirm = useConfirm()
   const menu = useContextMenu()
+  // Links are built inside the tap (fetched ahead): a page opened first and filled later stays
+  // blank in the app from the home screen
+  const token = useStreamToken()
+  const withToken = (run: (t: string) => void) => {
+    if (token) run(token)
+    else getStreamToken().then(run).catch(() => toast.error('Impossible d’ouvrir le fichier'))
+  }
+  const download = (entry: FileEntry) => withToken((t) =>
+    saveFile({ url: filesService.buildDownloadUrl(entry.path, t), name: entry.name, size: entry.size ?? null }))
+  const downloadZip = (dir: string, names: string[] = []) => withToken((t) =>
+    saveFile({ url: filesService.buildZipUrl(dir, names, t), name: `${names.length === 1 ? names[0] : nameOf(dir)}.zip`, size: null }))
+  const watch = (entry: FileEntry) => withToken((t) => { window.open(filesService.buildStreamUrl(entry.path, t), '_blank') })
 
   const {
     currentPath, entries, isLoading, error, breadcrumbs,
@@ -126,9 +130,9 @@ export default function FilesPage() {
 
   function open(entry: FileEntry) {
     if (entry.type === 'directory') return navigate(entry.path)
-    if (VIDEO_EXTS.includes(entry.extension || '')) openInNewTab(filesService.getStreamUrl(entry.path))
+    if (VIDEO_EXTS.includes(entry.extension || '')) watch(entry)
     else if (EDITABLE_EXTS.includes(entry.extension || '')) setEditing(entry)
-    else openInNewTab(filesService.getDownloadUrl(entry.path))
+    else download(entry)
   }
 
   // Sent with its progress and « Annuler » (several at once), into the folder open when it started
@@ -152,16 +156,16 @@ export default function FilesPage() {
   function downloadPaths(paths: string[]) {
     if (!paths.length) return
     const one = entries.find((e) => e.path === paths[0])
-    if (paths.length === 1 && one?.type === 'file') { openInNewTab(filesService.getDownloadUrl(one.path)); return }
-    openInNewTab(filesService.getZipUrl(currentPath, paths.map((p) => p.split('/').pop() || p)))
+    if (paths.length === 1 && one?.type === 'file') { download(one); return }
+    downloadZip(currentPath, paths.map((p) => p.split('/').pop() || p))
   }
 
   const itemsFor = (entry: FileEntry): MenuItem[] => [
     { label: entry.type === 'directory' ? 'Ouvrir' : 'Ouvrir', icon: <Eye />, shortcut: '↩', onSelect: () => open(entry) },
     ...(EDITABLE_EXTS.includes(entry.extension || '') ? [{ label: 'Modifier', icon: <Pencil />, onSelect: () => setEditing(entry) }] : []),
     entry.type === 'file'
-      ? { label: 'Télécharger', icon: <Download />, onSelect: () => openInNewTab(filesService.getDownloadUrl(entry.path)) }
-      : { label: 'Télécharger (.zip)', icon: <FileArchive />, onSelect: () => openInNewTab(filesService.getZipUrl(entry.path)) },
+      ? { label: 'Télécharger', icon: <Download />, onSelect: () => download(entry) }
+      : { label: 'Télécharger (.zip)', icon: <FileArchive />, onSelect: () => downloadZip(entry.path) },
     ...(selected.size > 1 && selected.has(entry.path)
       ? [{ label: `Télécharger les ${selected.size} (.zip)`, icon: <FileArchive />, onSelect: () => downloadPaths([...selected]) }] : []),
     { label: 'Renommer…', icon: <Pencil />, onSelect: () => setRenaming(entry) },
@@ -231,7 +235,7 @@ export default function FilesPage() {
         { label: 'Nouveau dossier', icon: <FolderPlus />, onSelect: () => setCreating('dir') },
         { label: 'Nouveau fichier', icon: <FilePlus />, onSelect: () => setCreating('file') },
         { label: 'Envoyer des fichiers', icon: <Upload />, onSelect: () => uploadRef.current?.click() },
-        ...(currentPath !== '/' ? [{ label: 'Télécharger le dossier (.zip)', icon: <FileArchive />, onSelect: () => openInNewTab(filesService.getZipUrl(currentPath)) }] : []),
+        ...(currentPath !== '/' ? [{ label: 'Télécharger le dossier (.zip)', icon: <FileArchive />, onSelect: () => downloadZip(currentPath) }] : []),
         { separator: true },
         { label: 'Sélectionner', icon: <CircleCheck />, onSelect: () => setSelecting(true) },
       ], nameOf(currentPath))}>

@@ -13,7 +13,8 @@ import type { MenuItem } from '@/components/ui/ContextMenu'
 import UploadRows from '@/components/files/UploadRows'
 import { useFileDrop, useUploads } from '@/hooks/useUploads'
 import { useTransfersSocket } from '@/hooks/useTransfersSocket'
-import { getStreamToken } from '@/services/streamToken'
+import { useStreamToken } from '@/hooks/useStreamToken'
+import { saveFile } from '@/utils/saveFile'
 import { isPreviewable, transfersService, type Transfer } from '@/services/transfersService'
 import { serverError, showError } from '@/utils/errorToast'
 import { cn, formatBytes, formatWhen } from '@/utils'
@@ -32,7 +33,7 @@ export default function TransfersGroup({ phone }: { phone: boolean }) {
   const box = useRef<HTMLDivElement>(null)
   useTransfersSocket()
   const { data: items, isError } = useQuery({ queryKey: ['transfers'], queryFn: transfersService.list })
-  const { data: token } = useQuery({ queryKey: ['stream-token'], queryFn: getStreamToken, staleTime: 30 * 60_000 })
+  const token = useStreamToken()
   const { jobs, run, cancel } = useUploads()
 
   // From the notification / the toast (/dashboard#transferts)
@@ -80,15 +81,10 @@ export default function TransfersGroup({ phone }: { phone: boolean }) {
     { separator: true },
     { label: 'Supprimer', icon: <Trash2 />, destructive: true, onSelect: () => remove.mutate(t.id) },
   ]
+  // Browser: downloaded in place; the app from the home screen: the share sheet (Fichiers, Photos…)
   function download(t: Transfer) {
     const u = url(t)
-    if (!u) return
-    const a = document.createElement('a')
-    a.href = u
-    a.download = t.name
-    document.body.appendChild(a)
-    a.click()
-    a.remove()
+    if (u) saveFile({ url: u, name: t.name, size: t.size, type: t.mime })
   }
 
   const days = items?.[0] ? Math.max(1, Math.round((Date.parse(items[0].expiresAt) - Date.parse(items[0].createdAt)) / 86_400_000)) : 7
@@ -116,6 +112,7 @@ export default function TransfersGroup({ phone }: { phone: boolean }) {
           <SkeletonRows rows={2} />
         ) : items.map((t) => (
           <TransferRow key={t.id} t={t} preview={isPreviewable(t) ? url(t, true) : undefined} href={url(t)}
+            onDownload={() => download(t)}
             bind={menu.bind(itemsFor(t), t.name)}
             onMore={(el) => menu.openFrom(el, itemsFor(t), t.name)} />
         ))}
@@ -145,10 +142,11 @@ function iconFor(t: Transfer) {
   return File
 }
 
-function TransferRow({ t, preview, href, bind, onMore }: {
+function TransferRow({ t, preview, href, onDownload, bind, onMore }: {
   t: Transfer
   preview?: string
   href?: string
+  onDownload: () => void
   bind: ReturnType<ReturnType<typeof useContextMenu>['bind']>
   onMore: (el: HTMLElement) => void
 }) {
@@ -159,7 +157,8 @@ function TransferRow({ t, preview, href, bind, onMore }: {
   const detail = [formatBytes(t.size), device, formatWhen(t.createdAt)].filter(Boolean).join(' · ')
   return (
     <div role="listitem" className="nx-row relative flex items-center gap-3 pl-4 pr-2 min-h-row" {...bind}>
-      <a href={href} download={t.name} className={cn('flex-1 min-w-0 flex items-center gap-3 py-[7px] max-md:py-[9px] rounded-[10px] outline-none focus-visible:ring-2 focus-visible:ring-accent', !href && 'pointer-events-none')}
+      {/* A real link (keyboard, « Copier le lien »…); the tap itself goes through saveFile */}
+      <a href={href} download={t.name} onClick={(e) => { e.preventDefault(); onDownload() }} className={cn('flex-1 min-w-0 flex items-center gap-3 py-[7px] max-md:py-[9px] rounded-[10px] outline-none focus-visible:ring-2 focus-visible:ring-accent', !href && 'pointer-events-none')}
         aria-label={`Télécharger ${t.name}, ${detail}`}>
         <span className="w-9 h-9 flex-shrink-0 rounded-[8px] bg-fill overflow-hidden grid place-items-center text-label2" aria-hidden="true">
           {preview && !broken

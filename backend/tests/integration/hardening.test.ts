@@ -75,6 +75,27 @@ describe('File manager: the Nexus installation is read-only', () => {
     expect(res.status).toBe(200)
   })
 
+  it('a folder that holds it (« / », /home/user…) takes new files, never one named like the installation', async () => {
+    const parent = path.dirname(NEXUS_ROOT)
+    await expect(assertAllowed(parent, 'create')).resolves.toBeUndefined()
+    await expect(assertAllowed(NEXUS_ROOT, 'create')).rejects.toMatchObject({ code: 'PROTECTED_FILE' })
+    // A file named like the installation, in its parent folder: refused, the installation untouched
+    const clash = await request(app).post('/api/files/upload').query({ path: parent }).set(admin())
+      .attach('files', Buffer.from('x'), path.basename(NEXUS_ROOT))
+    expect(clash.status).toBe(403)
+    expect(fs.statSync(NEXUS_ROOT).isDirectory()).toBe(true)
+    let writable = true
+    try { fs.accessSync(parent, fs.constants.W_OK) } catch { writable = false }
+    if (!writable) return
+    const name = `nexus-upload-test-${process.pid}.txt`
+    try {
+      const up = await request(app).post('/api/files/upload').query({ path: parent }).set(admin())
+        .attach('files', Buffer.from('hello'), name)
+      expect(up.status).toBe(201)
+      expect(fs.readFileSync(path.join(parent, name), 'utf8')).toBe('hello')
+    } finally { fs.rmSync(path.join(parent, name), { force: true }) }
+  })
+
   it('a folder that holds it, or Git files elsewhere, cannot be changed (checked without touching them)', async () => {
     await expect(assertAllowed(path.dirname(NEXUS_ROOT), 'write')).rejects.toMatchObject({ code: 'PROTECTED_FILE' })
     await expect(assertAllowed(path.join(dir, 'repo', '.git', 'config'), 'write')).rejects.toMatchObject({ code: 'PROTECTED_FILE' })

@@ -54,11 +54,15 @@ export function secretReason(p: string): string | null {
   return null
 }
 
-/** The Nexus installation is read-only here (code, .git, .gitignore): it changes through GitHub and the deploy. */
-function installReason(p: string): string | null {
+/**
+ * The Nexus installation is read-only here (code, .git, .gitignore): it changes through GitHub and the deploy.
+ * `create`: new entries put into the folder `p` (an upload): a folder that holds the installation (« / »,
+ * /home/user…) takes them, only the folder itself is never changed (renamed, moved, deleted).
+ */
+function installReason(p: string, op: 'write' | 'create'): string | null {
   if (within(p, NEXUS_ROOT)) return 'dossier de Nexus (code, .git, .gitignore) : il change par GitHub et le déploiement'
   // A folder that holds the installation (/home/user…)
-  if (within(NEXUS_ROOT, p)) return 'dossier qui contient l’installation de Nexus'
+  if (op === 'write' && within(NEXUS_ROOT, p)) return 'dossier qui contient l’installation de Nexus'
   const parts = p.split(path.sep)
   if (parts.includes('.git') || path.basename(p) === '.gitignore') return 'fichier Git'
   return null
@@ -70,13 +74,14 @@ async function realOrSelf(p: string): Promise<string> {
 
 /**
  * Refuses a protected path: `read` = secrets (also through a symlink), `write` = secrets
- * and the Nexus installation / Git files (create, write, rename, move, delete, upload).
+ * and the Nexus installation / Git files (create, write, rename, move, delete), `create` = the
+ * same for a folder that receives new files (each new file is then checked with `write`).
  */
-export async function assertAllowed(p: string, op: 'read' | 'write'): Promise<void> {
+export async function assertAllowed(p: string, op: 'read' | 'write' | 'create'): Promise<void> {
   for (const x of new Set([p, await realOrSelf(p)])) {
     const secret = secretReason(x)
     if (secret) throw new AppError(`Fichier protégé (${secret}) : il se gère dans le terminal du serveur, pas depuis le navigateur.`, 403, true, 'PROTECTED_FILE')
-    const install = op === 'write' ? installReason(x) : null
+    const install = op === 'read' ? null : installReason(x, op)
     if (install) throw new AppError(`Protégé en écriture (${install}).`, 403, true, 'PROTECTED_FILE')
   }
 }

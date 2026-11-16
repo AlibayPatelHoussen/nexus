@@ -283,7 +283,8 @@ const storage = multer.diskStorage({
     const dest = sanitizePath(raw)
     const r = req as SudoUploadRequest
     // Called once per file, possibly concurrently: decide the folder once per request
-    r.uploadDir ??= assertAllowed(dest, 'write').then(() => withSudo(
+    // A folder that holds Nexus (« / », /home/user…) takes new files: each one is checked below
+    r.uploadDir ??= assertAllowed(dest, 'create').then(() => withSudo(
       async () => {
         await fs.promises.mkdir(dest, { recursive: true })
         await fs.promises.access(dest, fs.constants.W_OK)
@@ -299,13 +300,15 @@ const storage = multer.diskStorage({
     r.uploadDir.then((d) => cb(null, d), (err) => cb(err, ''))
   },
   // Never trust the client filename for directories
-  filename: (_req, file, cb) => {
+  filename: (req, file, cb) => {
     // Busboy decodes multipart file names as latin1: "Épisode" arrived as "Ã\x89pisode"
     const name = path.basename(Buffer.from(file.originalname, 'latin1').toString('utf8'))
-    if (!name || name === '.' || name === '..') cb(new ValidationError('Invalid file name'), '')
+    if (!name || name === '.' || name === '..') { cb(new ValidationError('Invalid file name'), ''); return }
     // No secrets (.env…) or Git files dropped from the browser
-    else if (secretReason(name) || name === '.gitignore' || name === '.git') cb(new ForbiddenError(`« ${name} » ne peut pas être envoyé depuis le navigateur`), '')
-    else cb(null, name)
+    if (secretReason(name) || name === '.gitignore' || name === '.git') { cb(new ForbiddenError(`« ${name} » ne peut pas être envoyé depuis le navigateur`), ''); return }
+    // The file it would become: never the Nexus installation (a file named like it in its parent folder…)
+    const target = path.join(sanitizePath(String(req.query.path)), name)
+    assertAllowed(target, 'write').then(() => cb(null, name), (err: Error) => cb(err, ''))
   },
 })
 // 5 GB per file, 500 files per upload, no other form fields
@@ -418,7 +421,7 @@ router.post('/upload', upload.array('files'), asyncHandler(async (req: Request, 
       await sudoRun(['install', '-d', '-o', uid, '-g', gid, '--', job.dest])
       for (const f of (req.files as Express.Multer.File[] | undefined) ?? []) {
         const target = path.join(job.dest, f.filename)
-        await sudoRun(['mv', '-f', '--', f.path, target])
+        await sudoRun(['mv', '-fT', '--', f.path, target])   // -T: never into a folder of that name
         await sudoRun(['chown', owner, '--', target])
       }
     } finally {
