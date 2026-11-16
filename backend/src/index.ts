@@ -91,10 +91,10 @@ app.use(cors({ origin: process.env.FRONTEND_URL || 'http://localhost:5173', cred
 app.use(compression())
 // GitHub webhook: needs the raw body (signature), so before express.json
 app.use('/api/deploy', apiLimiter, deployRoutes)
-// Request bodies: 1 MB, except the file editor and an IPTV playlist file (10 MB each)
+// Request bodies: 1 MB, except the file editor and an M3U list for « Mes chaînes » (10 MB each)
 const jsonSmall = express.json({ limit: '1mb' })
 const jsonLarge = express.json({ limit: '11mb' })
-const LARGE_BODIES = new Set(['/api/files/write', '/api/iptv/playlists'])
+const LARGE_BODIES = new Set(['/api/files/write', '/api/iptv/my-channels/import'])
 app.use((req, res, next) => (LARGE_BODIES.has(req.path) ? jsonLarge : jsonSmall)(req, res, next))
 app.use(express.urlencoded({ extended: true, limit: '100kb' }))
 // Never write tokens passed in query strings (media URLs) to the logs

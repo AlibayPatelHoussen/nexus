@@ -1,12 +1,10 @@
 """Command line of the IPTV module, used by the Nexus server (JSON lines on stdout, like the
 download scripts; human messages on stderr).
 
-    python3 iptv_cli.py --json refresh [--out FILE] [--playlists FILE]
+    python3 iptv_cli.py --json refresh [--out FILE]
         downloads the iptv-org files (API, playlist) and the Free-TV playlist, builds the
-        catalogue, writes it to FILE (default data/iptv/catalogue.json). --playlists: a JSON file
-        [{id, url | content}] of the playlists added in Nexus (playlists.py), whose live channels
-        join the catalogue (the file, not the command line: an address may hold credentials)
-        -> {"type": "done", "file", "stats", "notes", "source", "sources", "playlists": [{id, channels, error?}]}
+        catalogue, writes it to FILE (default data/iptv/catalogue.json)
+        -> {"type": "done", "file", "stats", "notes", "source", "sources"}
     python3 iptv_cli.py --json check [--in items.json]      (else the list on stdin)
         items: [{id, url, kind?, user_agent?, referrer?}] -> one {"type": "check", …} per stream
     python3 iptv_cli.py --json resolve --url PAGE
@@ -25,7 +23,7 @@ import sys
 import time
 from pathlib import Path
 
-from . import catalogue, epg, freetv, playlists, resolver, sources, stream_checker
+from . import catalogue, epg, freetv, resolver, sources, stream_checker
 from .playlist_parser import parse_m3u
 
 
@@ -74,23 +72,6 @@ def cmd_refresh(args) -> int:
                     source = 'free-tv'
         except sources.FetchError as err:
             notes.append(f'Free-TV : liste indisponible ({err})')
-    # The playlists added in Nexus: channels of their own (never named in a note: credentials)
-    added = read_playlists(args.playlists) if args.playlists else []
-    results = []
-    known = {c['code'] for c in api.get('countries') or [] if c.get('code')}
-    for pl in added:
-        try:
-            text = pl['content'] if isinstance(pl.get('content'), str) else \
-                sources.fetch_private(pl['url'], timeout=args.timeout).decode('utf-8', 'replace')
-            found, counts = playlists.channels_from(pl['id'], text, known)
-            channels += found
-            results.append({'id': pl['id'], 'channels': len(found), **counts,
-                            **({} if found else {'error': 'aucune chaîne en direct dans cette playlist'})})
-        except sources.FetchError as err:
-            results.append({'id': pl['id'], 'channels': 0, 'error': str(err)})
-    if any(r['channels'] for r in results):
-        used.append('playlist')
-        source = source or 'playlist'
     if not channels:
         emit('error', message=f'Catalogue IPTV injoignable : {failure or "aucune chaîne dans les sources"}', fatal=True)
         return 1
@@ -98,6 +79,8 @@ def cmd_refresh(args) -> int:
     payload = {
         'generated_at': dt.datetime.now(dt.timezone.utc).isoformat(), 'source': source, 'sources': used,
         'channels': [c.to_json() for c in channels], **catalogue.facets(channels, api),
+        # Every logo the database knows (channels without a free stream too): for « Mes chaînes »
+        'logos': catalogue.logo_index(api),
     }
     tmp = out.with_suffix('.tmp')
     tmp.write_text(json.dumps(payload, ensure_ascii=False))
@@ -105,23 +88,8 @@ def cmd_refresh(args) -> int:
     stats = {'channels': len(channels), 'streams': sum(len(c.streams) for c in channels),
              'countries': len(payload['countries']), 'categories': len(payload['categories']),
              'languages': len(payload['languages']), **extra, 'seconds': round(time.time() - started, 1)}
-    emit('done', file=str(out), stats=stats, notes=notes, source=source, sources=used, playlists=results)
+    emit('done', file=str(out), stats=stats, notes=notes, source=source, sources=used)
     return 0
-
-
-def read_playlists(path: str) -> list:
-    """[{id, url | content}] from the server's file; anything else is left out."""
-    try:
-        items = json.loads(Path(path).read_text(encoding='utf-8'))
-    except (OSError, ValueError):
-        return []
-    out = []
-    for it in items if isinstance(items, list) else []:
-        if not isinstance(it, dict) or not isinstance(it.get('id'), str) or not playlists._ID.match(it['id']):
-            continue
-        if isinstance(it.get('content'), str) or (isinstance(it.get('url'), str) and it['url'].startswith(('http://', 'https://'))):
-            out.append(it)
-    return out[:20]
 
 
 def cmd_check(args) -> int:
@@ -174,7 +142,6 @@ def main(argv=None) -> int:
     p.add_argument('--json', action='store_true', help='machine-readable output (always JSON lines)')
     sub = p.add_subparsers(dest='cmd', required=True)
     r = sub.add_parser('refresh'); r.add_argument('--out'); r.add_argument('--timeout', type=float, default=60)
-    r.add_argument('--playlists', help='JSON file of the playlists added in Nexus')
     c = sub.add_parser('check'); c.add_argument('--in', dest='input'); c.add_argument('--workers', type=int, default=4); c.add_argument('--timeout', type=float, default=8)
     v = sub.add_parser('resolve'); v.add_argument('--url', required=True); v.add_argument('--timeout', type=float, default=45)
     e = sub.add_parser('epg'); e.add_argument('--url', required=True); e.add_argument('--ids', required=True)

@@ -4,8 +4,8 @@ export interface IptvStream {
   quality: string | null; labels: string[]; title: string | null
   /** 'page': the live of a web page (YouTube, Twitch, Dailymotion), found by the server when it is played */
   kind: 'hls' | 'page'
-  /** 'playlist': a playlist added in Nexus (IPTV › Paramètres) */
-  source: 'iptv-org' | 'free-tv' | 'playlist'
+  /** 'mine': one of « Mes chaînes » (IPTV › Paramètres) */
+  source: 'iptv-org' | 'free-tv' | 'mine'
   /** The address of that web page (never the address of a stream) */
   page: string | null
 }
@@ -25,8 +25,8 @@ export interface IptvChannel {
   streams: IptvStream[]
   /** In the hand-picked Free-TV list */
   curated: boolean
-  /** From a playlist added in Nexus (its id) */
-  playlist: string | null
+  /** One of « Mes chaînes » (added in IPTV › Paramètres) */
+  mine: boolean
   /** The stream the last check found working (index in `streams`) */
   bestStream: number | null
   favorite: boolean
@@ -36,8 +36,6 @@ export interface IptvFacets {
   countries: { code: string; name: string; flag?: string | null; count: number }[]
   categories: { id: string; name: string; count: number }[]
   languages: { code: string; name: string; count: number }[]
-  /** The playlists added in Nexus (IPTV › Paramètres) */
-  playlists: { id: string; name: string; count: number }[]
 }
 export interface IptvRefresh {
   running: boolean; at: string | null; ok: boolean | null; message: string | null
@@ -50,19 +48,17 @@ export interface IptvSummary extends IptvFacets {
   favorites: IptvChannel[]; recent: IptvChannel[]; popular: IptvChannel[]; refresh: IptvRefresh
   /** The owner's priority countries, in their order; `count: 0` when no source has a channel for it */
   priority: { code: string; name: string | null; flag: string | null; count: number; items: IptvChannel[] }[]
-  /** The first channels of each playlist added in Nexus, in its order */
-  playlists: { id: string; name: string; count: number; items: IptvChannel[] }[]
 }
-/** A playlist added in Nexus (admins). Its address is never sent back: only its host. */
-export interface IptvPlaylist {
-  id: string; name: string
-  /** 'url': read from its address at each refresh; 'file': its content, given once */
-  kind: 'url' | 'file'
-  host: string | null
-  createdAt: string; refreshedAt: string | null
-  /** Live channels found at the last refresh (null: not read yet) */
-  channels: number | null
-  error: string | null
+/** One of « Mes chaînes » (admins). Its stream address is never sent back: only its host. */
+export interface MyChannel {
+  id: string
+  /** Its id in the catalogue (player, favourites) */
+  channelId: string
+  name: string; country: string | null; host: string | null; createdAt: string
+}
+export interface MyImport {
+  added: number
+  skipped: { duplicates: number; vod: number; separators: number; unnamed: number; adult: number; invalid: number; overLimit: number }
 }
 /** Why a stream is left with its sound only: a radio, no ffmpeg on the server, too many
  *  conversions running, a stream the server could not read, a conversion that failed */
@@ -87,8 +83,6 @@ export interface IptvSettings {
 export type ChannelSort = 'top' | 'name' | '-name'
 export interface ChannelQuery {
   q?: string; country?: string; category?: string; language?: string
-  /** The channels of one playlist added in Nexus, in its order */
-  playlist?: string
   status?: 'online' | 'all'; sort?: ChannelSort; page?: number; limit?: number
 }
 
@@ -125,11 +119,12 @@ export const iptvService = {
   vpn: (refresh = false) => data<IptvVpn>(api.get('/iptv/vpn', { params: refresh ? { refresh: 1 } : {} })),
   saveSettings: (s: Partial<Omit<IptvSettings, 'priorityCountries'>> & { priorityCountries?: string[] | string }) => data<IptvSettings>(api.put('/iptv/settings', s)),
   refresh: () => data<IptvRefresh>(api.post('/iptv/refresh')),
-  /** Playlists added in Nexus (admins): by address or as an .m3u file; the catalogue is refreshed */
-  playlists: () => data<IptvPlaylist[]>(api.get('/iptv/playlists')),
-  addPlaylist: (p: { name: string; url: string } | { name: string; content: string }) =>
-    data<IptvPlaylist>(api.post('/iptv/playlists', p, { timeout: 60_000 })),
-  removePlaylist: (id: string) => api.delete(`/iptv/playlists/${enc(id)}`),
+  /** « Mes chaînes » (admins): added with their stream address, shown like the other channels */
+  myChannels: () => data<MyChannel[]>(api.get('/iptv/my-channels')),
+  addMyChannel: (c: { name: string; url: string; country?: string; logo?: string }) => data<MyChannel>(api.post('/iptv/my-channels', c)),
+  /** Several at once from an M3U list (pasted, or the content of a file) */
+  importMyChannels: (content: string) => data<MyImport>(api.post('/iptv/my-channels/import', { content }, { timeout: 60_000 })),
+  removeMyChannel: (id: string) => api.delete(`/iptv/my-channels/${enc(id)}`),
   /** Playlist relayed by the server (stream token in the URL: media elements send no header) */
   playUrl: (id: string, stream: number, token: string) => `/api/iptv/play/${enc(id)}/${stream}/index.m3u8?token=${enc(token)}`,
   /** A stream that plays with sound only: what it holds; its picture converted by the server when

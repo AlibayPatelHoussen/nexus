@@ -74,6 +74,26 @@ def pick_logo(entries: Iterable[dict], main_feed: Optional[str]) -> Optional[str
     return best
 
 
+def logo_index(api: Dict[str, list]) -> list:
+    """[name, other names, country, logo] of every channel the database has a logo for, with or
+    without a free stream (Canal+, beIN…): the channels added in Nexus (« Mes chaînes ») find
+    their logo there. Adult and closed channels are left out."""
+    logos: Dict[str, List[dict]] = {}
+    for lg in api.get('logos') or []:
+        if lg.get('channel'):
+            logos.setdefault(lg['channel'], []).append(lg)
+    main_feed = {f['channel']: f.get('id') for f in api.get('feeds') or [] if f.get('channel') and f.get('is_main')}
+    out = []
+    for c in api.get('channels') or []:
+        cid = c.get('id')
+        if not cid or c.get('is_nsfw') or 'xxx' in (c.get('categories') or []) or c.get('closed'):
+            continue
+        logo = pick_logo(logos.get(cid, []), main_feed.get(cid))
+        if logo:
+            out.append([c.get('name') or cid, list(c.get('alt_names') or [])[:5], c.get('country') or None, logo])
+    return out
+
+
 def build_from_api(api: Dict[str, list], playlist: Optional[List[PlaylistEntry]] = None) -> List[Channel]:
     channels = {c['id']: c for c in api.get('channels') or [] if c.get('id')}
     skip = excluded_ids(list(channels.values()), api.get('blocklist') or [])

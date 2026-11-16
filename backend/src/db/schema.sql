@@ -333,30 +333,28 @@ CREATE TABLE IF NOT EXISTS iptv_channels (
   updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   curated     INTEGER,
   best_stream SMALLINT,
-  -- A playlist added in Nexus (iptv_playlists) and the channel's place in it
-  playlist      UUID,
-  playlist_rank INTEGER
+  -- « Mes chaînes » (iptv_my_channels): its place among them; NULL for the sources' channels
+  mine_rank   INTEGER
 );
 CREATE INDEX IF NOT EXISTS idx_iptv_channels_country    ON iptv_channels(country);
 CREATE INDEX IF NOT EXISTS idx_iptv_channels_curated    ON iptv_channels(curated) WHERE curated IS NOT NULL;
 CREATE INDEX IF NOT EXISTS idx_iptv_channels_categories ON iptv_channels USING GIN (categories);
 CREATE INDEX IF NOT EXISTS idx_iptv_channels_languages  ON iptv_channels USING GIN (languages);
 CREATE INDEX IF NOT EXISTS idx_iptv_channels_name       ON iptv_channels (lower(name));
-CREATE INDEX IF NOT EXISTS idx_iptv_channels_playlist   ON iptv_channels(playlist, playlist_rank) WHERE playlist IS NOT NULL;
 
--- Playlists added in Nexus (IPTV › Paramètres, admins): the owner's own M3U lists, by address
--- (often with the account's credentials: never sent to a browser) or as a file
-CREATE TABLE IF NOT EXISTS iptv_playlists (
-  id           UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
-  name         TEXT NOT NULL,
-  url          TEXT,
-  content      TEXT,
-  created_at   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  refreshed_at TIMESTAMPTZ,
-  channels     INTEGER,
-  error        TEXT,
-  CONSTRAINT iptv_playlists_one_source CHECK ((url IS NULL) <> (content IS NULL))
+-- « Mes chaînes » (IPTV › Paramètres, admins): channels added with their stream address (m3u8),
+-- one by one or from an M3U list; written into iptv_channels as « my-<id> » and kept by every
+-- refresh. The address may hold the account's credentials: never sent to a browser.
+CREATE TABLE IF NOT EXISTS iptv_my_channels (
+  id          UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  name        TEXT NOT NULL,
+  url         TEXT NOT NULL,
+  country     TEXT,
+  logo        TEXT,
+  position    INTEGER NOT NULL,
+  created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
+CREATE UNIQUE INDEX IF NOT EXISTS idx_iptv_my_channels_url ON iptv_my_channels(url);
 
 -- No foreign key to iptv_channels: a channel can leave the catalogue for a while (stream
 -- down) and come back; the user's favourites and history are kept meanwhile.

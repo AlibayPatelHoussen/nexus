@@ -700,53 +700,46 @@ test('IPTV on iPhone (Safari reads the stream itself): sound without a picture �
   await fine.context().close()
 })
 
-test('IPTV: a playlist added in Paramètres (an .m3u file): its shelf on the home page, its filter, then removed', async () => {
+test('IPTV: « Mes chaînes » — one added with its link and several pasted show like the others (first in their country), then removed', async () => {
   admin = await login('admin', 'Admin1234')
-  sql(`DELETE FROM iptv_playlists`)
-  // Two channels on the demo stream (the separator and the film on demand are left out)
+  sql(`DELETE FROM iptv_channels WHERE mine_rank IS NOT NULL`); sql(`DELETE FROM iptv_my_channels`)
   const demo = sql(`SELECT streams->0->>'url' FROM iptv_channels WHERE id = 'Demo.fr'`)
-  const m3u = ['#EXTM3U', '#EXTINF:-1,[COLOR green]--- MA LISTE ---[/COLOR]', 'http://0.1.5.0:1224',
-    '#EXTINF:-1,FR - Chaîne Une', `${demo}?n=1`, '#EXTINF:-1,FR - Chaîne Deux', `${demo}?n=2`,
-    '#EXTINF:-1,Un film', 'http://example.com/movie/me/pass/1.mkv'].join('\n')
   const page = await newPage(admin, { width: 1280, height: 860 })
   await page.goto(`${B}/iptv/reglages`, { waitUntil: 'networkidle' })
-  await page.click('text=Ajouter une playlist…')
+  // One, with its link
+  await page.click('text=Ajouter une chaîne…')
   const sheet = page.locator('[role="dialog"]')
-  await sheet.locator('input[maxlength="60"]').fill('Ma liste test')
-  await sheet.locator('[role="radiogroup"][aria-label="Source de la playlist"] >> text="Fichier"').click()
-  await sheet.locator('input[type="file"]').setInputFiles({ name: 'ma-liste.m3u', mimeType: 'audio/x-mpegurl', buffer: Buffer.from(m3u) })
-  await page.waitForSelector('[role="dialog"] >> text=ma-liste.m3u')
+  await sheet.locator('input[maxlength="80"]').fill('FR - Ma chaîne test')
+  await sheet.locator('input[type="url"]').first().fill(`${demo}?n=1`)
   await page.click('[role="dialog"] button[type="submit"]:visible')
-  await page.waitForSelector('text=Playlist ajoutée')
-  let summary
-  for (let i = 0; i < 60; i++) {
-    summary = (await api('/api/iptv/summary', { token: admin.accessToken })).json?.data
-    if (!summary?.refresh?.running && summary?.playlists?.length) break
-    await sleep(500)
-  }
-  eq(summary.playlists.map((p) => [p.name, p.count]), [['Ma liste test', 2]], 'its live channels in the catalogue')
-  await page.waitForSelector('text=Fichier · 2 chaînes')
-
-  // Home: its shelf, in its order; « Tout voir » filters the list on it
+  await page.waitForSelector('text=« Ma chaîne test » ajoutée')
+  // Several, pasted (the separator and the film on demand are left out)
+  await page.click('text=Ajouter plusieurs chaînes…')
+  await page.fill('[role="dialog"] textarea', ['#EXTM3U', '#EXTINF:-1,[COLOR green]--- MA LISTE ---[/COLOR]', 'http://0.1.5.0:1224',
+    '#EXTINF:-1,FR - Deuxième test', `${demo}?n=2`, '#EXTINF:-1,FR - Troisième test', `${demo}?n=3`,
+    '#EXTINF:-1,Un film', 'http://example.com/movie/me/pass/1.mkv'].join('\n'))
+  await page.click('[role="dialog"] button[type="submit"]:visible')
+  await page.waitForSelector('text=2 chaînes ajoutées (laissées de côté : 1 film ou épisode à la demande, 1 séparateur)')
+  // Like the other channels: first in France on the home page and in the list; the link never reaches the browser
   await page.goto(`${B}/iptv`, { waitUntil: 'networkidle' })
-  const shelf = page.locator('section', { has: page.locator('h2:has-text("Ma liste test")') })
-  eq(await shelf.locator('li').allTextContents().then((t) => t.map((x) => x.includes('Une') ? 'Une' : x.includes('Deux') ? 'Deux' : x)), ['Une', 'Deux'], 'shelf in the playlist order')
-  await shelf.locator('h2 a').click()
-  await page.waitForURL(/\/iptv\/chaines\?playlist=/)
-  await page.waitForSelector('text=2 chaînes')
-
-  // Removed: its channels leave the catalogue
+  const france = page.locator('section', { has: page.locator('h2:has-text("France")') }).first()
+  const names = await france.locator('li').allTextContents()
+  assert(/Ma chaîne test/.test(names[0]) && /Deuxième test/.test(names[1]) && /Troisième test/.test(names[2]), `first in France: ${names.slice(0, 4).join(' | ')}`)
+  const fr = (await api('/api/iptv/channels?country=FR', { token: admin.accessToken })).json.data
+  eq(fr.items.slice(0, 3).map((c) => [c.name, c.mine]), [['Ma chaîne test', true], ['Deuxième test', true], ['Troisième test', true]], 'first in the list')
+  assert(!JSON.stringify(fr).includes('?n=1'), 'the link never reaches the browser')
+  // A channel of the catalogue added with another link takes its logo: « FR - Nexus Démo HD » → Demo.fr's
+  const named = await api('/api/iptv/my-channels', { token: admin.accessToken, method: 'POST', body: { name: 'FR - Nexus Démo HD', url: `${demo}?n=4` } })
+  eq(named.status, 201, 'added by name')
+  const demoLogo = (await api(`/api/iptv/channels/${named.json.data.channelId}`, { token: admin.accessToken })).json.data.logo
+  assert(demoLogo && demoLogo.includes(encodeURIComponent('/iptv/logo_Demo.fr.png')), `the catalogue's logo: ${demoLogo}`)
+  // Removed: it leaves the catalogue
   await page.goto(`${B}/iptv/reglages`, { waitUntil: 'networkidle' })
-  await page.click('button[aria-label="Retirer la playlist Ma liste test"]')
+  await page.click('button[aria-label="Retirer Ma chaîne test"]')
   await page.click('[role="alertdialog"] button:has-text("Retirer")')
-  await page.waitForSelector('text=Playlist retirée')
-  for (let i = 0; i < 60; i++) {
-    summary = (await api('/api/iptv/summary', { token: admin.accessToken })).json?.data
-    if (!summary?.refresh?.running && !summary?.playlists?.length) break
-    await sleep(500)
-  }
-  eq(summary.playlists, [], 'no playlist left')
-  eq(Number(sql(`SELECT COUNT(*) FROM iptv_channels WHERE playlist IS NOT NULL`)), 0, 'its channels are gone')
+  await page.waitForSelector('text=« Ma chaîne test » retirée')
+  eq(Number(sql(`SELECT COUNT(*) FROM iptv_channels WHERE mine_rank IS NOT NULL`)), 3, 'three left')
+  sql(`DELETE FROM iptv_channels WHERE mine_rank IS NOT NULL`); sql(`DELETE FROM iptv_my_channels`)
   await page.context().close()
 })
 
