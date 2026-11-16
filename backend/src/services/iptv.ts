@@ -7,6 +7,7 @@ import { AppError, NotFoundError, ValidationError } from '../utils/errors'
 import { collect, scriptsDir, type ScriptEvent } from './downloadScripts'
 import { signedImage } from './images'
 import { setVpnEnabled } from './iptvVpn'
+import { playlistNames, playlistsForRefresh, savePlaylistResults } from './iptvPlaylists'
 
 /*
  * IPTV: the iptv-org catalogue (https://github.com/iptv-org/iptv) and the Free-TV playlist
@@ -37,7 +38,7 @@ export interface IptvStream {
   /** 'page': the address of a web page with a live player (YouTube, Twitch, Dailymotion); its
    * stream is looked up with yt-dlp when it is played. Absent: a direct stream. */
   kind?: 'page' | 'hls'
-  /** 'free-tv' when the stream comes from the Free-TV playlist (absent: iptv-org) */
+  /** 'free-tv' (the Free-TV playlist), 'playlist' (a playlist added in Nexus); absent: iptv-org */
   source?: string
 }
 interface CatalogueChannel {
@@ -45,6 +46,9 @@ interface CatalogueChannel {
   logo?: string | null; website?: string | null; network?: string | null; streams: IptvStream[]
   /** Place in the Free-TV playlist */
   curated?: number | null
+  /** A playlist added in Nexus (its id) and the channel's place in it */
+  playlist?: string | null
+  rank?: number | null
 }
 interface CatalogueFile {
   generated_at: string; source: string; sources?: string[]; channels: CatalogueChannel[]
@@ -144,6 +148,7 @@ export async function saveSettings(input: Partial<IptvSettings>): Promise<IptvSe
 }
 
 // ─── Catalogue import ─────────────────────────────────────────────────────────
+const PLAYLIST_ID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i
 const isPage = (s: IptvStream) => s.kind === 'page'
 /** At most ten streams per channel: the direct ones in the catalogue's order, then web pages
  * (kept even on a channel with many streams: they are often the one that works everywhere). */
@@ -162,12 +167,15 @@ export async function importCatalogue(data: CatalogueFile): Promise<number> {
     for (let i = 0; i < rows.length; i += 1000) {
       const part = rows.slice(i, i + 1000)
       await client.query(
-        `INSERT INTO iptv_import (id, name, alt_names, country, categories, languages, logo, website, network, streams, labels, curated)
+        `INSERT INTO iptv_import (id, name, alt_names, country, categories, languages, logo, website, network, streams, labels, curated,
+                                  playlist, playlist_rank)
          SELECT x.id, x.name, ARRAY(SELECT jsonb_array_elements_text(x.alt_names)), x.country,
                 ARRAY(SELECT jsonb_array_elements_text(x.categories)), ARRAY(SELECT jsonb_array_elements_text(x.languages)),
-                x.logo, x.website, x.network, x.streams, ARRAY(SELECT jsonb_array_elements_text(x.labels)), x.curated
+                x.logo, x.website, x.network, x.streams, ARRAY(SELECT jsonb_array_elements_text(x.labels)), x.curated,
+                x.playlist::uuid, x.playlist_rank
          FROM jsonb_to_recordset($1::jsonb) AS x(id text, name text, alt_names jsonb, country text, categories jsonb,
-              languages jsonb, logo text, website text, network text, streams jsonb, labels jsonb, curated int)`,
+              languages jsonb, logo text, website text, network text, streams jsonb, labels jsonb, curated int,
+              playlist text, playlist_rank int)`,
         [JSON.stringify(part.map((c) => {
           const streams = keptStreams(c.streams)
           return {
@@ -181,17 +189,22 @@ export async function importCatalogue(data: CatalogueFile): Promise<number> {
               ...(streams[0].labels?.includes('Not 24/7') ? ['Not 24/7'] : []),
             ])],
             curated: Number.isInteger(c.curated) && (c.curated as number) > 0 ? c.curated : null,
+            playlist: typeof c.playlist === 'string' && PLAYLIST_ID.test(c.playlist) ? c.playlist : null,
+            playlist_rank: Number.isInteger(c.rank) && (c.rank as number) > 0 ? c.rank : null,
           }
         }))],
       )
     }
     // A stream that changed address must be checked again
     await client.query(
-      `INSERT INTO iptv_channels (id, name, alt_names, country, categories, languages, logo, website, network, streams, labels, curated, updated_at)
-       SELECT id, name, alt_names, country, categories, languages, logo, website, network, streams, labels, curated, NOW() FROM iptv_import
+      `INSERT INTO iptv_channels (id, name, alt_names, country, categories, languages, logo, website, network, streams, labels, curated,
+                                  playlist, playlist_rank, updated_at)
+       SELECT id, name, alt_names, country, categories, languages, logo, website, network, streams, labels, curated,
+              playlist, playlist_rank, NOW() FROM iptv_import
        ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, alt_names = EXCLUDED.alt_names, country = EXCLUDED.country,
          categories = EXCLUDED.categories, languages = EXCLUDED.languages, logo = EXCLUDED.logo, website = EXCLUDED.website,
          network = EXCLUDED.network, labels = EXCLUDED.labels, curated = EXCLUDED.curated, updated_at = NOW(),
+         playlist = EXCLUDED.playlist, playlist_rank = EXCLUDED.playlist_rank,
          status = CASE WHEN iptv_channels.streams = EXCLUDED.streams THEN iptv_channels.status ELSE 'unknown' END,
          status_reason = CASE WHEN iptv_channels.streams = EXCLUDED.streams THEN iptv_channels.status_reason ELSE NULL END,
          checked_at = CASE WHEN iptv_channels.streams = EXCLUDED.streams THEN iptv_channels.checked_at ELSE NULL END,
@@ -228,26 +241,42 @@ export interface RefreshState {
 type SavedRefresh = Omit<RefreshState, 'running'>
 const NO_REFRESH: SavedRefresh = { at: null, ok: null, message: null, stats: null, notes: [], source: null, sources: [] }
 let refreshing: Promise<RefreshState> | null = null
+/** One more refresh after the running one (its sources changed meanwhile) */
+let followUp: Promise<RefreshState> | null = null
 
 export async function refreshState(): Promise<RefreshState> {
   const saved = await getMeta<SavedRefresh>('refresh', NO_REFRESH)
   return { ...NO_REFRESH, ...saved, running: !!refreshing }
 }
 
-/** Downloads the catalogue again (one at a time; a second call waits for the first). */
-export function refreshCatalogue(): Promise<RefreshState> {
-  if (refreshing) return refreshing
+/**
+ * Downloads the catalogue again (one at a time; a second call waits for the first). `again`:
+ * the sources changed (a playlist added or removed) while one may be running: one more follows it.
+ */
+export function refreshCatalogue(opts: { again?: boolean } = {}): Promise<RefreshState> {
+  if (refreshing) {
+    if (opts.again) followUp ??= refreshing.catch(() => null).then(() => { followUp = null; return refreshCatalogue() })
+    return followUp ?? refreshing
+  }
   refreshing = (async () => {
     const out = path.join(os.tmpdir(), `nexus-iptv-${process.pid}-${Date.now()}.json`)
+    // The playlists added in Nexus go through a file only this server's user can read: their
+    // addresses may hold credentials (a command line is visible to every user of the machine)
+    const lists = await playlistsForRefresh()
+    const listsFile = lists.length ? path.join(os.tmpdir(), `nexus-iptv-playlists-${process.pid}-${Date.now()}.json`) : null
     const started = Date.now()
     try {
-      const { events, code, log } = await collect('iptv', ['refresh', '--out', out], 10 * 60_000)
-      const done = events.find((e) => e.type === 'done') as (ScriptEvent & { stats: Record<string, number>; notes: string[]; source: string; sources?: string[] }) | undefined
+      if (listsFile) await fs.writeFile(listsFile, JSON.stringify(lists), { mode: 0o600 })
+      const { events, code, log } = await collect('iptv', ['refresh', '--out', out, ...(listsFile ? ['--playlists', listsFile] : [])], 10 * 60_000)
+      const done = events.find((e) => e.type === 'done') as (ScriptEvent & {
+        stats: Record<string, number>; notes: string[]; source: string; sources?: string[]; playlists?: unknown
+      }) | undefined
       if (!done || code !== 0) {
         const err = events.find((e) => e.type === 'error') as { message?: string } | undefined
         throw new AppError(err?.message || log.slice(-3).join(' | ') || 'Actualisation du catalogue IPTV impossible', 502)
       }
       const imported = await importCatalogue(JSON.parse(await fs.readFile(out, 'utf8')) as CatalogueFile)
+      await savePlaylistResults(done.playlists)
       const state: SavedRefresh = {
         at: new Date().toISOString(), ok: true, message: null, stats: { ...done.stats, imported }, notes: done.notes ?? [],
         source: done.source, sources: Array.isArray(done.sources) ? done.sources.map(String) : [],
@@ -263,6 +292,7 @@ export function refreshCatalogue(): Promise<RefreshState> {
       throw err
     } finally {
       await fs.unlink(out).catch(() => {})
+      if (listsFile) await fs.unlink(listsFile).catch(() => {})
       refreshing = null
     }
   })()
@@ -274,6 +304,7 @@ interface ChannelRow {
   id: string; name: string; country: string | null; categories: string[]; languages: string[]; logo: string | null
   website: string | null; network: string | null; streams: IptvStream[]; labels: string[]; status: string
   status_reason: string | null; checked_at: Date | null; curated: number | null; best_stream: number | null; favorite?: boolean
+  playlist?: string | null
 }
 export function mapChannel(r: ChannelRow) {
   const streams = r.streams ?? []
@@ -291,13 +322,15 @@ export function mapChannel(r: ChannelRow) {
     })),
     /** In the Free-TV selection */
     curated: r.curated != null,
+    /** From a playlist added in Nexus (its id) */
+    playlist: r.playlist ?? null,
     /** The stream the last check found working (the player starts there) */
     bestStream: r.best_stream != null && r.best_stream < streams.length ? r.best_stream : null,
     favorite: !!r.favorite,
   }
 }
 export type IptvChannel = ReturnType<typeof mapChannel>
-const COLS = 'c.id, c.name, c.country, c.categories, c.languages, c.logo, c.website, c.network, c.streams, c.labels, c.status, c.status_reason, c.checked_at, c.curated, c.best_stream'
+const COLS = 'c.id, c.name, c.country, c.categories, c.languages, c.logo, c.website, c.network, c.streams, c.labels, c.status, c.status_reason, c.checked_at, c.curated, c.best_stream, c.playlist'
 /** Names are ordered without their accents, whatever the collation of the database: « Équidia »
  * sits with the E, not after Z (a database created with the C locale orders by bytes).
  * translate() works on characters only in a UTF-8 database; any other keeps its own order. */
@@ -313,6 +346,8 @@ const TOP_IN_COUNTRY = `(c.status = 'offline'), (c.status <> 'online'), (c.curat
 
 export interface ChannelFilters {
   q?: string; country?: string; category?: string; language?: string
+  /** The channels of one playlist added in Nexus, in its order */
+  playlist?: string
   /** 'top' (default): priority countries, working channels and the Free-TV selection first */
   status?: 'online' | 'all'; sort?: 'top' | 'name' | '-name'; page?: number; limit?: number
 }
@@ -329,6 +364,8 @@ export async function listChannels(userId: string, f: ChannelFilters) {
   if (f.country) add('c.country = $?', f.country.toUpperCase().slice(0, 2))
   if (f.category) add('$? = ANY(c.categories)', f.category.slice(0, 40))
   if (f.language) add('$? = ANY(c.languages)', f.language.slice(0, 10))
+  const inPlaylist = typeof f.playlist === 'string' && PLAYLIST_ID.test(f.playlist)
+  if (inPlaylist) add('c.playlist = $?::uuid', f.playlist)
   const settings = await getSettings()
   if (f.status === 'online') where.push(`c.status = 'online'`)
   else if (settings.hideOffline) where.push(`c.status <> 'offline'`)
@@ -336,7 +373,10 @@ export async function listChannels(userId: string, f: ChannelFilters) {
   const page = Math.max(Number(f.page) || 1, 1)
   const listParams = [...params]
   let order = f.sort === '-name' ? `${BY_NAME} DESC, c.id` : `${BY_NAME}, c.id`
-  if (f.sort !== 'name' && f.sort !== '-name') {
+  if (inPlaylist && f.sort !== 'name' && f.sort !== '-name') {
+    // A playlist: in its own order
+    order = `c.playlist_rank NULLS LAST, ${BY_NAME}, c.id`
+  } else if (f.sort !== 'name' && f.sort !== '-name') {
     listParams.push(settings.priorityCountries)
     const n = `$${listParams.length}::text[]`
     order = `(c.status = 'offline'), (CASE WHEN c.country = ANY(${n}) THEN 0 ELSE 1 END), (c.status <> 'online'),
@@ -372,9 +412,26 @@ interface Facets {
   countries: { code: string; name: string; flag?: string | null; count: number }[]
   categories: { id: string; name: string; count: number }[]
   languages: { code: string; name: string; count: number }[]
+  /** The playlists added in Nexus (name and channel count) */
+  playlists: { id: string; name: string; count: number }[]
 }
 export async function facets(): Promise<Facets> {
-  return { countries: [], categories: [], languages: [], ...(await getMeta<Partial<Facets>>('facets', {})) }
+  const [saved, playlists] = await Promise.all([getMeta<Partial<Facets>>('facets', {}), playlistNames()])
+  return { countries: [], categories: [], languages: [], ...saved, playlists }
+}
+
+/** The first channels of each playlist added in Nexus, in its order. */
+async function playlistShelves(userId: string, settings: IptvSettings, f: Facets) {
+  const lists = f.playlists.filter((p) => p.count > 0)
+  if (!lists.length) return []
+  const { rows } = await query<ChannelRow>(
+    `SELECT * FROM (
+       SELECT ${COLS}, (fav.channel_id IS NOT NULL) AS favorite,
+              ROW_NUMBER() OVER (PARTITION BY c.playlist ORDER BY c.playlist_rank NULLS LAST, c.id) AS rn
+       FROM iptv_channels c LEFT JOIN iptv_favorites fav ON fav.channel_id = c.id AND fav.user_id = $1
+       WHERE c.playlist = ANY($2::uuid[]) ${settings.hideOffline ? `AND c.status <> 'offline'` : ''}
+     ) t WHERE rn <= 14 ORDER BY rn`, [userId, lists.map((p) => p.id)])
+  return lists.map((p) => ({ ...p, items: rows.filter((r) => r.playlist === p.id).map(mapChannel) }))
 }
 
 /** The first channels of each priority country, in the order of the settings. A country no
@@ -427,6 +484,7 @@ export async function summary(userId: string) {
   return {
     total: Number(c.total), online: Number(c.online), offline: Number(c.offline), checked: Number(c.checked),
     favorites: fav, recent, popular, refresh, priority: await priorityShelves(userId, settings, f),
+    playlists: await playlistShelves(userId, settings, f),
     countries: countries.slice(0, 12), categories: f.categories, languages: f.languages.slice(0, 12),
   }
 }
@@ -549,10 +607,12 @@ export async function checkDueChannels(limit = 60) {
     `SELECT c.id, c.streams FROM iptv_channels c
      LEFT JOIN (SELECT channel_id FROM iptv_favorites UNION SELECT channel_id FROM iptv_history
                 WHERE watched_at > NOW() - INTERVAL '30 days') mine ON mine.channel_id = c.id
-     WHERE c.checked_at IS NULL OR c.checked_at < NOW() - (CASE
+     -- A playlist's channels are only checked when someone opens them: a provider counts each
+     -- connection, and many checks at once could get the account blocked
+     WHERE c.playlist IS NULL AND (c.checked_at IS NULL OR c.checked_at < NOW() - (CASE
              WHEN mine.channel_id IS NOT NULL THEN INTERVAL '6 hours'
              WHEN c.curated IS NOT NULL OR c.country = ANY($2::text[]) THEN INTERVAL '1 day'
-             ELSE INTERVAL '3 days' END)
+             ELSE INTERVAL '3 days' END))
      ORDER BY (CASE WHEN mine.channel_id IS NOT NULL THEN 0
                     WHEN c.curated IS NOT NULL AND c.country = ANY($2::text[]) THEN 1
                     WHEN c.country = ANY($2::text[]) THEN 2

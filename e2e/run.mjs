@@ -700,7 +700,58 @@ test('IPTV on iPhone (Safari reads the stream itself): sound without a picture �
   await fine.context().close()
 })
 
+test('IPTV: a playlist added in Paramètres (an .m3u file): its shelf on the home page, its filter, then removed', async () => {
+  admin = await login('admin', 'Admin1234')
+  sql(`DELETE FROM iptv_playlists`)
+  // Two channels on the demo stream (the separator and the film on demand are left out)
+  const demo = sql(`SELECT streams->0->>'url' FROM iptv_channels WHERE id = 'Demo.fr'`)
+  const m3u = ['#EXTM3U', '#EXTINF:-1,[COLOR green]--- MA LISTE ---[/COLOR]', 'http://0.1.5.0:1224',
+    '#EXTINF:-1,FR - Chaîne Une', `${demo}?n=1`, '#EXTINF:-1,FR - Chaîne Deux', `${demo}?n=2`,
+    '#EXTINF:-1,Un film', 'http://example.com/movie/me/pass/1.mkv'].join('\n')
+  const page = await newPage(admin, { width: 1280, height: 860 })
+  await page.goto(`${B}/iptv/reglages`, { waitUntil: 'networkidle' })
+  await page.click('text=Ajouter une playlist…')
+  const sheet = page.locator('[role="dialog"]')
+  await sheet.locator('input[maxlength="60"]').fill('Ma liste test')
+  await sheet.locator('[role="radiogroup"][aria-label="Source de la playlist"] >> text="Fichier"').click()
+  await sheet.locator('input[type="file"]').setInputFiles({ name: 'ma-liste.m3u', mimeType: 'audio/x-mpegurl', buffer: Buffer.from(m3u) })
+  await page.waitForSelector('[role="dialog"] >> text=ma-liste.m3u')
+  await page.click('[role="dialog"] button[type="submit"]:visible')
+  await page.waitForSelector('text=Playlist ajoutée')
+  let summary
+  for (let i = 0; i < 60; i++) {
+    summary = (await api('/api/iptv/summary', { token: admin.accessToken })).json?.data
+    if (!summary?.refresh?.running && summary?.playlists?.length) break
+    await sleep(500)
+  }
+  eq(summary.playlists.map((p) => [p.name, p.count]), [['Ma liste test', 2]], 'its live channels in the catalogue')
+  await page.waitForSelector('text=Fichier · 2 chaînes')
+
+  // Home: its shelf, in its order; « Tout voir » filters the list on it
+  await page.goto(`${B}/iptv`, { waitUntil: 'networkidle' })
+  const shelf = page.locator('section', { has: page.locator('h2:has-text("Ma liste test")') })
+  eq(await shelf.locator('li').allTextContents().then((t) => t.map((x) => x.includes('Une') ? 'Une' : x.includes('Deux') ? 'Deux' : x)), ['Une', 'Deux'], 'shelf in the playlist order')
+  await shelf.locator('h2 a').click()
+  await page.waitForURL(/\/iptv\/chaines\?playlist=/)
+  await page.waitForSelector('text=2 chaînes')
+
+  // Removed: its channels leave the catalogue
+  await page.goto(`${B}/iptv/reglages`, { waitUntil: 'networkidle' })
+  await page.click('button[aria-label="Retirer la playlist Ma liste test"]')
+  await page.click('[role="alertdialog"] button:has-text("Retirer")')
+  await page.waitForSelector('text=Playlist retirée')
+  for (let i = 0; i < 60; i++) {
+    summary = (await api('/api/iptv/summary', { token: admin.accessToken })).json?.data
+    if (!summary?.refresh?.running && !summary?.playlists?.length) break
+    await sleep(500)
+  }
+  eq(summary.playlists, [], 'no playlist left')
+  eq(Number(sql(`SELECT COUNT(*) FROM iptv_channels WHERE playlist IS NOT NULL`)), 0, 'its channels are gone')
+  await page.context().close()
+})
+
 test('IMDb: ids from TMDB, ratings from the dataset, Top 10 ranked by IMDb', async () => {
+  admin = await login('admin', 'Admin1234')       // access tokens only live 40 s in this environment
   const user = await login('alice', 'User12345')
   eq((await api('/api/media/imdb/refresh', { method: 'POST', token: user.accessToken })).status, 403, 'non-admin refused')
   const r = await api('/api/media/imdb/refresh', { method: 'POST', token: admin.accessToken })

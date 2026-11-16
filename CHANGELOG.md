@@ -4,6 +4,13 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Added — Your own IPTV playlists
+- *IPTV › Paramètres › Playlists* (admins): add an M3U playlist you have the right to use (your subscription, a list of free channels…), **by address** (read again at each catalogue update) **or as a file** (.m3u, 10 MB at most); remove it the same way. 10 playlists at most
+- Kept in this server's database only, never on GitHub; an address (often with the account's credentials) never comes back to a browser — only its host — and reaches the Python module through a private file (never a command line, never a cache, never a log or an error message)
+- Its **live** channels join the catalogue as channels of their own (`pl-<playlist>-<hash>`), in the playlist's order: a shelf per playlist on the IPTV home page, a « Playlist » filter in *Chaînes*. Left out: films / series on demand (Xtream `/movie/`, `/series/`, video files), separators with dummy addresses, adult groups, DASH. Kodi tags are removed from names; a « FR - » prefix gives the country; the same name twice (« TF1 HD », « TF1 FHD ») is one channel with two streams
+- Played through Nexus' relay (and the IPTV VPN when it is on); never checked in the background (a provider counts each connection), only when opened
+- A playlist added or removed while the catalogue is being updated gets one more update right after
+
 ### Changed — The IPTV apart for « user » accounts
 - iPhone: « user » accounts get an **IPTV** tab of its own (Aperçu, Médias, IPTV, Manga, Réglages); the IPTV leaves the Médias tab and its sections menu. Desktop: the IPTV gets its own sidebar section, « Télévision ». Admins keep it under Médias (`iptvTab` in `components/shell/access.ts`)
 

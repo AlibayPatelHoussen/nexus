@@ -112,6 +112,30 @@ def fetch(url: str, timeout: float = 30) -> bytes:
         raise FetchError(f'{url}: {getattr(err, "reason", err)}') from err
 
 
+PRIVATE_MAX_BYTES = 30 * 1024 * 1024    # a provider's whole live list stays far below
+
+
+def fetch_private(url: str, timeout: float = 60) -> bytes:
+    """A playlist added in Nexus (IPTV › Paramètres). Its address often holds the account's
+    credentials: it is never cached on disk, never written in an error message or a log."""
+    if not (url.startswith('http://') or url.startswith('https://')):
+        raise FetchError('adresse invalide (http ou https)')
+    req = urllib.request.Request(url, headers={'User-Agent': USER_AGENT, 'Accept-Encoding': 'gzip'})
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as res:
+            data = res.read(PRIVATE_MAX_BYTES + 1)
+            if len(data) > PRIVATE_MAX_BYTES:
+                raise FetchError('playlist trop grosse (30 Mo au plus)')
+            if res.headers.get('Content-Encoding') == 'gzip':
+                data = gzip.decompress(data)
+            return data
+    except urllib.error.HTTPError as err:
+        raise FetchError(f'le serveur de la playlist a répondu HTTP {err.code}') from None
+    except (urllib.error.URLError, OSError, ValueError) as err:   # DNS, refused, timeout, bad gzip
+        reason = getattr(err, 'reason', err)
+        raise FetchError(f'serveur de la playlist injoignable ({reason})') from None
+
+
 def cached(url: str) -> Optional[bytes]:
     body_path, _ = _cache_paths(url)
     try:
