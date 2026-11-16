@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
@@ -580,6 +580,12 @@ function PlaylistsGroup({ refreshing }: { refreshing: boolean }) {
   const { data: lists, isError } = useQuery({
     queryKey: ['iptv', 'playlists'], queryFn: iptvService.playlists, refetchInterval: refreshing ? 3000 : false,
   })
+  // The update over: each playlist's result (channels or error), and the catalogue it changed
+  const wasRefreshing = useRef(refreshing)
+  useEffect(() => {
+    if (wasRefreshing.current && !refreshing) void qc.invalidateQueries({ queryKey: ['iptv'] })
+    wasRefreshing.current = refreshing
+  }, [refreshing, qc])
 
   async function remove(p: IptvPlaylist) {
     const ok = await confirm({
@@ -628,6 +634,7 @@ function AddPlaylistSheet({ open, onClose }: { open: boolean; onClose: () => voi
   const [kind, setKind] = useState<'url' | 'file'>('url')
   const [url, setUrl] = useState('')
   const [file, setFile] = useState<File | null>(null)
+  const fileInput = useRef<HTMLInputElement>(null)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const urlOk = /^https?:\/\/\S+$/i.test(url.trim())
@@ -678,14 +685,12 @@ function AddPlaylistSheet({ open, onClose }: { open: boolean; onClose: () => voi
             error={url && !urlOk ? 'Une adresse qui commence par http:// ou https://' : undefined} />
         ) : (
           <div className="flex flex-col gap-1.5">
-            <label className="self-start">
-              <span className="sr-only">Fichier de la playlist (.m3u)</span>
-              <input type="file" accept=".m3u,.m3u8,.txt,audio/x-mpegurl,audio/mpegurl,application/vnd.apple.mpegurl" className="sr-only peer"
-                onChange={(e) => { setFile(e.target.files?.[0] ?? null); setError(null) }} />
-              <span className="inline-flex h-11 items-center rounded-pill bg-fill px-4 text-label text-[15px] font-semibold cursor-pointer peer-focus-visible:ring-2 peer-focus-visible:ring-accent">
-                {file ? 'Choisir un autre fichier…' : 'Choisir un fichier…'}
-              </span>
-            </label>
+            <input ref={fileInput} type="file" accept=".m3u,.m3u8,.txt,audio/x-mpegurl,audio/mpegurl,application/vnd.apple.mpegurl"
+              className="sr-only" tabIndex={-1} aria-label="Fichier de la playlist (.m3u)"
+              onChange={(e) => { setFile(e.target.files?.[0] ?? null); setError(null) }} />
+            <Button className="self-start" onClick={() => fileInput.current?.click()}>
+              {file ? 'Choisir un autre fichier…' : 'Choisir un fichier…'}
+            </Button>
             <p className="text-caption text-label2">
               {file ? `${file.name} · ${(file.size / 1024).toLocaleString('fr-FR', { maximumFractionDigits: 0 })} Ko${file.size > MAX_PLAYLIST_FILE ? ' : trop gros (10 Mo au plus)' : ''}`
                 : 'Un fichier .m3u ou .m3u8 (10 Mo au plus), gardé tel quel sur ce serveur.'}
@@ -739,7 +744,7 @@ function SettingsView() {
   const codes = [...new Set(typed.toUpperCase().split(/[\s,;]+/).filter((c) => /^[A-Z]{2}$/.test(c)))]
   return (
     <div className="flex flex-col gap-8 max-w-[680px]">
-      <Group header="Catalogue" footer="Les chaînes viennent de deux dépôts publics : iptv-org (le plus complet) et Free-TV (une courte sélection de chaînes gratuites, tenue à la main). Une chaîne n’est marquée « disponible » qu’après une vérification réelle de son flux, faite peu à peu en arrière-plan (favoris, chaînes regardées et pays prioritaires d’abord).">
+      <Group header="Catalogue" footer="Les chaînes viennent de deux dépôts publics : iptv-org (le plus complet) et Free-TV (une courte sélection de chaînes gratuites, tenue à la main), et des playlists ajoutées plus bas. Une chaîne n’est marquée « disponible » qu’après une vérification réelle de son flux, faite peu à peu en arrière-plan (favoris, chaînes regardées et pays prioritaires d’abord).">
         <ListRow title="Mise à jour" detail={state.running ? 'en cours…' : at} status={state.ok === false ? 'error' : undefined} />
         {state.sources.length > 0 && <ListRow title="Sources" detail={state.sources.map((x) => SOURCE_NAMES[x] ?? x).join(' + ')} />}
         {state.stats && <ListRow title="Chaînes" detail={(state.stats.imported ?? state.stats.channels ?? 0).toLocaleString('fr-FR')} />}
