@@ -15,6 +15,7 @@
 - **Manga/Webtoon reader** — vertical scroll & page mode
 - **Jarvis assistant** — chat (voice too) with the local AI assistant running on the server ([jarvis-backend](https://github.com/AlibayPatelHoussen/jarvis-backend)), relayed by Nexus
 - **Real-time stats** — CPU, RAM, disk, temperature via WebSocket
+- **Transferts** — *Aperçu › Transferts* (admins): send a file from the iPhone, download it on the computer (and back); it arrives live with a notification, erased after 7 days. *Fichiers*: upload progress with « Annuler », drag & drop, folders and selections downloaded as a .zip
 - **Dark/Light theme**
 - **JWT authentication** with bcrypt hashing
 - **Accounts** — admins have everything; « user » accounts get the media, manga, their own downloads (automatic ones too), their settings and the storage (no Jarvis, services, files, terminal). Admins create user accounts in *Réglages › Utilisateurs*, optionally for a limited time (1 month, 6 months, 1 year or any date); admin accounts are only made and deleted in the terminal (`bash scripts/create-admin.sh`, `bash scripts/delete-account.sh`)
@@ -134,6 +135,13 @@ GET    /api/files?path=/
 POST   /api/files/create
 DELETE /api/files
 PATCH  /api/files/rename
+GET    /api/files/zip?dir=…[&name=…]   (stream token; a folder or chosen items as one .zip)
+
+GET    /api/transfers                   (admins: Aperçu › Transferts)
+POST   /api/transfers                   (multipart « files »)
+GET    /api/transfers/:id/file          (stream token)
+DELETE /api/transfers/:id
+DELETE /api/transfers
 
 GET    /api/media/films
 GET    /api/media/series
@@ -279,6 +287,14 @@ one or several at once from an M3U list (pasted or a file). They show like the o
 first in their country. The links stay in this server's database (never on GitHub, never sent to
 a browser: only their host is shown) and play through Nexus' relay (and the IPTV VPN).
 
+### Transferts (between devices)
+
+*Aperçu › Transferts* (admins): a file sent from one device (iPhone, computer…) shows at once on
+the account's other devices, to download there. Files are kept in `transfers/` of the
+installation (`TRANSFERS_DIR` in `backend/.env` to put them on another disk), out of Git and of
+the backups, and erased after 7 days (`TRANSFERS_KEEP_DAYS`, 1 to 90). 20 GB per file; refused
+when the disk would have less than 2 GB left.
+
 ### Automatic backups
 
 Every night the database (accounts, library, lists, history, IPTV) and the settings
@@ -302,7 +318,7 @@ sudo bash scripts/backup.sh restore /var/backups/nexus/nexus-db-….dump   # ask
   sessions of 30 days at most, revocable (*Réglages › Appareils connectés*), all signed out by a new password.
 - Every right is checked by the server (admin, media, IPTV); errors never show internal details
   in production; request bodies are limited (1 MB, 10 MB for the file editor, 5 GB per uploaded
-  file); the deploy webhook is signed (HMAC SHA-256), Jarvis uses a shared secret.
+  file, 20 GB per transfer); the deploy webhook is signed (HMAC SHA-256), Jarvis uses a shared secret.
 - HTTPS: Cloudflare Tunnel; a visitor arriving over http is redirected, then HSTS keeps browsers
   on https (the local network keeps http for TVs). Only the tunnel on this machine may give the
   visitor's address (rate limits, sign-in journal).

@@ -75,14 +75,20 @@ export const filesService = {
     return withStreamToken(`/api/files/download?path=${encodeURIComponent(path)}`, await getStreamToken())
   },
 
-  async upload(destPath: string, files: File[], onProgress?: (pct: number) => void): Promise<void> {
+  /** Several items of `dir` (or the whole folder) as one .zip, for a link */
+  async getZipUrl(dir: string, names: string[] = []): Promise<string> {
+    const q = new URLSearchParams({ dir })
+    names.forEach((n) => q.append('name', n))
+    return withStreamToken(`/api/files/zip?${q.toString()}`, await getStreamToken())
+  },
+
+  async upload(destPath: string, files: File[], onProgress?: (loaded: number, total: number) => void, signal?: AbortSignal): Promise<void> {
     const form = new FormData()
     files.forEach((f) => form.append('files', f))
     await api.post(`/files/upload?path=${encodeURIComponent(destPath)}`, form, {
       headers: { 'Content-Type': 'multipart/form-data' },
-      onUploadProgress: (e) => {
-        if (onProgress && e.total) onProgress(Math.round((e.loaded / e.total) * 100))
-      },
+      onUploadProgress: (e) => onProgress?.(e.loaded, e.total ?? 0),
+      signal,
     })
   },
 }

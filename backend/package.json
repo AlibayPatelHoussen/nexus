@@ -37,7 +37,8 @@
     "systeminformation": "^5.33.23",
     "undici": "6.29.1",
     "web-push": "^3.6.7",
-    "winston": "^3.13.0"
+    "winston": "^3.13.0",
+    "yazl": "^3.3.1"
   },
   "devDependencies": {
     "@types/adm-zip": "^0.5.7",
@@ -54,6 +55,7 @@
     "@types/pg": "^8.11.6",
     "@types/supertest": "^6.0.2",
     "@types/web-push": "^3.6.4",
+    "@types/yazl": "^3.3.1",
     "@typescript-eslint/eslint-plugin": "^7.15.0",
     "@typescript-eslint/parser": "^7.15.0",
     "eslint": "^8.57.0",

@@ -36,6 +36,8 @@ import castRoutes     from './routes/cast'
 import iptvRoutes     from './routes/iptv'
 import jarvisRoutes   from './routes/jarvis'
 import usersRoutes    from './routes/users'
+import transfersRoutes from './routes/transfers'
+import { startTransfersWorker } from './services/transfers'
 import { iptvPublicUrl, startIptvWorker } from './services/iptv'
 import { registerSocketHandlers } from './socket'
 
@@ -122,6 +124,7 @@ app.use('/api/cast', castRoutes)
 app.use('/api/iptv', iptvRoutes)
 app.use('/api/jarvis', jarvisRoutes)
 app.use('/api/users', usersRoutes)
+app.use('/api/transfers', transfersRoutes)
 app.use('/api/terminal', terminalRoutes)
 app.get('/api/health', (_req, res) => {
   void iptvPublicUrl().catch(() => null).then((iptvUrl) => res.json({
@@ -201,6 +204,7 @@ if (require.main === module) {
     startYtDlpUpdater()
     startKeyframeIndexer()
     startJarvisNotifier()
+    startTransfersWorker()
   })
 }
 

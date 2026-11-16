@@ -75,6 +75,19 @@ describe('Push notifications', () => {
     if (env.s === undefined) delete process.env.VAPID_SUBJECT
   })
 
+  it('not to the device that did it (a transfer sent from this iPhone)', async () => {
+    const { rows } = await query<{ id: string }>(
+      `INSERT INTO refresh_tokens (user_id, token, expires_at) VALUES ($1, 'push-test-session', NOW() + INTERVAL '1 day') RETURNING id`, [userId])
+    const sid = rows[0].id
+    await query(`INSERT INTO push_subscriptions (user_id, endpoint, p256dh, auth, session_id) VALUES ($1, $2, 'k', 'a', $3)`,
+      [userId, sub(4).endpoint, sid])
+    const send = jest.spyOn(webpush, 'sendNotification').mockResolvedValue({ statusCode: 201, body: '', headers: {} })
+    expect(await sendPush([userId], { title: 'Fichier reçu', body: 'x' }, { exceptSession: sid })).toBe(1)
+    expect(send.mock.calls.map((c) => c[0].endpoint)).toEqual([sub(1).endpoint])
+    expect(await sendPush([userId], { title: 'Fichier reçu', body: 'x' })).toBe(2)
+    await query('DELETE FROM refresh_tokens WHERE id = $1', [sid])
+  })
+
   it('unsubscribes a device', async () => {
     await request(app).post('/api/push/unsubscribe').set(auth).send({ endpoint: sub(1).endpoint })
     expect((await request(app).get('/api/push/key').set(auth)).body.data.devices).toBe(0)

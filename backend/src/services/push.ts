@@ -77,16 +77,18 @@ export interface PushMessage { title: string; body: string; url?: string; tag?: 
 /** Sends to every device of these users; forgets devices that unsubscribed. */
 export interface PushResult { devices: number; sent: number; errors: string[] }
 
-export async function sendPush(userIds: string[], msg: PushMessage): Promise<number> {
-  return (await sendPushDetailed(userIds, msg)).sent
+/** `exceptSession`: not to the device that caused it (a file sent from it, for instance). */
+export async function sendPush(userIds: string[], msg: PushMessage, opts: { exceptSession?: string } = {}): Promise<number> {
+  return (await sendPushDetailed(userIds, msg, opts)).sent
 }
 
 /** Same, with what went wrong for each device (shown by « Envoyer un test »). */
-export async function sendPushDetailed(userIds: string[], msg: PushMessage): Promise<PushResult> {
+export async function sendPushDetailed(userIds: string[], msg: PushMessage, opts: { exceptSession?: string } = {}): Promise<PushResult> {
   if (!userIds.length) return { devices: 0, sent: 0, errors: [] }
   vapid()
   const { rows } = await query<{ id: string; endpoint: string; p256dh: string; auth: string }>(
-    'SELECT id, endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = ANY($1::uuid[])', [userIds],
+    `SELECT id, endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = ANY($1::uuid[])
+       AND ($2::uuid IS NULL OR session_id IS DISTINCT FROM $2::uuid)`, [userIds, opts.exceptSession ?? null],
   )
   let sent = 0
   const errors: string[] = []

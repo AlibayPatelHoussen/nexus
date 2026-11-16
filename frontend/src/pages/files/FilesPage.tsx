@@ -4,6 +4,9 @@ import {
   ChevronRight, ChevronUp, Download, Ellipsis, Eye, FileArchive, FileCode2, FileImage, FilePlus,
   CircleCheck, FileText, FileVideo, Folder, FolderPlus, LayoutGrid, List, Pencil, Trash2, Upload,
 } from 'lucide-react'
+import { Group } from '@/components/ui/GroupedList'
+import UploadRows from '@/components/files/UploadRows'
+import { useFileDrop, useUploads } from '@/hooks/useUploads'
 import toast from 'react-hot-toast'
 import { useConfirm } from '@/components/ui/useConfirm'
 import { useContextMenu } from '@/components/ui/useContextMenu'
@@ -90,7 +93,7 @@ export default function FilesPage() {
   const [creating, setCreating] = useState<'file' | 'dir' | null>(null)
   const [editing, setEditing] = useState<FileEntry | null>(null)
   const [selecting, setSelecting] = useState(false)   // phone selection mode
-  const [uploading, setUploading] = useState(false)
+  const uploads = useUploads()
   const uploadRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => { setSearch(''); setSelecting(false) }, [currentPath])
@@ -128,22 +131,39 @@ export default function FilesPage() {
     else openInNewTab(filesService.getDownloadUrl(entry.path))
   }
 
-  async function handleUpload(files: FileList | null) {
-    if (!files?.length) return
-    setUploading(true)
+  // Sent with its progress and « Annuler » (several at once), into the folder open when it started
+  async function handleUpload(files: File[]) {
+    if (!files.length) return
+    const dest = currentPath
     const n = files.length
-    const id = toast.loading(`Envoi de ${n} fichier${n > 1 ? 's' : ''}…`)
     try {
-      await filesService.upload(currentPath, Array.from(files))
-      toast.success(`${n} fichier${n > 1 ? 's' : ''} envoyé${n > 1 ? 's' : ''}`, { id })
-    } catch (err) { toast.dismiss(id); showError('Envoi impossible', serverError(err)) }
-    finally { setUploading(false); invalidate(); if (uploadRef.current) uploadRef.current.value = '' }
+      const done = await uploads.run(files, (progress, signal) => filesService.upload(dest, files, progress, signal).then(() => true))
+      if (done) toast.success(`${n} fichier${n > 1 ? 's' : ''} envoyé${n > 1 ? 's' : ''} dans « ${nameOf(dest)} »`)
+    } catch (err) { showError('Envoi impossible', serverError(err)) }
+    finally { invalidate() }
+  }
+  // Computer: files dropped on the page go into this folder
+  const drop = useFileDrop((files, folders) => {
+    if (folders) toast(`Les dossiers ne s’envoient pas en les déposant : ouvre-les et choisis leurs fichiers${files.length ? ' (les fichiers sont envoyés)' : ''}.`)
+    void handleUpload(files)
+  }, !phone)
+
+  // Several items or a folder: one .zip (a single file: as it is)
+  function downloadPaths(paths: string[]) {
+    if (!paths.length) return
+    const one = entries.find((e) => e.path === paths[0])
+    if (paths.length === 1 && one?.type === 'file') { openInNewTab(filesService.getDownloadUrl(one.path)); return }
+    openInNewTab(filesService.getZipUrl(currentPath, paths.map((p) => p.split('/').pop() || p)))
   }
 
   const itemsFor = (entry: FileEntry): MenuItem[] => [
     { label: entry.type === 'directory' ? 'Ouvrir' : 'Ouvrir', icon: <Eye />, shortcut: '↩', onSelect: () => open(entry) },
     ...(EDITABLE_EXTS.includes(entry.extension || '') ? [{ label: 'Modifier', icon: <Pencil />, onSelect: () => setEditing(entry) }] : []),
-    ...(entry.type === 'file' ? [{ label: 'Télécharger', icon: <Download />, onSelect: () => openInNewTab(filesService.getDownloadUrl(entry.path)) }] : []),
+    entry.type === 'file'
+      ? { label: 'Télécharger', icon: <Download />, onSelect: () => openInNewTab(filesService.getDownloadUrl(entry.path)) }
+      : { label: 'Télécharger (.zip)', icon: <FileArchive />, onSelect: () => openInNewTab(filesService.getZipUrl(entry.path)) },
+    ...(selected.size > 1 && selected.has(entry.path)
+      ? [{ label: `Télécharger les ${selected.size} (.zip)`, icon: <FileArchive />, onSelect: () => downloadPaths([...selected]) }] : []),
     { label: 'Renommer…', icon: <Pencil />, onSelect: () => setRenaming(entry) },
     { separator: true },
     { label: 'Supprimer…', icon: <Trash2 />, destructive: true, onSelect: () => confirmDelete(entry) },
@@ -184,14 +204,21 @@ export default function FilesPage() {
         { value: 'icons', label: <LayoutGrid size={14} strokeWidth={1.75} aria-label="Icônes" />, title: 'Icônes' },
       ]} />
       {selected.size > 0 && (
+        <button type="button" className={iconBtn} onClick={() => downloadPaths([...selected])}
+          aria-label={selected.size > 1 || entries.find((e) => selected.has(e.path))?.type === 'directory' ? 'Télécharger la sélection (.zip)' : 'Télécharger'}
+          title={selected.size > 1 || entries.find((e) => selected.has(e.path))?.type === 'directory' ? 'Télécharger la sélection (.zip)' : 'Télécharger'}>
+          <Download size={17} strokeWidth={1.5} />
+        </button>
+      )}
+      {selected.size > 0 && (
         <button type="button" className={cn(iconBtn, 'text-danger-text w-auto px-2 gap-1 flex items-center')} disabled={deleting} onClick={deleteSelection} aria-label="Supprimer la sélection" title="Supprimer la sélection">
           <Trash2 size={16} strokeWidth={1.5} /><span className="text-subhead tabular">{selected.size}</span>
         </button>
       )}
       <button type="button" className={iconBtn} onClick={() => setCreating('dir')} aria-label="Nouveau dossier" title="Nouveau dossier"><FolderPlus size={17} strokeWidth={1.5} /></button>
       <button type="button" className={iconBtn} onClick={() => setCreating('file')} aria-label="Nouveau fichier" title="Nouveau fichier"><FilePlus size={17} strokeWidth={1.5} /></button>
-      <button type="button" className={iconBtn} onClick={() => uploadRef.current?.click()} disabled={uploading} aria-label="Envoyer des fichiers" title="Envoyer des fichiers">
-        {uploading ? <Spinner size={16} /> : <Upload size={17} strokeWidth={1.5} />}
+      <button type="button" className={iconBtn} onClick={() => uploadRef.current?.click()} aria-label="Envoyer des fichiers" title="Envoyer des fichiers (ou dépose-les dans la fenêtre)">
+        <Upload size={17} strokeWidth={1.5} />
       </button>
       {searchField}
     </>
@@ -204,6 +231,7 @@ export default function FilesPage() {
         { label: 'Nouveau dossier', icon: <FolderPlus />, onSelect: () => setCreating('dir') },
         { label: 'Nouveau fichier', icon: <FilePlus />, onSelect: () => setCreating('file') },
         { label: 'Envoyer des fichiers', icon: <Upload />, onSelect: () => uploadRef.current?.click() },
+        ...(currentPath !== '/' ? [{ label: 'Télécharger le dossier (.zip)', icon: <FileArchive />, onSelect: () => openInNewTab(filesService.getZipUrl(currentPath)) }] : []),
         { separator: true },
         { label: 'Sélectionner', icon: <CircleCheck />, onSelect: () => setSelecting(true) },
       ], nameOf(currentPath))}>
@@ -337,8 +365,16 @@ export default function FilesPage() {
       actions={phone ? phoneActions : desktopActions}
       accessory={phone ? searchField : undefined}
     >
-      <div className={cn('flex flex-col gap-3', phone && selecting && 'pb-24')}>
+      <div className={cn('relative flex flex-col gap-3', phone && selecting && 'pb-24')} {...drop.handlers}>
+        {uploads.jobs.length > 0 && <Group><UploadRows jobs={uploads.jobs} onCancel={uploads.cancel} /></Group>}
         {content}
+        {drop.over && (
+          <div className="absolute inset-0 z-10 rounded-card border-2 border-dashed border-accent bg-accent-soft grid place-items-center pointer-events-none" aria-hidden="true">
+            <span className="flex items-center gap-2 text-headline text-accent-text font-semibold">
+              <Upload size={20} strokeWidth={1.75} /> Déposer dans « {nameOf(currentPath)} »
+            </span>
+          </div>
+        )}
         {!phone && (
           // Path bar + status (Finder)
           <div className="flex items-center justify-between gap-4 px-1 text-caption text-label2">
@@ -364,6 +400,9 @@ export default function FilesPage() {
         <div className="fixed inset-x-0 z-40 material-bar hairline-t flex items-center justify-between px-4" style={{ bottom: 'calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px))', height: 48 }}>
           <Button variant="plain" className="text-[17px]" onClick={() => (selected.size === filtered.length ? clearSelect() : selectAll())}>
             {selected.size === filtered.length ? 'Tout désélectionner' : 'Tout sélectionner'}
+          </Button>
+          <Button variant="plain" className="w-11 min-h-[44px] px-0" disabled={!selected.size} onClick={() => downloadPaths([...selected])} aria-label="Télécharger la sélection" title="Télécharger">
+            <Download size={22} strokeWidth={1.75} />
           </Button>
           <Button variant="destructive-plain" className="text-[17px]" disabled={!selected.size || deleting} onClick={deleteSelection} aria-label="Supprimer la sélection">
             Supprimer{selected.size ? ` (${selected.size})` : ''}
@@ -394,7 +433,7 @@ export default function FilesPage() {
       />
       {editing && <Editor entry={editing} onClose={() => setEditing(null)} />}
 
-      <input ref={uploadRef} type="file" multiple className="hidden" onChange={(e) => handleUpload(e.target.files)} />
+      <input ref={uploadRef} type="file" multiple className="hidden" onChange={(e) => { const f = Array.from(e.target.files ?? []); e.target.value = ''; void handleUpload(f) }} />
     </Page>
   )
 }

@@ -817,6 +817,77 @@ test('UI: file manager keeps the folder in the URL and uploads', async () => {
   await page.context().close()
 })
 
+test('UI: file manager — a file dropped on the window is sent with its progress, a folder is downloaded as a .zip', async () => {
+  admin = await login('admin', 'Admin1234')       // access tokens only live 40 s in this environment
+  const dir = `${cfg.media}/films`
+  const page = await newPage(admin, { width: 1280, height: 800 })
+  await page.goto(`${B}/files?path=${encodeURIComponent(dir)}`, { waitUntil: 'networkidle' })
+  await page.waitForSelector('text=Marty Supreme (2025)')
+  // Drop a file from the computer onto the list
+  const dt = await page.evaluateHandle(() => {
+    const d = new DataTransfer()
+    d.items.add(new File(['dropped'], 'e2e-dropped.txt', { type: 'text/plain' }))
+    return d
+  })
+  const target = page.locator('table').first()
+  await target.dispatchEvent('dragenter', { dataTransfer: dt })
+  await page.waitForSelector('text=Déposer dans « films »')
+  await target.dispatchEvent('drop', { dataTransfer: dt })
+  await page.waitForSelector('text=1 fichier envoyé dans « films »', { timeout: 10000 })
+  eq(fs.readFileSync(`${dir}/e2e-dropped.txt`, 'utf8'), 'dropped', 'dropped file on disk')
+  fs.unlinkSync(`${dir}/e2e-dropped.txt`)
+
+  // A folder: « Télécharger (.zip) » in its menu, a real zip with its files
+  await page.locator('tr', { hasText: 'Marty Supreme (2025)' }).click({ button: 'right' })
+  const asked = page.context().waitForEvent('request', { predicate: (r) => r.url().includes('/api/files/zip?'), timeout: 10000 })
+  await page.click('text=Télécharger (.zip)')
+  const zipUrl = (await asked).url()
+  assert(/\/api\/files\/zip\?dir=.*Marty/.test(decodeURIComponent(zipUrl)), `zip url: ${zipUrl}`)
+  const zip = await fetch(zipUrl)
+  eq(zip.status, 200, 'zip status')
+  eq(zip.headers.get('content-type'), 'application/zip', 'zip type')
+  const buf = Buffer.from(await zip.arrayBuffer())
+  eq(buf.length, Number(zip.headers.get('content-length')), 'zip size known in advance')
+  assert(buf.includes(Buffer.from('Marty Supreme (2025)/Marty.Supreme.2025.1080p.WEB.mp4')), 'the film is in the zip')
+  await page.context().close()
+})
+
+test('UI: Aperçu › Transferts — sent from the iPhone, it appears at once on the computer (toast), downloaded there, then erased', async () => {
+  admin = await login('admin', 'Admin1234')
+  const al = await login('alice', 'User12345')
+  for (const f of fs.existsSync(`${E2E}/transfers`) ? fs.readdirSync(`${E2E}/transfers`) : []) if (f !== '.incoming') fs.rmSync(`${E2E}/transfers/${f}`, { force: true })
+  sql('DELETE FROM transfers')
+  const desk = await newPage(admin, { width: 1280, height: 800 })
+  await desk.goto(`${B}/files?path=${encodeURIComponent(cfg.media)}`, { waitUntil: 'networkidle' })   // anywhere in Nexus
+  const phone = await newPage(admin)
+  await phone.goto(`${B}/dashboard`, { waitUntil: 'networkidle' })
+  await phone.waitForSelector('text=Envoyer des fichiers')
+  await phone.setInputFiles('input[type="file"]', { name: 'Photo été.jpg', mimeType: 'image/jpeg', buffer: Buffer.from('jpeg-bytes') })
+  await phone.waitForSelector('text=« Photo été.jpg » envoyé', { timeout: 10000 })
+  // On the computer, without reloading: the toast, then the list in Aperçu
+  await desk.waitForSelector('text=Fichier reçu', { timeout: 10000 })
+  await desk.click('text=Fichier reçu')
+  await desk.waitForURL(/\/dashboard#transferts/)
+  const row = desk.locator('#transferts [role="listitem"]', { hasText: 'Photo été.jpg' })
+  await row.waitFor()
+  const [download] = await Promise.all([desk.waitForEvent('download'), row.locator('a[download]').click()])
+  eq(download.suggestedFilename(), 'Photo été.jpg', 'downloaded under its own name')
+  eq(fs.readFileSync(await download.path(), 'utf8'), 'jpeg-bytes', 'downloaded content')
+  // The iPhone sent it: no « Fichier reçu » there
+  assert(!(await phone.locator('text=Fichier reçu').count()), 'no toast on the sending device')
+  // Erased on the computer → gone on the iPhone too, live
+  await row.locator('button[aria-label^="Options pour"]').click()
+  await desk.click('[role="menu"] >> text=Supprimer')
+  await row.waitFor({ state: 'detached' })
+  await phone.locator('#transferts', { hasText: 'Photo été.jpg' }).waitFor({ state: 'detached', timeout: 10000 }).catch(async () => {
+    assert(!(await phone.locator('#transferts >> text=Photo été.jpg').count()), 'removed on the iPhone too')
+  })
+  eq(sql('SELECT COUNT(*) FROM transfers'), '0', 'no transfer left')
+  // « user » accounts have no transfers
+  eq((await api('/api/transfers', { token: al.accessToken })).status, 403, 'user account: 403')
+  await desk.context().close(); await phone.context().close()
+})
+
 test('UI: settings shows matching interface/server versions', async () => {
   const commit = (await api('/api/health')).json.build.commit
   const page = await newPage(admin, { width: 1280, height: 800 })
@@ -1505,7 +1576,8 @@ test('UI: logout', async () => {
 })
 
 // ── run ──────────────────────────────────────────────
-browser = await chromium.launch()
+// A UTF-8 locale, like a real computer: without one Chrome names every accented download « download »
+browser = await chromium.launch({ env: { ...process.env, LANG: process.env.LANG || 'C.UTF-8' } })
 for (const t of tests) {
   if (filter && !t.name.toLowerCase().includes(filter.toLowerCase()) && !t.name.startsWith('login')) continue
   const start = Date.now()

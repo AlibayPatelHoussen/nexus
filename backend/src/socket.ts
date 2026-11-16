@@ -3,6 +3,7 @@ import { SystemService } from './services/system'
 import { logger } from './utils/logger'
 import { attachTerminal } from './services/terminal'
 import { setDownloadsNamespace } from './services/downloads'
+import { setTransfersNamespace } from './services/transfers'
 import { verifySession } from './middleware/auth'
 import type { JwtPayload } from './middleware/auth'
 import { checkSession } from './services/sessions'
@@ -100,4 +101,13 @@ export function registerSocketHandlers(io: Server): void {
     if (role === 'admin') void socket.join('admins')
   })
   setDownloadsNamespace(dlNs)
+
+  // ─── Transfers namespace (Aperçu, admins): a file sent from another device ─
+  const trNs = io.of('/transfers')
+  trNs.use(guard('admin'))
+  trNs.on('connection', (socket) => {
+    watchSession(socket)
+    void socket.join(`user:${(socket.data as SocketUser).userId}`)
+  })
+  setTransfersNamespace(trNs)
 }

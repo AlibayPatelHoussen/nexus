@@ -15,6 +15,7 @@ import Skeleton, { SkeletonRows } from '@/components/ui/Skeleton'
 import EmptyState from '@/components/ui/EmptyState'
 import type { ServiceInfo, SystemStats } from '@/types'
 import { SERVICE_STATE, isInstalled, isStopped } from '@/services/serviceState'
+import TransfersGroup from './TransfersGroup'
 
 const last = (a: number[]) => (a.length ? a[a.length - 1] : 0)
 
@@ -99,7 +100,10 @@ function DesktopOverview({ stats, history, services, servicesError }: OverviewPr
       </section>
 
       <div className="grid gap-6 xl:grid-cols-[minmax(0,3fr)_minmax(0,2fr)] items-start">
-        <ServicesGroup services={services} error={servicesError} />
+        <div className="flex flex-col gap-6 min-w-0">
+          <TransfersGroup phone={false} />
+          <ServicesGroup services={services} error={servicesError} />
+        </div>
         <div className="flex flex-col gap-6 min-w-0">
           <MediaStorage stats={stats} />
           <SystemInfo stats={stats} />
@@ -176,6 +180,8 @@ function PhoneOverview({ stats, history, services, servicesError }: OverviewProp
           <StatSparkline values={history.down} secondary={history.up} height={26} capacity={30} label="Débit réseau" />
         </PhoneMeter>
       </Group>
+
+      <TransfersGroup phone />
 
       <Group header="Serveur">
         <ListRow to="/jarvis" icon={<Bot strokeWidth={1.75} />} iconTone="accent" title="Jarvis" detail="Assistant" accessory="chevron" />
