@@ -4,6 +4,17 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Added — Transferts (files between devices, in Aperçu)
+- *Aperçu › Transferts* (admins only): **Envoyer des fichiers** from the iPhone (photos, videos, documents) or the computer (or drop them on it), up to 20 GB each, 50 at once, with the progress, the time left and « Annuler »; they arrive **at once** on the account's other open devices (list updated live, « Fichier reçu » wherever you are in Nexus, and a notification on the others — never on the device that sent them), to download there with their name; « Supprimer », « Tout effacer »; images are shown. Erased from the server after 7 days (`TRANSFERS_KEEP_DAYS`), instead of a separate file-sharing app
+- Kept in `transfers/` of the installation (`TRANSFERS_DIR`; out of Git and of the backups) under an id, never under a name from the browser; refused before receiving it when the disk would have less than 2 GB left; the files cut off or left without a row are cleaned up every hour (migration 021)
+
+### Added — Fichiers: progress, drag & drop, .zip
+- Uploads show their progress (percent, size, time left) with « Annuler », several at once; on a computer, files **dropped** on the window go into the open folder
+- **Télécharger (.zip)**: a folder (its menu, or « … › Télécharger le dossier (.zip) » on iPhone) or a selection of several items (toolbar, iPhone selection bar) in one download — stored, not compressed, its size known from the start (the browser shows the progress), nothing written on the server; links and secrets are left out
+
+### Fixed — Downloaded names with accents
+- A file downloaded from Fichiers named « Épisode été.mkv » arrived in Chrome as « �pisode �t�.mkv » (Express wrote the name in Latin-1): the name is now also sent in UTF-8 (`filename*`), whole in every browser
+
 ### Fixed — France 24 started in Spanish
 - iptv-org keeps all of France 24's languages in one channel, French its main version; Free-TV lists the Spanish version with the very address of one of those streams, and Free-TV's streams came first: the French channel played Spanish. A channel's main version now always comes first (Free-TV's streams first inside it). 34 other channels started on another version the same way (Canale 5, AXN Black, CCTV-6…)
 

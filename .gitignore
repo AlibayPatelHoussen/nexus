@@ -73,3 +73,6 @@ backend/cache/
 
 # Web Push keys generated on first start (VAPID)
 backend/data/
+
+# Files sent between devices (Aperçu › Transferts), erased after a few days
+/transfers/

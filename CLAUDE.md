@@ -78,10 +78,19 @@ npm workspaces (`frontend`, `backend`); run from the repo root unless noted.
   country, kept by every refresh, never checked in the background). The link may hold credentials: never sent to a
   browser (host only). Their logo, when none is given: the same channel (name without HD/FHD, same country) in the
   catalogue, else in iptv-org's whole database (`logo_index`, kept in `iptv_meta('logos')` at each refresh).
+- **Transfers** (Aperçu › Transferts, admins): `services/transfers.ts` + `routes/transfers.ts` keep files sent from one
+  device in `TRANSFERS_DIR` (default `transfers/` of the installation, out of Git and backups) under their id, 7 days
+  (`TRANSFERS_KEEP_DAYS`); socket namespace `/transfers` (`transfer:added` / `transfer:removed`, the sending page knows
+  itself by `X-Nexus-Client`), push « Fichier reçu » to the other devices (`sendPush(…, { exceptSession })`), hourly
+  clean-up. The file manager's `/api/files/zip` streams folders / selections as a stored .zip (yazl,
+  `services/zipDownload.ts`). Downloads name files with `utils/contentDisposition.ts` (UTF-8 `filename*`).
+  Frontend: `pages/dashboard/TransfersGroup.tsx`, `components/shell/TransferToasts.tsx`, `hooks/useUploads.ts`
+  (progress, « Annuler », drag & drop), `components/files/UploadRows.tsx`.
 - **Security**: secrets only in `backend/.env` (Nexus refuses to start without `JWT_SECRET`); the file manager never
   reads or changes secrets and leaves the Nexus folder read-only (`assertAllowed` in `services/files.ts`, code
   `PROTECTED_FILE`); `trust proxy` = loopback (cloudflared on this machine); http visitors via Cloudflare are
-  redirected to https; JSON bodies 1 MB (11 MB for `/api/files/write` and `/api/iptv/my-channels/import`); passwords 8–72 characters. Backups:
+  redirected to https; JSON bodies 1 MB (11 MB for `/api/files/write` and `/api/iptv/my-channels/import`), uploads 5 GB per file (20 GB per
+  transfer); passwords 8–72 characters. Backups:
   `scripts/backup.sh` (nightly pg_dump + settings to `/var/backups/nexus`).
 - **Deploy**: GitHub webhook `routes/deploy.ts` only writes a request file; `scripts/auto-deploy.sh`
   (systemd path unit) runs `scripts/deploy.sh` outside the app (build, `scripts/migrate-db.sh`, restart).

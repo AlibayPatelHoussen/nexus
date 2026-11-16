@@ -12,6 +12,8 @@ import { sudoLimiter } from '../middleware/rateLimit'
 import { elevatedDelete } from '../services/elevatedDelete'
 import { FilesService, assertAllowed, isInsideDir, sanitizePath, secretReason } from '../services/files'
 import { DLNA_STREAM_HEADERS } from '../services/cast'
+import { planZip, sendZip, zipName } from '../services/zipDownload'
+import { contentDisposition } from '../utils/contentDisposition'
 import { AppError, ForbiddenError, NotFoundError, ValidationError } from '../utils/errors'
 import { query } from '../config/database'
 import { archivePages, chapterKind } from '../services/chapters'
@@ -243,7 +245,28 @@ router.get('/archive-page', authenticateStream, requireMedia, asyncHandler(async
 router.get('/download', authenticateStream, requireMedia, asyncHandler(async (req: Request, res: Response) => {
   const filePath = await resolveReadable(req)
   await statFile(filePath)
-  res.download(filePath, path.basename(filePath))
+  // The name whole in every browser, accents included (Express alone gives Chrome « _pisode.mkv »)
+  res.setHeader('Content-Disposition', contentDisposition(path.basename(filePath)))
+  res.sendFile(filePath, { dotfiles: 'allow' })
+}))
+
+// ─── DOWNLOAD several items / a folder as one .zip (the file manager: admins) ──
+// ?dir=<folder> (the whole folder) or ?dir=<folder>&name=<item>&name=<item>… (a link)
+router.get('/zip', authenticateStream, requireAdmin, asyncHandler(async (req: Request, res: Response) => {
+  const dir = req.query.dir
+  if (typeof dir !== 'string' || !dir) throw new ValidationError('dir is required')
+  const folder = sanitizePath(dir)
+  const raw = req.query.name === undefined ? [] : ([] as unknown[]).concat(req.query.name)
+  if (raw.length > 2000) throw new ValidationError('Too many items at once (max 2000)')
+  const names = [...new Set(raw)]
+  if (!names.every((n): n is string => typeof n === 'string' && !!n && n !== '.' && n !== '..' && !/[/\\]/.test(n))) {
+    throw new ValidationError('Invalid item name')
+  }
+  const roots = names.length ? names.map((n) => path.join(folder, n)) : [folder]
+  for (const r of roots) await assertAllowed(r, 'read')
+  const plan = await planZip(roots)
+  if (!plan.files.length && !plan.dirs.length) throw new NotFoundError('Files')
+  sendZip(res, plan, zipName(roots))
 }))
 
 // ─── Everything below is the server file manager: admin only ───────────────

@@ -209,6 +209,7 @@ IPTV_FREETV_URL=http://localhost:$MOCK_PORT/freetv/playlist.m3u8
 IPTV_YTDLP="python3 '$ROOT/e2e/fake-ytdlp.py' --live http://localhost:$MOCK_PORT/iptv-hls/index.m3u8"
 IPTV_DATA_DIR=$E2E/iptv-data
 IPTV_ALLOW_PRIVATE=1
+TRANSFERS_DIR=$E2E/transfers
 EOF
 ( cd "$ROOT/backend"; set -a; . "$E2E/env"; set +a; exec node dist/index.js ) > "$E2E/backend.log" 2>&1 < /dev/null &
 echo $! > "$E2E/backend.pid"

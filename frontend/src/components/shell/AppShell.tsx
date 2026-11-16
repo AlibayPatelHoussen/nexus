@@ -9,6 +9,7 @@ import TabKeepAlive from './TabKeepAlive'
 import CommandPalette from './CommandPalette'
 import VersionBanner from './VersionBanner'
 import DownloadToasts from './DownloadToasts'
+import TransferToasts from './TransferToasts'
 import { ShellContext, type ShellState } from './shellContext'
 import { useRouteMotion } from './useRouteMotion'
 import { useAccess } from './access'
@@ -33,6 +34,7 @@ export default function AppShell() {
   const logout = useAuthStore((s) => s.logout)
   const updateUser = useAuthStore((s) => s.updateUser)
   const access = useAccess()
+  const isAdmin = useAuthStore((s) => s.user?.role === 'admin')
 
   // The account's role and access as the server knows them now (an admin may have changed them)
   useEffect(() => {
@@ -90,7 +92,8 @@ export default function AppShell() {
   if (access.iptvHost && !access.iptv) return <NoIptvAccess onLogout={handleLogout} />
 
   // A live toast at the end of each download (accounts with the media). Each account hears about its own downloads only
-  const palette = <>{access.media && <DownloadToasts />}<CommandPalette open={search} onClose={() => setSearch(false)} onLogout={handleLogout} /></>
+  // Admins: « Fichier reçu » when a file is sent from another of their devices (Aperçu › Transferts)
+  const palette = <>{access.media && <DownloadToasts />}{isAdmin && !access.iptvHost && <TransferToasts />}<CommandPalette open={search} onClose={() => setSearch(false)} onLogout={handleLogout} /></>
 
   if (device === 'phone') {
     return (
