@@ -4,12 +4,11 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
-### Added — Your own IPTV playlists
-- *IPTV › Paramètres › Playlists* (admins): add an M3U playlist you have the right to use (your subscription, a list of free channels…), **by address** (read again at each catalogue update) **or as a file** (.m3u, 10 MB at most); remove it the same way. 10 playlists at most
-- Kept in this server's database only, never on GitHub; an address (often with the account's credentials) never comes back to a browser — only its host — and reaches the Python module through a private file (never a command line, never a cache, never a log or an error message)
-- Its **live** channels join the catalogue as channels of their own (`pl-<playlist>-<hash>`), in the playlist's order: a shelf per playlist on the IPTV home page, a « Playlist » filter in *Chaînes*. Left out: films / series on demand (Xtream `/movie/`, `/series/`, video files), separators with dummy addresses, adult groups, DASH. Kodi tags are removed from names; a « FR - » prefix gives the country; the same name twice (« TF1 HD », « TF1 FHD ») is one channel with two streams
-- Played through Nexus' relay (and the IPTV VPN when it is on); never checked in the background (a provider counts each connection), only when opened
-- A playlist added or removed while the catalogue is being updated gets one more update right after
+### Added — « Mes chaînes » (IPTV channels added with their link)
+- *IPTV › Paramètres › Mes chaînes* (admins): **Ajouter une chaîne…** with its name and stream link (.m3u8), and optionally its country and logo; **Ajouter plusieurs chaînes…** by pasting an M3U list or choosing a file; « Retirer » on each. Up to 2 000
+- Shown at once **like the other channels**: in their country, first (home shelves and lists), in search, favourites, the player. A « FR - » prefix gives the country; Kodi tags are removed; from a list, films / series on demand, separators (dummy addresses), adult groups and links already added are left out, and counted
+- The link (often with the account's credentials) stays on the server: never sent to a browser (only its host), played through Nexus' relay (and the IPTV VPN when it is on); kept by every refresh of the sources; never checked in the background (a provider counts each connection), only when opened
+- They replace the playlists of the previous version (migration 020)
 
 ### Changed — The IPTV apart for « user » accounts
 - iPhone: « user » accounts get an **IPTV** tab of its own (Aperçu, Médias, IPTV, Manga, Réglages); the IPTV leaves the Médias tab and its sections menu. Desktop: the IPTV gets its own sidebar section, « Télévision ». Admins keep it under Médias (`iptvTab` in `components/shell/access.ts`)

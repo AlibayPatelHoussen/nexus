@@ -17,7 +17,7 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE.parent))
 
-from iptv import catalogue, epg, freetv, playlists, resolver, sources, stream_checker  # noqa: E402
+from iptv import catalogue, epg, freetv, resolver, sources, stream_checker  # noqa: E402
 from iptv.playlist_parser import channel_id, group_titles, parse_m3u  # noqa: E402
 
 M3U = '''﻿#EXTM3U
@@ -247,61 +247,6 @@ class FreeTv(unittest.TestCase):
         alone, stats = freetv.merge([], parse_m3u(FREETV), {})                   # iptv-org down: nothing is filtered or enriched
         self.assertEqual(stats['added'], len(alone))
         self.assertEqual({c.id: c.country for c in alone if c.id in ('TF1.fr', 'BBCOne.uk')}, {'TF1.fr': 'FR', 'BBCOne.uk': 'UK'})
-
-
-PL_ID = '0a1b2c3d-1111-4222-8333-444455556666'
-# The shape of a provider's list: Kodi tags, separators with dummy addresses, « FR - » prefixes,
-# films on demand, the same channel twice, an adult group
-PRIVATE = """#EXTM3U
-#EXTINF:-1,[COLOR yellow]By Someone[/B][/I][/COLOR]
-http://0.1.5.0:1224
-#EXTINF:-1,[COLOR green]--- FRANCE TV ---[/COLOR]
-http://0.8.6.0:1024177
-#EXTINF:-1,FR - TF1 HD
-http://provider.example:8000/live/user/pass/119.m3u8
-#EXTINF:-1 tvg-logo="https://img.example/m6.png",FR - M6 HD
-http://provider.example:8000/live/user/pass/444.ts
-#EXTINF:-1,FR - TF1 FHD
-http://provider.example:8000/live/user/pass/120.m3u8
-#EXTINF:-1 tvg-country="BE",La Une
-http://provider.example:8000/live/user/pass/7.m3u8
-#EXTINF:-1 group-title="Films",Un film
-http://provider.example:8000/movie/user/pass/55.mkv
-#EXTINF:-1 group-title="XXX",Adult
-http://provider.example:8000/live/user/pass/666.m3u8
-#EXTINF:-1,HD - Pas un pays
-http://provider.example:8000/live/user/pass/9.m3u8
-"""
-
-
-class Playlists(unittest.TestCase):
-    def test_live_channels_only_in_the_playlist_order(self):
-        found, stats = playlists.channels_from(PL_ID, PRIVATE, {'FR', 'BE', 'US'})
-        self.assertEqual([(c.name, c.country, c.rank) for c in found],
-                         [('TF1 HD', 'FR', 1), ('M6 HD', 'FR', 2), ('La Une', 'BE', 3), ('HD - Pas un pays', None, 4)])
-        tf1 = found[0]
-        # « TF1 HD » and « TF1 FHD »: one channel, two streams
-        self.assertEqual([st.url.rsplit('/', 1)[-1] for st in tf1.streams], ['119.m3u8', '120.m3u8'])
-        self.assertTrue(all(st.source == 'playlist' for c in found for st in c.streams))
-        self.assertEqual(found[1].logo, 'https://img.example/m6.png')
-        self.assertEqual(stats, {'entries': 5, 'vod': 1, 'skipped': 3})
-        data = tf1.to_json()
-        self.assertEqual((data['playlist'], data['rank']), (PL_ID, 1))
-        self.assertRegex(tf1.id, r'^pl-0a1b2c3d-[0-9a-f]{12}$')
-
-    def test_ids_are_stable_and_other_channels_unchanged(self):
-        a, _ = playlists.channels_from(PL_ID, PRIVATE, set())
-        b, _ = playlists.channels_from(PL_ID, PRIVATE, set())
-        self.assertEqual([c.id for c in a], [c.id for c in b])
-        other, _ = playlists.channels_from('ffffffff-1111-4222-8333-444455556666', PRIVATE, set())
-        self.assertNotEqual(a[0].id, other[0].id)
-        self.assertNotIn('playlist', catalogue.Channel(id='x', name='x').to_json())
-
-    def test_names_lose_kodi_tags(self):
-        self.assertEqual(playlists.clean_name('[COLOR red][B]TF1[/B][/COLOR]  HD'), 'TF1 HD')
-        self.assertEqual(playlists.split_country('|FR| France 2', set()), ('France 2', 'FR'))
-        self.assertEqual(playlists.split_country('UK: BBC One', set()), ('BBC One', 'UK'))
-        self.assertEqual(playlists.split_country('XX - Nope', {'FR'}), ('XX - Nope', None))
 
 
 class _Handler(http.server.BaseHTTPRequestHandler):
@@ -578,37 +523,6 @@ class CommandLine(LocalServer):
         last = json.loads(res.stdout.strip().splitlines()[-1])
         self.assertEqual((last['type'], last['sources']), ('done', ['iptv-org']), res.stderr)
         self.assertTrue(any(n.startswith('Free-TV : liste indisponible') for n in last['notes']))
-
-    def test_refresh_adds_the_playlists_without_naming_their_address(self):
-        for name, data in API.items():
-            _Handler.routes[f'/api/{name}.json'] = (200, json.dumps(data).encode(), {})
-        _Handler.routes['/index.m3u'] = (200, M3U.encode(), {})
-        _Handler.routes['/get.php'] = (200, PRIVATE.encode(), {})
-        env = {**os.environ, 'IPTV_API_BASE': f'{self.base}/api', 'IPTV_PLAYLIST_URL': f'{self.base}/index.m3u'}
-        file_id, broken_id = '11111111-2222-4333-8444-555555555555', '99999999-2222-4333-8444-555555555555'
-        lists = Path(self.tmp.name) / 'playlists.json'
-        lists.write_text(json.dumps([
-            {'id': PL_ID, 'url': f'{self.base}/get.php?username=secret-user&password=secret-pass'},
-            {'id': file_id, 'content': '#EXTM3U\n#EXTINF:-1,Ma chaine\nhttp://mine.example/1.m3u8\n'},
-            {'id': broken_id, 'url': f'{self.base}/gone.php?password=secret-pass'},
-            {'id': 'not-an-id', 'content': 'x'},
-        ]))
-        out = Path(self.tmp.name) / 'cat.json'
-        res = subprocess.run([sys.executable, str(HERE.parent / 'iptv_cli.py'), '--json', 'refresh', '--out', str(out), '--playlists', str(lists)],
-                             capture_output=True, text=True, env=env, timeout=60)
-        last = json.loads(res.stdout.strip().splitlines()[-1])
-        self.assertEqual((last['type'], last['sources']), ('done', ['iptv-org', 'playlist']), res.stderr)
-        got = {p['id']: p for p in last['playlists']}
-        self.assertEqual((got[PL_ID]['channels'], got[file_id]['channels'], got[broken_id]['channels']), (4, 1, 0))
-        self.assertIn('HTTP 404', got[broken_id]['error'])
-        self.assertNotIn('not-an-id', got)
-        # The address (and its credentials) is in no message, no log, no cached file
-        self.assertNotIn('secret-pass', res.stdout + res.stderr)
-        self.assertFalse(any('secret' in f.read_text(errors='ignore') for f in Path(self.tmp.name).rglob('*') if f.is_file() and f != lists))
-        data = json.loads(out.read_text())
-        mine = [c for c in data['channels'] if c.get('playlist') == PL_ID]
-        self.assertEqual(sorted(c['name'] for c in mine), ['HD - Pas un pays', 'La Une', 'M6 HD', 'TF1 HD'])
-        self.assertIn('TF1.fr', {c['id'] for c in data['channels']})       # iptv-org's TF1 is still its own channel
 
     def test_resolve_command(self):
         self.fake_ytdlp()

@@ -3,7 +3,7 @@ import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom'
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { motion } from 'framer-motion'
 import {
-  ArrowUpDown, ChevronDown, ChevronRight, ChevronUp, Globe, Heart, History, House, Languages, LayoutGrid, ListPlus, RefreshCw,
+  ArrowUpDown, ChevronDown, ChevronRight, ChevronUp, Globe, Heart, History, House, Languages, LayoutGrid, ListPlus, Plus, RefreshCw,
   Settings2, Shapes, Tv,
 } from 'lucide-react'
 import toast from 'react-hot-toast'
@@ -27,7 +27,7 @@ import { iptvTab, useAccess } from '@/components/shell/access'
 import { spring } from '@/design/motion'
 import { cn } from '@/utils'
 import { serverError } from '@/utils/errorToast'
-import { iptvService, type ChannelSort, type IptvChannel, type IptvPlaylist, type IptvSettings, type IptvSummary } from '@/services/iptvService'
+import { iptvService, type ChannelSort, type IptvChannel, type IptvSettings, type IptvSummary, type MyChannel, type MyImport } from '@/services/iptvService'
 import { CHANNEL_GRID, ChannelLogo, ChannelTile, useInfiniteTrigger, useOpenChannel } from './ChannelTile'
 import { MAIN_CATEGORIES, categoryName, countryName, flag, languageName } from './labels'
 
@@ -179,10 +179,6 @@ function HomeView() {
 
       {data.recent.length > 0 && <Shelf title="Récemment regardées" items={data.recent} onOpen={open} more="/iptv/recents" />}
       {data.favorites.length > 0 && <Shelf title="Favoris" items={data.favorites} onOpen={open} more="/iptv/favoris" />}
-      {/* The playlists added in Nexus (IPTV › Paramètres), each in its own order */}
-      {(data.playlists ?? []).map((p) => (
-        <Shelf key={p.id} id={`iptv-playlist-${p.id}`} title={p.name} items={p.items} onOpen={open} more={`/iptv/chaines?playlist=${p.id}`} />
-      ))}
       {/* The priority countries, in the owner's order. One without any channel says so: nothing is made up */}
       {data.priority.map((p) => (p.count > 0 ? (
         <Shelf key={p.code} id={`iptv-pays-${p.code}`} lead={p.flag ?? flag(p.code)} title={countryName(p.code, p.name)} items={p.items}
@@ -352,7 +348,6 @@ function ChannelsView() {
   const country = params.get('country') ?? ''
   const category = params.get('category') ?? ''
   const language = params.get('language') ?? ''
-  const playlist = params.get('playlist') ?? ''
   const sort: ChannelSort = SORTS.find((o) => o.value === params.get('sort'))?.value ?? 'top'
   const online = params.get('online') === '1'
   const set = (key: string, value: string) => {
@@ -363,7 +358,7 @@ function ChannelsView() {
   useEffect(() => { if ((params.get('q') ?? '') !== q) set('q', q) }, [q]) // eslint-disable-line react-hooks/exhaustive-deps
 
   const facets = useQuery({ queryKey: ['iptv', 'facets'], queryFn: iptvService.facets, staleTime: 5 * 60_000 })
-  const filters = { q, country, category, language, playlist, sort, status: online ? 'online' as const : 'all' as const }
+  const filters = { q, country, category, language, sort, status: online ? 'online' as const : 'all' as const }
   const list = useInfiniteQuery({
     queryKey: ['iptv', 'channels', filters],
     queryFn: ({ pageParam }) => iptvService.channels({ ...filters, page: pageParam, limit: 60 }),
@@ -375,17 +370,12 @@ function ChannelsView() {
   const more = useInfiniteTrigger(() => { if (list.hasNextPage && !list.isFetchingNextPage) void list.fetchNextPage() }, !!list.hasNextPage)
   const open = useOpenChannel()
   const f = facets.data
-  const anyFilter = !!(q || country || category || language || playlist || online)
+  const anyFilter = !!(q || country || category || language || online)
 
   return (
     <div className="flex flex-col gap-4">
       <SearchField value={text} onChange={setText} label="Rechercher une chaîne" placeholder="Rechercher une chaîne" />
       <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Filtres">
-        {/* The playlists added in Nexus (each in its own order) */}
-        {!!f?.playlists?.length && (
-          <FilterMenu label="Playlist" value={playlist} onChange={(v) => set('playlist', v)}
-            options={f.playlists.map((p) => ({ value: p.id, label: `${p.name} (${p.count})` }))} />
-        )}
         <FilterMenu label="Pays" value={country} onChange={(v) => set('country', v)}
           options={(f?.countries ?? []).map((c) => ({ value: c.code, label: `${c.flag ?? flag(c.code)} ${countryName(c.code, c.name)} (${c.count})` }))} />
         <FilterMenu label="Catégorie" value={category} onChange={(v) => set('category', v)}
@@ -528,7 +518,7 @@ function RecentView() {
 }
 
 // ─── Settings ───────────────────────────────────────────────────────────────
-const SOURCE_NAMES: Record<string, string> = { 'iptv-org': 'iptv-org', 'free-tv': 'Free-TV', playlist: 'tes playlists' }
+const SOURCE_NAMES: Record<string, string> = { 'iptv-org': 'iptv-org', 'free-tv': 'Free-TV' }
 
 /**
  * The IPTV's VPN: only the IPTV goes through it (scripts/iptv-vpn.sh). Admins. Once installed,
@@ -568,91 +558,91 @@ function VpnGroup({ enabled, onEnabled, saving }: { enabled: boolean; onEnabled:
   )
 }
 
+// ─── « Mes chaînes » (admins) ──────────────────────────────────────────────────
 /**
- * Playlists added in Nexus (admins): the owner's own M3U lists (a subscription, free channels…),
- * by address or as a file. Kept on this server: their addresses (often with the account's
- * credentials) never come back to a browser, only their host.
+ * Channels the owner adds with their stream address (an m3u8 link), one by one or several at
+ * once from an M3U list. Shown like the other channels (in their country, first). The address
+ * (it may hold the account's credentials) stays on the server: only its host comes back.
  */
-function PlaylistsGroup({ refreshing }: { refreshing: boolean }) {
+function MyChannelsGroup() {
   const qc = useQueryClient()
   const confirm = useConfirm()
-  const [adding, setAdding] = useState(false)
-  const { data: lists, isError } = useQuery({
-    queryKey: ['iptv', 'playlists'], queryFn: iptvService.playlists, refetchInterval: refreshing ? 3000 : false,
-  })
-  // The update over: each playlist's result (channels or error), and the catalogue it changed
-  const wasRefreshing = useRef(refreshing)
-  useEffect(() => {
-    if (wasRefreshing.current && !refreshing) void qc.invalidateQueries({ queryKey: ['iptv'] })
-    wasRefreshing.current = refreshing
-  }, [refreshing, qc])
+  const phone = useShell().device === 'phone'
+  const [sheet, setSheet] = useState<'add' | 'import' | 'all' | null>(null)
+  const { data: mine, isError } = useQuery({ queryKey: ['iptv', 'mine'], queryFn: iptvService.myChannels })
+  const SHOWN = 6
 
-  async function remove(p: IptvPlaylist) {
+  async function remove(c: MyChannel) {
     const ok = await confirm({
-      title: `Retirer « ${p.name} » ?`,
-      message: 'Ses chaînes quittent le catalogue à la mise à jour qui suit. Les favoris qui en venaient restent, au cas où elle reviendrait.',
+      title: `Retirer « ${c.name} » ?`,
+      message: 'Elle quitte le catalogue. Si elle est dans des favoris, elle y revient si tu l’ajoutes de nouveau.',
       confirmLabel: 'Retirer', danger: true,
     })
     if (!ok) return
     try {
-      await iptvService.removePlaylist(p.id)
-      toast.success('Playlist retirée : le catalogue se met à jour')
+      await iptvService.removeMyChannel(c.id)
+      toast.success(`« ${c.name} » retirée`)
       void qc.invalidateQueries({ queryKey: ['iptv'] })
     } catch (e) { toast.error(serverError(e)) }
   }
 
-  const detail = (p: IptvPlaylist) => [
-    p.kind === 'url' ? p.host : 'Fichier',
-    p.error ? null : p.channels == null ? (refreshing ? 'lecture en cours…' : 'lue à la prochaine mise à jour')
-      : `${p.channels.toLocaleString('fr-FR')} chaîne${p.channels > 1 ? 's' : ''}`,
-  ].filter(Boolean).join(' · ')
+  const row = (c: MyChannel) => (
+    <ListRow key={c.id} title={c.name} subtitle={[c.country ? `${flag(c.country)} ${countryName(c.country)}` : null, c.host].filter(Boolean).join(' · ')}>
+      <Button size="small" variant="destructive" onClick={() => void remove(c)} aria-label={`Retirer ${c.name}`}>Retirer</Button>
+    </ListRow>
+  )
 
   return (
     <>
-      <Group header="Playlists" footer="Une playlist que tu as le droit d’utiliser : ton abonnement, une liste de chaînes gratuites… Elle reste sur ce serveur (jamais sur GitHub ni dans un navigateur) et ses chaînes passent par le relais de Nexus, et par le VPN s’il est actif. Seules les chaînes en direct sont gardées ; elles ne sont vérifiées qu’à l’ouverture (un fournisseur compte chaque connexion).">
-        {isError ? <ListRow wrap title="Playlists indisponibles" subtitle="Le serveur n’a pas répondu." />
-          : !lists ? <ListRow title={<span className="text-label2">Chargement…</span>} />
-            : lists.map((p) => (
-              <ListRow key={p.id} wrap title={p.name} status={p.error ? 'error' : undefined}
-                subtitle={p.error ? <><span className="text-danger-text">{p.error}</span>{detail(p) && ` · ${detail(p)}`}</> : detail(p)}>
-                <Button size="small" variant="destructive" onClick={() => void remove(p)} aria-label={`Retirer la playlist ${p.name}`}>Retirer</Button>
-              </ListRow>
-            ))}
-        <ListRow title={<span className="text-accent-text">Ajouter une playlist…</span>} icon={<ListPlus strokeWidth={1.75} />} onClick={() => setAdding(true)} />
+      <Group header="Mes chaînes"
+        action={mine && mine.length > SHOWN ? <button type="button" className="text-subhead text-accent-text hover:underline" onClick={() => setSheet('all')}>Tout afficher ({mine.length})</button> : undefined}
+        footer="Ajoute une chaîne avec son lien (.m3u8) : elle s’affiche comme les autres, dans son pays et en premier. Le lien reste sur ce serveur (jamais sur GitHub ni dans un navigateur) et la chaîne passe par le relais de Nexus, et par le VPN s’il est actif. Elle n’est vérifiée qu’à l’ouverture (un fournisseur compte chaque connexion). Seulement des chaînes que tu as le droit de regarder.">
+        {isError ? <ListRow wrap title="Chaînes indisponibles" subtitle="Le serveur n’a pas répondu." />
+          : !mine ? <ListRow title={<span className="text-label2">Chargement…</span>} />
+            : mine.slice(0, SHOWN).map(row)}
+        <ListRow title={<span className="text-accent-text">Ajouter une chaîne…</span>} icon={<Plus strokeWidth={1.75} />} onClick={() => setSheet('add')} />
+        <ListRow title={<span className="text-accent-text">Ajouter plusieurs chaînes…</span>} icon={<ListPlus strokeWidth={1.75} />} onClick={() => setSheet('import')} />
       </Group>
-      <AddPlaylistSheet open={adding} onClose={() => setAdding(false)} />
+      <AddMyChannelSheet open={sheet === 'add'} onClose={() => setSheet(null)} />
+      <ImportMyChannelsSheet open={sheet === 'import'} onClose={() => setSheet(null)} />
+      <Sheet open={sheet === 'all'} onClose={() => setSheet(null)} title="Mes chaînes" size="md"
+        phoneHeader={{ right: <Button variant="plain" className="font-semibold" onClick={() => setSheet(null)}>OK</Button> }}
+        footer={phone ? undefined : <Button variant="primary" onClick={() => setSheet(null)}>OK</Button>}>
+        <Group>{(mine ?? []).map(row)}</Group>
+      </Sheet>
     </>
   )
 }
 
-const MAX_PLAYLIST_FILE = 10 * 1024 * 1024
-
-function AddPlaylistSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+function AddMyChannelSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
   const qc = useQueryClient()
   const phone = useShell().device === 'phone'
+  const first = useRef<HTMLInputElement>(null)
   const [name, setName] = useState('')
-  const [kind, setKind] = useState<'url' | 'file'>('url')
   const [url, setUrl] = useState('')
-  const [file, setFile] = useState<File | null>(null)
-  const fileInput = useRef<HTMLInputElement>(null)
+  const [country, setCountry] = useState('')
+  const [logo, setLogo] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const urlOk = /^https?:\/\/\S+$/i.test(url.trim())
-  const fileOk = !!file && file.size > 0 && file.size <= MAX_PLAYLIST_FILE
-  const valid = name.trim().length > 0 && name.trim().length <= 60 && (kind === 'url' ? urlOk : fileOk)
+  const countryOk = !country.trim() || /^[A-Za-z]{2}$/.test(country.trim())
+  const logoOk = !logo.trim() || /^https?:\/\/\S+$/i.test(logo.trim())
+  const valid = !!name.trim() && name.trim().length <= 80 && urlOk && countryOk && logoOk
 
   function close() {
     if (saving) return
     onClose()
-    setName(''); setKind('url'); setUrl(''); setFile(null); setError(null)
+    setName(''); setUrl(''); setCountry(''); setLogo(''); setError(null)
   }
 
   async function submit() {
     if (!valid || saving) return
     setSaving(true); setError(null)
     try {
-      await iptvService.addPlaylist(kind === 'url' ? { name: name.trim(), url: url.trim() } : { name: name.trim(), content: await file!.text() })
-      toast.success('Playlist ajoutée : le catalogue se met à jour')
+      const added = await iptvService.addMyChannel({
+        name: name.trim(), url: url.trim(), ...(country.trim() ? { country: country.trim().toUpperCase() } : {}), ...(logo.trim() ? { logo: logo.trim() } : {}),
+      })
+      toast.success(`« ${added.name} » ajoutée`)
       void qc.invalidateQueries({ queryKey: ['iptv'] })
       setSaving(false)
       close()
@@ -662,38 +652,112 @@ function AddPlaylistSheet({ open, onClose }: { open: boolean; onClose: () => voi
     }
   }
 
-  const formId = 'iptv-playlist-form'
+  const formId = 'iptv-my-channel'
   return (
-    <Sheet open={open} onClose={close} title="Nouvelle playlist" size="sm" dismissible={!saving}
+    <Sheet open={open} onClose={close} title="Nouvelle chaîne" size="sm" dismissible={!saving} initialFocus={first}
       phoneHeader={{
         left: <Button variant="plain" onClick={close}>Annuler</Button>,
         right: <Button variant="plain" className="font-semibold" loading={saving} disabled={!valid} type="submit" form={formId}>Ajouter</Button>,
       }}
       footer={phone ? undefined : <><Button onClick={close}>Annuler</Button><Button variant="primary" loading={saving} disabled={!valid} type="submit" form={formId}>Ajouter</Button></>}>
       <form id={formId} className="flex flex-col gap-4" onSubmit={(e) => { e.preventDefault(); void submit() }}>
-        <TextField label="Nom" value={name} maxLength={60} onChange={(e) => { setName(e.target.value); setError(null) }}
-          placeholder="Mon abonnement" hint="Le titre de son étagère sur l’accueil de l’IPTV" />
-        <div className="flex flex-col gap-1.5">
-          <span className="text-subhead text-label2">Source</span>
-          <SegmentedControl<'url' | 'file'> label="Source de la playlist" full value={kind} onChange={(v) => { setKind(v); setError(null) }}
-            options={[{ value: 'url', label: 'Adresse' }, { value: 'file', label: 'Fichier' }]} />
-        </div>
-        {kind === 'url' ? (
-          <TextField label="Adresse de la playlist (M3U)" type="url" inputMode="url" value={url} placeholder="https://…/playlist.m3u"
-            autoCapitalize="none" autoCorrect="off" spellCheck={false} onChange={(e) => { setUrl(e.target.value); setError(null) }}
-            hint="Relue à chaque mise à jour du catalogue. Elle reste sur ce serveur : seul son domaine est affiché ensuite."
-            error={url && !urlOk ? 'Une adresse qui commence par http:// ou https://' : undefined} />
+        <TextField ref={first} label="Nom" value={name} maxLength={80} placeholder="TF1"
+          onChange={(e) => { setName(e.target.value); setError(null) }} hint="« FR - TF1 » range aussi la chaîne en France" />
+        <TextField label="Lien du flux" type="url" inputMode="url" value={url} placeholder="https://…/index.m3u8"
+          autoCapitalize="none" autoCorrect="off" spellCheck={false} onChange={(e) => { setUrl(e.target.value); setError(null) }}
+          error={url && !urlOk ? 'Un lien qui commence par http:// ou https://' : undefined} />
+        <TextField label="Pays (facultatif)" value={country} maxLength={2} placeholder="FR" autoCapitalize="characters" autoCorrect="off" spellCheck={false}
+          onChange={(e) => { setCountry(e.target.value); setError(null) }}
+          error={!countryOk ? 'Deux lettres, par exemple FR, BE, CA' : undefined} hint="La chaîne s’affiche avec les chaînes de ce pays" />
+        <TextField label="Logo (facultatif)" type="url" inputMode="url" value={logo} placeholder="https://…/logo.png"
+          autoCapitalize="none" autoCorrect="off" spellCheck={false} onChange={(e) => { setLogo(e.target.value); setError(null) }}
+          error={!logoOk ? 'Un lien qui commence par http:// ou https://' : undefined} />
+        {error && <p role="alert" className="text-subhead text-danger-text">{error}</p>}
+      </form>
+    </Sheet>
+  )
+}
+
+const MAX_LIST_BYTES = 10 * 1024 * 1024
+/** « 3 ignorées : 1 film, 2 séparateurs » */
+function skippedText(r: MyImport): string {
+  const s = r.skipped
+  const parts: [number, string, string][] = [
+    [s.duplicates, 'déjà dans Mes chaînes', 'déjà dans Mes chaînes'],
+    [s.vod, 'film ou épisode à la demande', 'films ou épisodes à la demande'],
+    [s.separators, 'séparateur', 'séparateurs'], [s.unnamed, 'sans nom', 'sans nom'], [s.adult, 'pour adultes', 'pour adultes'],
+    [s.invalid, 'lien invalide', 'liens invalides'], [s.overLimit, 'au-delà de 2 000 chaînes', 'au-delà de 2 000 chaînes'],
+  ]
+  return parts.filter(([n]) => n > 0).map(([n, one, many]) => `${n} ${n > 1 ? many : one}`).join(', ')
+}
+
+function ImportMyChannelsSheet({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const qc = useQueryClient()
+  const phone = useShell().device === 'phone'
+  const [kind, setKind] = useState<'paste' | 'file'>('paste')
+  const [text, setText] = useState('')
+  const [file, setFile] = useState<File | null>(null)
+  const fileInput = useRef<HTMLInputElement>(null)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const valid = kind === 'paste' ? /https?:\/\//i.test(text) : !!file && file.size > 0 && file.size <= MAX_LIST_BYTES
+
+  function close() {
+    if (saving) return
+    onClose()
+    setKind('paste'); setText(''); setFile(null); setError(null)
+  }
+
+  async function submit() {
+    if (!valid || saving) return
+    setSaving(true); setError(null)
+    try {
+      const r = await iptvService.importMyChannels(kind === 'paste' ? text : await file!.text())
+      const skipped = skippedText(r)
+      if (r.added) toast.success(`${r.added} chaîne${r.added > 1 ? 's' : ''} ajoutée${r.added > 1 ? 's' : ''}${skipped ? ` (laissées de côté : ${skipped})` : ''}`)
+      else toast.error(`Aucune chaîne ajoutée${skipped ? ` : ${skipped}` : ''}`)
+      void qc.invalidateQueries({ queryKey: ['iptv'] })
+      setSaving(false)
+      if (r.added) close()
+    } catch (e) {
+      setError(serverError(e))
+      setSaving(false)
+    }
+  }
+
+  const formId = 'iptv-my-import'
+  return (
+    <Sheet open={open} onClose={close} title="Ajouter plusieurs chaînes" size="sm" dismissible={!saving}
+      phoneHeader={{
+        left: <Button variant="plain" onClick={close}>Annuler</Button>,
+        right: <Button variant="plain" className="font-semibold" loading={saving} disabled={!valid} type="submit" form={formId}>Ajouter</Button>,
+      }}
+      footer={phone ? undefined : <><Button onClick={close}>Annuler</Button><Button variant="primary" loading={saving} disabled={!valid} type="submit" form={formId}>Ajouter</Button></>}>
+      <form id={formId} className="flex flex-col gap-4" onSubmit={(e) => { e.preventDefault(); void submit() }}>
+        <SegmentedControl<'paste' | 'file'> label="Liste à ajouter" full value={kind} onChange={(v) => { setKind(v); setError(null) }}
+          options={[{ value: 'paste', label: 'Coller' }, { value: 'file', label: 'Fichier' }]} />
+        {kind === 'paste' ? (
+          <div className="flex flex-col gap-1.5">
+            <label htmlFor={`${formId}-text`} className="text-subhead text-label2">Liste M3U</label>
+            <textarea id={`${formId}-text`} value={text} rows={8} spellCheck={false} autoCapitalize="none" autoCorrect="off"
+              placeholder={'#EXTINF:-1,FR - TF1 HD\nhttps://…/119.m3u8\n#EXTINF:-1,FR - M6 HD\nhttps://…/444.m3u8'}
+              onChange={(e) => { setText(e.target.value); setError(null) }}
+              className={cn(
+                'w-full px-3 py-2 rounded-control bg-surface text-label placeholder:text-label3 font-mono text-[13px] leading-5 resize-y',
+                'border-[0.5px] border-separator outline-none transition-[box-shadow,border-color] duration-fast',
+                'focus:border-accent focus:shadow-[0_0_0_3px_color-mix(in_srgb,var(--accent)_35%,transparent)]',
+              )} />
+            <p className="text-subhead text-label2">Chaque chaîne : une ligne #EXTINF avec son nom, puis son lien. Les films à la demande et les séparateurs sont laissés de côté.</p>
+          </div>
         ) : (
           <div className="flex flex-col gap-1.5">
             <input ref={fileInput} type="file" accept=".m3u,.m3u8,.txt,audio/x-mpegurl,audio/mpegurl,application/vnd.apple.mpegurl"
-              className="sr-only" tabIndex={-1} aria-label="Fichier de la playlist (.m3u)"
+              className="sr-only" tabIndex={-1} aria-label="Fichier de la liste (.m3u)"
               onChange={(e) => { setFile(e.target.files?.[0] ?? null); setError(null) }} />
-            <Button className="self-start" onClick={() => fileInput.current?.click()}>
-              {file ? 'Choisir un autre fichier…' : 'Choisir un fichier…'}
-            </Button>
+            <Button className="self-start" onClick={() => fileInput.current?.click()}>{file ? 'Choisir un autre fichier…' : 'Choisir un fichier…'}</Button>
             <p className="text-caption text-label2">
-              {file ? `${file.name} · ${(file.size / 1024).toLocaleString('fr-FR', { maximumFractionDigits: 0 })} Ko${file.size > MAX_PLAYLIST_FILE ? ' : trop gros (10 Mo au plus)' : ''}`
-                : 'Un fichier .m3u ou .m3u8 (10 Mo au plus), gardé tel quel sur ce serveur.'}
+              {file ? `${file.name} · ${(file.size / 1024).toLocaleString('fr-FR', { maximumFractionDigits: 0 })} Ko${file.size > MAX_LIST_BYTES ? ' : trop gros (10 Mo au plus)' : ''}`
+                : 'Un fichier .m3u ou .m3u8 (10 Mo au plus).'}
             </p>
           </div>
         )}
@@ -744,7 +808,7 @@ function SettingsView() {
   const codes = [...new Set(typed.toUpperCase().split(/[\s,;]+/).filter((c) => /^[A-Z]{2}$/.test(c)))]
   return (
     <div className="flex flex-col gap-8 max-w-[680px]">
-      <Group header="Catalogue" footer="Les chaînes viennent de deux dépôts publics : iptv-org (le plus complet) et Free-TV (une courte sélection de chaînes gratuites, tenue à la main), et des playlists ajoutées plus bas. Une chaîne n’est marquée « disponible » qu’après une vérification réelle de son flux, faite peu à peu en arrière-plan (favoris, chaînes regardées et pays prioritaires d’abord).">
+      <Group header="Catalogue" footer="Les chaînes viennent de deux dépôts publics : iptv-org (le plus complet) et Free-TV (une courte sélection de chaînes gratuites, tenue à la main), et de « Mes chaînes » plus bas. Une chaîne n’est marquée « disponible » qu’après une vérification réelle de son flux, faite peu à peu en arrière-plan (favoris, chaînes regardées et pays prioritaires d’abord).">
         <ListRow title="Mise à jour" detail={state.running ? 'en cours…' : at} status={state.ok === false ? 'error' : undefined} />
         {state.sources.length > 0 && <ListRow title="Sources" detail={state.sources.map((x) => SOURCE_NAMES[x] ?? x).join(' + ')} />}
         {state.stats && <ListRow title="Chaînes" detail={(state.stats.imported ?? state.stats.channels ?? 0).toLocaleString('fr-FR')} />}
@@ -762,7 +826,7 @@ function SettingsView() {
         )}
       </Group>
       {isAdmin && <VpnGroup enabled={settings.vpnEnabled} saving={save.isPending} onEnabled={(v) => save.mutate({ vpnEnabled: v })} />}
-      {isAdmin && <PlaylistsGroup refreshing={state.running} />}
+      {isAdmin && <MyChannelsGroup />}
       {isAdmin && (
         <Group header="Affichage">
           <ListRow wrap title="Masquer les indisponibles" subtitle="Celles dont la dernière vérification a échoué.">

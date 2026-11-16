@@ -11,7 +11,7 @@ import { relay, signUrl, validUrlSignature } from '../services/iptvProxy'
 import { convertStream, convertedPlaylist, convertedSegment } from '../services/iptvConvert'
 import { AuthService } from '../services/auth'
 import { vpnStatus } from '../services/iptvVpn'
-import { addPlaylist, listPlaylists, removePlaylist } from '../services/iptvPlaylists'
+import { addMine, importMine, listMine, removeMine } from '../services/iptvMyChannels'
 
 const router = Router()
 const str = (v: unknown) => (typeof v === 'string' && v.trim() ? v.trim() : undefined)
@@ -90,7 +90,7 @@ router.get('/facets', asyncHandler(async (_req: Request, res: Response) => {
 router.get('/channels', asyncHandler(async (req: Request, res: Response) => {
   const q = req.query
   const filters: ChannelFilters = {
-    q: str(q.q), country: str(q.country), category: str(q.category), language: str(q.language), playlist: str(q.playlist),
+    q: str(q.q), country: str(q.country), category: str(q.category), language: str(q.language),
     status: q.status === 'online' ? 'online' : 'all', sort: q.sort === '-name' ? '-name' : q.sort === 'name' ? 'name' : 'top',
     page: Number(q.page) || 1, limit: Number(q.limit) || 60,
   }
@@ -143,20 +143,20 @@ router.get('/vpn', requireAdmin, asyncHandler(async (req: Request, res: Response
   res.json({ success: true, data: await vpnStatus(req.query.refresh === '1') })
 }))
 
-// ─── Playlists added in Nexus (admins): their addresses are never sent back ──────────
-router.get('/playlists', requireAdmin, asyncHandler(async (_req: Request, res: Response) => {
-  res.json({ success: true, data: await listPlaylists() })
+// ─── « Mes chaînes » (admins): added with their stream address, never sent back ─────
+router.get('/my-channels', requireAdmin, asyncHandler(async (_req: Request, res: Response) => {
+  res.json({ success: true, data: await listMine() })
 }))
-/** { name, url } or { name, content } (an .m3u file); the catalogue is refreshed with it. */
-router.post('/playlists', requireAdmin, asyncHandler(async (req: Request, res: Response) => {
-  const added = await addPlaylist(req.body)
-  void refreshCatalogue({ again: true }).catch(() => {})
-  res.status(201).json({ success: true, data: added })
+/** One channel: { name, url, country?, logo? } (shown at once, like the others) */
+router.post('/my-channels', requireAdmin, asyncHandler(async (req: Request, res: Response) => {
+  res.status(201).json({ success: true, data: await addMine(req.body) })
 }))
-/** Removes a playlist (its channels leave the catalogue with the refresh). */
-router.delete('/playlists/:id', requireAdmin, asyncHandler(async (req: Request, res: Response) => {
-  await removePlaylist(req.params.id)
-  void refreshCatalogue({ again: true }).catch(() => {})
+/** Several at once: { content } (an M3U list, pasted or from a file) */
+router.post('/my-channels/import', requireAdmin, asyncHandler(async (req: Request, res: Response) => {
+  res.status(201).json({ success: true, data: await importMine(req.body) })
+}))
+router.delete('/my-channels/:id', requireAdmin, asyncHandler(async (req: Request, res: Response) => {
+  await removeMine(req.params.id)
   res.json({ success: true })
 }))
 

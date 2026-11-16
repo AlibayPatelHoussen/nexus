@@ -272,12 +272,12 @@ existing account it resets the password and signs it out everywhere). Delete an 
 (admin or user): `bash scripts/delete-account.sh <name>` (asks to type the name again; never
 the last admin).
 
-### Your own IPTV playlists
+### Mes chaînes (IPTV)
 
-*IPTV › Paramètres › Playlists* (admins) takes an M3U playlist you have the right to use (a
-subscription, a list of free channels), by address or as a file. It stays in this server's
-database (never on GitHub, never sent to a browser: only its host is shown); its live channels
-get their own shelf on the IPTV home page and play through Nexus' relay (and the IPTV VPN).
+*IPTV › Paramètres › Mes chaînes* (admins) adds channels with their stream link (.m3u8), one by
+one or several at once from an M3U list (pasted or a file). They show like the other channels,
+first in their country. The links stay in this server's database (never on GitHub, never sent to
+a browser: only their host is shown) and play through Nexus' relay (and the IPTV VPN).
 
 ### Automatic backups
 

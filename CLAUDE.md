@@ -72,14 +72,14 @@ npm workspaces (`frontend`, `backend`); run from the repo root unless noted.
   installed by `scripts/iptv-vpn.sh`), the relay (`iptvFetch`, undici ProxyAgent) and the Python module (HTTP(S)_PROXY)
   go through it, nothing else of Nexus; VPN down = IPTV stops, never direct. Admins switch it off / on in the IPTV
   settings (`vpnEnabled`).
-  Playlists added by admins (`iptv_playlists`, `services/iptvPlaylists.ts`, `downloaders/iptv/playlists.py`): by
-  address or file, their live channels join the catalogue (`iptv_channels.playlist` / `playlist_rank`, own shelf and
-  filter), never checked in the background. An address may hold credentials: never sent to a browser (host only),
-  given to Python through a 0600 temp file (`refresh --playlists`), never cached or logged.
+  « Mes chaînes » (`iptv_my_channels`, `services/iptvMyChannels.ts`): channels added by admins with their stream link
+  (one, or an M3U list parsed on the server), written into `iptv_channels` as `my-<id>` with `mine_rank` (first in their
+  country, kept by every refresh, never checked in the background). The link may hold credentials: never sent to a
+  browser (host only).
 - **Security**: secrets only in `backend/.env` (Nexus refuses to start without `JWT_SECRET`); the file manager never
   reads or changes secrets and leaves the Nexus folder read-only (`assertAllowed` in `services/files.ts`, code
   `PROTECTED_FILE`); `trust proxy` = loopback (cloudflared on this machine); http visitors via Cloudflare are
-  redirected to https; JSON bodies 1 MB (11 MB for `/api/files/write` and `/api/iptv/playlists`); passwords 8–72 characters. Backups:
+  redirected to https; JSON bodies 1 MB (11 MB for `/api/files/write` and `/api/iptv/my-channels/import`); passwords 8–72 characters. Backups:
   `scripts/backup.sh` (nightly pg_dump + settings to `/var/backups/nexus`).
 - **Deploy**: GitHub webhook `routes/deploy.ts` only writes a request file; `scripts/auto-deploy.sh`
   (systemd path unit) runs `scripts/deploy.sh` outside the app (build, `scripts/migrate-db.sh`, restart).
