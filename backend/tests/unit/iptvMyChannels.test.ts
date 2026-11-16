@@ -1,4 +1,4 @@
-import { cleanName, countryCode, parseM3u, splitCountry } from '../../src/services/iptvMyChannels'
+import { cleanName, countryCode, nameKey, parseM3u, splitCountry } from '../../src/services/iptvMyChannels'
 
 describe('« Mes chaînes »: reading a list and names', () => {
   it('reads #EXTINF entries (attributes, names with commas), skips the rest', () => {
@@ -35,5 +35,15 @@ describe('« Mes chaînes »: reading a list and names', () => {
 describe('codes left free for private use are no country', () => {
   it('ZZ, XA, QM…', () => {
     expect([countryCode('ZZ'), countryCode('XA'), countryCode('QM'), countryCode('XK')]).toEqual([null, null, null, 'XK'])
+  })
+})
+
+describe('the same channel in the catalogue (for its logo)', () => {
+  it('names compare without quality marks, accents or case', () => {
+    expect(nameKey('TF1 HD')).toBe(nameKey('TF1'))
+    expect(nameKey('France 2 (FHD)')).toBe(nameKey('FRANCE 2'))
+    expect(nameKey('Télé Libre 4K')).toBe(nameKey('tele libre'))
+    expect(nameKey('Canal+')).not.toBe(nameKey('Canal'))
+    expect(nameKey('M6 HD')).not.toBe(nameKey('W9'))
   })
 })

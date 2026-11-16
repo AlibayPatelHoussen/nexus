@@ -767,6 +767,11 @@ describe('IPTV « Mes chaînes » (IPTV › Paramètres, admins)', () => {
   })
 
   it('several at once from an M3U list: its live channels in its order; what is left out is counted', async () => {
+    // The catalogue's TF1 and M6 (iptv-org), with their logos
+    await query(`INSERT INTO iptv_channels (id, name, country, logo, streams) VALUES
+      ('TF1Logo.fr', 'TF1', 'FR', 'https://img.example/tf1-officiel.png', '[{"url":"https://tv.example/tf1"}]'),
+      ('M6Logo.fr', 'M6', 'FR', 'https://img.example/m6-officiel.png', '[{"url":"https://tv.example/m6"}]')
+      ON CONFLICT (id) DO NOTHING`)
     const content = [
       '#EXTM3U',
       '#EXTINF:-1,[COLOR green]--- FRANCE TV ---[/COLOR]', 'http://0.8.6.0:1024177',
@@ -785,7 +790,22 @@ describe('IPTV « Mes chaînes » (IPTV › Paramètres, admins)', () => {
     expect(all.map((c: { name: string; country: string | null }) => [c.name, c.country]))
       .toEqual([['Ma Une', 'FR'], ['TF1 HD', 'FR'], ['M6 HD', 'FR'], ['La Une', 'BE']])
     expect((await list('country=FR')).items.slice(0, 3).map((c: { name: string }) => c.name)).toEqual(['Ma Une', 'TF1 HD', 'M6 HD'])
+    // Logos: the catalogue's TF1 for « TF1 HD »; the list's own for « M6 HD »; none found for « La Une »
+    const logo = async (name: string) => (await list(`q=${encodeURIComponent(name)}`)).items.find((c: { name: string; mine: boolean }) => c.name === name && c.mine).logo
+    expect(await logo('TF1 HD')).toContain(encodeURIComponent('https://img.example/tf1-officiel.png'))
+    expect(await logo('M6 HD')).toContain(encodeURIComponent('https://img.example/m6.png'))
+    expect(await logo('La Une')).toBeNull()
     expect((await request(app).post(mine('/import')).set(admin).send({ content: 'nothing here' })).status).toBe(422)
+  })
+
+  it('a channel without a free stream (not in the catalogue) takes its logo from iptv-org’s database, in its country', async () => {
+    await query(`INSERT INTO iptv_meta (key, value, updated_at) VALUES ('logos', $1, NOW())
+                 ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
+    [JSON.stringify([['Canal+', ['Canal Plus'], 'PL', 'https://img.example/canal-pl.png'], ['Canal+', ['Canal Plus'], 'FR', 'https://img.example/canal.png']])])
+    const res = await request(app).post(mine()).set(admin).send({ name: 'FR - CANAL+ HD', url: `${base}/live/master.m3u8?ch=canal` })
+    expect(res.status).toBe(201)
+    const c = (await request(app).get(`/api/iptv/channels/${res.body.data.channelId}`).set(alice)).body.data
+    expect(c.logo).toContain(encodeURIComponent('https://img.example/canal.png'))
   })
 
   it('kept by every refresh of the sources; never checked in the background; removed, it leaves the catalogue', async () => {
@@ -795,7 +815,7 @@ describe('IPTV « Mes chaînes » (IPTV › Paramètres, admins)', () => {
     process.env.IPTV_FREETV_URL = 'off'
     try {
       await refreshCatalogue()
-      expect((await query('SELECT COUNT(*)::int AS n FROM iptv_channels WHERE mine_rank IS NOT NULL')).rows[0].n).toBe(4)
+      expect((await query('SELECT COUNT(*)::int AS n FROM iptv_channels WHERE mine_rank IS NOT NULL')).rows[0].n).toBe(5)
     } finally {
       delete process.env.IPTV_API_BASE; delete process.env.IPTV_PLAYLIST_URL; delete process.env.IPTV_DATA_DIR; delete process.env.IPTV_FREETV_URL
     }

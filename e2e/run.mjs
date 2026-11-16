@@ -728,12 +728,17 @@ test('IPTV: « Mes chaînes » — one added with its link and several pasted sh
   const fr = (await api('/api/iptv/channels?country=FR', { token: admin.accessToken })).json.data
   eq(fr.items.slice(0, 3).map((c) => [c.name, c.mine]), [['Ma chaîne test', true], ['Deuxième test', true], ['Troisième test', true]], 'first in the list')
   assert(!JSON.stringify(fr).includes('?n=1'), 'the link never reaches the browser')
+  // A channel of the catalogue added with another link takes its logo: « FR - Nexus Démo HD » → Demo.fr's
+  const named = await api('/api/iptv/my-channels', { token: admin.accessToken, method: 'POST', body: { name: 'FR - Nexus Démo HD', url: `${demo}?n=4` } })
+  eq(named.status, 201, 'added by name')
+  const demoLogo = (await api(`/api/iptv/channels/${named.json.data.channelId}`, { token: admin.accessToken })).json.data.logo
+  assert(demoLogo && demoLogo.includes(encodeURIComponent('/iptv/logo_Demo.fr.png')), `the catalogue's logo: ${demoLogo}`)
   // Removed: it leaves the catalogue
   await page.goto(`${B}/iptv/reglages`, { waitUntil: 'networkidle' })
   await page.click('button[aria-label="Retirer Ma chaîne test"]')
   await page.click('[role="alertdialog"] button:has-text("Retirer")')
   await page.waitForSelector('text=« Ma chaîne test » retirée')
-  eq(Number(sql(`SELECT COUNT(*) FROM iptv_channels WHERE mine_rank IS NOT NULL`)), 2, 'two left')
+  eq(Number(sql(`SELECT COUNT(*) FROM iptv_channels WHERE mine_rank IS NOT NULL`)), 3, 'three left')
   sql(`DELETE FROM iptv_channels WHERE mine_rank IS NOT NULL`); sql(`DELETE FROM iptv_my_channels`)
   await page.context().close()
 })

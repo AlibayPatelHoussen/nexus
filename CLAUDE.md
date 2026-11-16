@@ -75,7 +75,8 @@ npm workspaces (`frontend`, `backend`); run from the repo root unless noted.
   « Mes chaînes » (`iptv_my_channels`, `services/iptvMyChannels.ts`): channels added by admins with their stream link
   (one, or an M3U list parsed on the server), written into `iptv_channels` as `my-<id>` with `mine_rank` (first in their
   country, kept by every refresh, never checked in the background). The link may hold credentials: never sent to a
-  browser (host only).
+  browser (host only). Their logo, when none is given: the same channel (name without HD/FHD, same country) in the
+  catalogue, else in iptv-org's whole database (`logo_index`, kept in `iptv_meta('logos')` at each refresh).
 - **Security**: secrets only in `backend/.env` (Nexus refuses to start without `JWT_SECRET`); the file manager never
   reads or changes secrets and leaves the Nexus folder read-only (`assertAllowed` in `services/files.ts`, code
   `PROTECTED_FILE`); `trust proxy` = loopback (cloudflared on this machine); http visitors via Cloudflare are

@@ -7,6 +7,7 @@ import { AppError, NotFoundError, ValidationError } from '../utils/errors'
 import { collect, scriptsDir, type ScriptEvent } from './downloadScripts'
 import { signedImage } from './images'
 import { setVpnEnabled } from './iptvVpn'
+import { refreshMine } from './iptvMyChannels'
 
 /*
  * IPTV: the iptv-org catalogue (https://github.com/iptv-org/iptv) and the Free-TV playlist
@@ -51,6 +52,8 @@ interface CatalogueFile {
   countries: { code: string; name: string; flag?: string | null; count: number }[]
   categories: { id: string; name: string; count: number }[]
   languages: { code: string; name: string; count: number }[]
+  /** Every logo the database knows: [name, other names, country, logo] (for « Mes chaînes ») */
+  logos?: [string, string[], string | null, string][]
 }
 
 export interface IptvSettings {
@@ -203,6 +206,10 @@ export async function importCatalogue(data: CatalogueFile): Promise<number> {
     await client.query(`INSERT INTO iptv_meta (key, value, updated_at) VALUES ('facets', $1, NOW())
                         ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`,
     [JSON.stringify({ countries: data.countries ?? [], categories: data.categories ?? [], languages: data.languages ?? [] })])
+    if (Array.isArray(data.logos)) {
+      await client.query(`INSERT INTO iptv_meta (key, value, updated_at) VALUES ('logos', $1, NOW())
+                          ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value, updated_at = NOW()`, [JSON.stringify(data.logos)])
+    }
     await client.query('COMMIT')
   } catch (err) {
     await client.query('ROLLBACK').catch(() => {})
@@ -248,6 +255,8 @@ export function refreshCatalogue(): Promise<RefreshState> {
         throw new AppError(err?.message || log.slice(-3).join(' | ') || 'Actualisation du catalogue IPTV impossible', 502)
       }
       const imported = await importCatalogue(JSON.parse(await fs.readFile(out, 'utf8')) as CatalogueFile)
+      // « Mes chaînes » without a logo of their own take the one the catalogue now has
+      await refreshMine().catch((err: Error) => logger.warn(`IPTV « Mes chaînes »: ${err.message}`))
       const state: SavedRefresh = {
         at: new Date().toISOString(), ok: true, message: null, stats: { ...done.stats, imported }, notes: done.notes ?? [],
         source: done.source, sources: Array.isArray(done.sources) ? done.sources.map(String) : [],

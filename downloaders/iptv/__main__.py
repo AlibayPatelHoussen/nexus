@@ -79,6 +79,8 @@ def cmd_refresh(args) -> int:
     payload = {
         'generated_at': dt.datetime.now(dt.timezone.utc).isoformat(), 'source': source, 'sources': used,
         'channels': [c.to_json() for c in channels], **catalogue.facets(channels, api),
+        # Every logo the database knows (channels without a free stream too): for « Mes chaînes »
+        'logos': catalogue.logo_index(api),
     }
     tmp = out.with_suffix('.tmp')
     tmp.write_text(json.dumps(payload, ensure_ascii=False))

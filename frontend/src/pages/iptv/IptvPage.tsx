@@ -671,6 +671,7 @@ function AddMyChannelSheet({ open, onClose }: { open: boolean; onClose: () => vo
           error={!countryOk ? 'Deux lettres, par exemple FR, BE, CA' : undefined} hint="La chaîne s’affiche avec les chaînes de ce pays" />
         <TextField label="Logo (facultatif)" type="url" inputMode="url" value={logo} placeholder="https://…/logo.png"
           autoCapitalize="none" autoCorrect="off" spellCheck={false} onChange={(e) => { setLogo(e.target.value); setError(null) }}
+          hint="Sans logo, celui de la même chaîne dans iptv-org est repris (TF1, Canal+, beIN…)"
           error={!logoOk ? 'Un lien qui commence par http:// ou https://' : undefined} />
         {error && <p role="alert" className="text-subhead text-danger-text">{error}</p>}
       </form>

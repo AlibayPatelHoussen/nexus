@@ -7,6 +7,9 @@ import { AppError, ConflictError, NotFoundError, ValidationError } from '../util
  * catalogue at once as « my-<id> » and shown like the other channels (in its country, first);
  * every refresh of the sources keeps it. Never checked in the background (a provider counts each
  * connection): only when it is opened.
+ * Logo: the one given (or the list's tvg-logo), else the logo of the same channel in the catalogue
+ * (iptv-org / Free-TV), else in iptv-org's database (channels without a free stream too: Canal+,
+ * beIN…), found by its name without « HD », « FHD »… in the same country.
  * The address may hold the account's credentials (…/live/user/password/119.m3u8): it stays on
  * the server, never sent to a browser (only its host), played through the relay like the rest.
  */
@@ -80,6 +83,65 @@ function refusal(url: string): Refusal | null {
 
 const webUrl = (v: unknown) => (typeof v === 'string' && /^https?:\/\/\S+$/i.test(v.trim()) && v.trim().length <= 2048 ? v.trim() : null)
 
+// ─── The same channel in the catalogue (for its logo) ─────────────────────────────
+const NOISE = new Set(['hd', 'fhd', 'uhd', 'sd', 'hq', '4k', '8k', 'hevc', 'h264', 'h265', '1080p', '720p', '576p', '480p', 'backup'])
+/** « TF1 HD », « TF1 (FHD) » and « TF1 » compare equal; « Canal+ » and « Canal » do not. */
+export function nameKey(name: string): string {
+  return name.normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/\+/g, ' plus ').replace(/&/g, ' and ').toLowerCase()
+    .split(/[^a-z0-9]+/).filter((t) => t && !NOISE.has(t)).join(' ')
+}
+
+type LogoEntry = [string, string[], string | null, string]
+let logoIndexCache: { at: number; entries: LogoEntry[] } | null = null
+/** iptv-org's logos (every channel it knows), kept by each refresh in iptv_meta('logos'). */
+async function logoIndex(): Promise<LogoEntry[]> {
+  const { rows } = await query<{ updated_at: Date }>(`SELECT updated_at FROM iptv_meta WHERE key = 'logos'`)
+  if (!rows[0]) return []
+  const at = rows[0].updated_at.getTime()
+  if (logoIndexCache?.at !== at) {
+    const { rows: [r] } = await query<{ value: unknown }>(`SELECT value FROM iptv_meta WHERE key = 'logos'`)
+    logoIndexCache = { at, entries: Array.isArray(r?.value) ? (r.value as LogoEntry[]) : [] }
+  }
+  return logoIndexCache.entries
+}
+
+/** For the channels without a logo of their own: the logo of the same channel in the catalogue,
+ * else in iptv-org's database. */
+async function catalogueLogos(rows: Pick<MyRow, 'id' | 'name' | 'country' | 'logo'>[]): Promise<Map<string, string>> {
+  const out = new Map<string, string>()
+  const want = rows.filter((r) => !r.logo && nameKey(r.name))
+  if (!want.length) return out
+  const { rows: catalogue } = await query<{ name: string; alt_names: string[]; country: string | null; logo: string }>(
+    'SELECT name, alt_names, country, logo FROM iptv_channels WHERE mine_rank IS NULL AND logo IS NOT NULL')
+  const byKey = new Map<string, { country: string | null; logo: string; main: boolean }[]>()
+  for (const c of catalogue) {
+    for (const [i, n] of [c.name, ...(c.alt_names ?? [])].entries()) {
+      const key = nameKey(n)
+      if (!key) continue
+      if (!byKey.has(key)) byKey.set(key, [])
+      byKey.get(key)!.push({ country: c.country, logo: c.logo, main: i === 0 })
+    }
+  }
+  // Then iptv-org's database (after the catalogue: a logo already in use there comes first)
+  for (const [name, alt, country, logo] of await logoIndex()) {
+    if (typeof logo !== 'string' || !/^https?:\/\//.test(logo)) continue
+    for (const [i, n] of [name, ...(Array.isArray(alt) ? alt : [])].entries()) {
+      const key = typeof n === 'string' ? nameKey(n) : ''
+      if (!key) continue
+      if (!byKey.has(key)) byKey.set(key, [])
+      byKey.get(key)!.push({ country, logo, main: i === 0 })
+    }
+  }
+  for (const r of want) {
+    const found = byKey.get(nameKey(r.name)) ?? []
+    // In its country (its own name before another name of it); without a country, only when it is unambiguous
+    const here = r.country ? found.filter((f) => f.country === r.country) : found
+    const logos = [...new Set([...here.filter((f) => f.main), ...here].map((f) => f.logo))]
+    if (logos.length && (r.country || logos.length === 1)) out.set(r.id, logos[0])
+  }
+  return out
+}
+
 // ─── An M3U list ───────────────────────────────────────────────────────────────
 export interface M3uEntry { name: string; url: string; attrs: Record<string, string> }
 
@@ -117,6 +179,7 @@ export function parseM3u(text: string): M3uEntry[] {
 type Run = (sql: string, params: unknown[]) => Promise<unknown>
 async function writeChannels(rows: MyRow[], run: Run = (sql, params) => query(sql, params)) {
   if (!rows.length) return
+  const found = await catalogueLogos(rows)
   await run(
     `INSERT INTO iptv_channels (id, name, country, logo, streams, mine_rank, updated_at)
      SELECT x.id, x.name, x.country, x.logo, x.streams, x.mine_rank, NOW()
@@ -124,7 +187,7 @@ async function writeChannels(rows: MyRow[], run: Run = (sql, params) => query(sq
      ON CONFLICT (id) DO UPDATE SET name = EXCLUDED.name, country = EXCLUDED.country, logo = EXCLUDED.logo,
        streams = EXCLUDED.streams, mine_rank = EXCLUDED.mine_rank, updated_at = NOW()`,
     [JSON.stringify(rows.map((r) => ({
-      id: myChannelId(r.id), name: r.name, country: r.country, logo: r.logo, mine_rank: r.position,
+      id: myChannelId(r.id), name: r.name, country: r.country, logo: r.logo ?? found.get(r.id) ?? null, mine_rank: r.position,
       streams: [{ url: r.url, title: r.name, source: 'mine' }],
     })))],
   )
@@ -226,6 +289,12 @@ export async function importMine(body: unknown): Promise<ImportResult> {
   } finally {
     client.release()
   }
+}
+
+/** After a refresh of the sources: « Mes chaînes » take the logos the catalogue now has. */
+export async function refreshMine(): Promise<void> {
+  const { rows } = await query<MyRow>('SELECT * FROM iptv_my_channels ORDER BY position')
+  await writeChannels(rows)
 }
 
 export async function removeMine(id: string): Promise<void> {

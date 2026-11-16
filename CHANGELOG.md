@@ -8,6 +8,7 @@ All notable changes to Nexus will be documented here.
 - *IPTV › Paramètres › Mes chaînes* (admins): **Ajouter une chaîne…** with its name and stream link (.m3u8), and optionally its country and logo; **Ajouter plusieurs chaînes…** by pasting an M3U list or choosing a file; « Retirer » on each. Up to 2 000
 - Shown at once **like the other channels**: in their country, first (home shelves and lists), in search, favourites, the player. A « FR - » prefix gives the country; Kodi tags are removed; from a list, films / series on demand, separators (dummy addresses), adult groups and links already added are left out, and counted
 - The link (often with the account's credentials) stays on the server: never sent to a browser (only its host), played through Nexus' relay (and the IPTV VPN when it is on); kept by every refresh of the sources; never checked in the background (a provider counts each connection), only when opened
+- **Logos** like the other channels: the one given (or the list's `tvg-logo`), else the logo of the same channel in the catalogue, else in iptv-org's database — channels without a free stream included (Canal+, beIN…), kept at each update (`logos` of the catalogue) — found by name without « HD », « FHD »… in the same country
 - They replace the playlists of the previous version (migration 020)
 
 ### Changed — The IPTV apart for « user » accounts

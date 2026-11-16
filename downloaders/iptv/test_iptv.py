@@ -133,6 +133,18 @@ class Catalogue(unittest.TestCase):
         self.assertEqual(sorted(c.name for c in unknown), ['Ghost', 'Unknown local TV'])
         self.assertTrue(all(not c.country and not c.categories for c in unknown))
 
+    def test_logo_index_has_channels_without_streams_too(self):
+        api = {
+            'channels': [{'id': 'CanalPlus.fr', 'name': 'Canal+', 'alt_names': ['Canal Plus'], 'country': 'FR'},
+                         {'id': 'Adult.fr', 'name': 'Adult', 'country': 'FR', 'is_nsfw': True},
+                         {'id': 'Closed.fr', 'name': 'Closed', 'country': 'FR', 'closed': '2020-01-01'},
+                         {'id': 'NoLogo.fr', 'name': 'No logo', 'country': 'FR'}],
+            'logos': [{'channel': 'CanalPlus.fr', 'url': 'https://img.example/canal.png', 'format': 'PNG'},
+                      {'channel': 'Adult.fr', 'url': 'https://img.example/adult.png'},
+                      {'channel': 'Closed.fr', 'url': 'https://img.example/closed.png'}],
+        }
+        self.assertEqual(catalogue.logo_index(api), [['Canal+', ['Canal Plus'], 'FR', 'https://img.example/canal.png']])
+
     def test_facets_count_real_channels(self):
         f = catalogue.facets(list(self.channels.values()), API)
         self.assertEqual(f['countries'][0], {'code': 'FR', 'name': 'France', 'flag': '🇫🇷', 'count': 2})
