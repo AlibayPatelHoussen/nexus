@@ -86,8 +86,12 @@ api.interceptors.response.use(
         const token = await refreshAccessToken()
         original.headers.Authorization = `Bearer ${token}`
         return api(original)
-      } catch {
-        useAuthStore.getState().logout()
+      } catch (refreshError) {
+        // Only an answer from the server ends the session: without a connection (metro, plane)
+        // this device stays signed in (offline mangas)
+        if ((refreshError as { response?: unknown }).response || (refreshError as Error).message === 'No refresh token') {
+          useAuthStore.getState().logout()
+        }
         return Promise.reject(error)
       }
     }

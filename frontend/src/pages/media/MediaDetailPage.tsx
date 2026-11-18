@@ -339,7 +339,7 @@ export default function MediaDetailPage() {
       )}
 
       {/* Chapters (manga / webtoon) */}
-      {isReading && !isPlaceholderData && <ChaptersSection chapters={chapters} onRead={(chapterId, version) => play(undefined, chapterId, version)} onScan={scan} scanning={scanning} />}
+      {isReading && !isPlaceholderData && <ChaptersSection media={media} chapters={chapters} onRead={(chapterId, version) => play(undefined, chapterId, version)} onScan={scan} scanning={scanning} />}
 
       {/* Automatic downloads of what comes next (off unless switched on) */}
       {(media.type === 'anime' || media.type === 'serie' || media.type === 'manga' || media.type === 'webtoon') && (

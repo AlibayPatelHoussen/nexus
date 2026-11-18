@@ -19,7 +19,8 @@ import type { Chapter } from '@/types'
 import { usePdfDocument } from '@/hooks/usePdfDocument'
 import ReaderPage from '@/components/media/ReaderPage'
 import { chapterVersions, versionName } from '@/components/media/chapterVersions'
-import { loadImagePage, prefetchPages } from '@/services/readerCache'
+import { PAGE_WIDTH, loadImagePage, prefetchPages } from '@/services/readerCache'
+import { OFFLINE_PDF, isKept, noteRead, offlineManifest } from '@/services/offlineManga'
 
 type ReadMode = 'vertical' | 'page' | 'page-rtl'
 
@@ -35,11 +36,29 @@ interface ChapterPagesResponse {
   data:    PageData[]
 }
 
-/** Page width asked to the server: the screen's, in 160 px steps (shared cache) */
-const PAGE_WIDTH = Math.min(1600, Math.max(480, Math.round(Math.min(window.innerWidth, 900) * Math.min(window.devicePixelRatio || 1, 3) / 160) * 160))
+/** A chapter kept for offline reading: its page list from the device (no server needed) */
+async function keptChapterPages(chapterId: string): Promise<{ pages: PageData[]; pdfUrl: string | null } | null> {
+  const saved = await offlineManifest(chapterId)
+  if (!saved) return null
+  if (saved.type === 'pdf') return { pages: [], pdfUrl: OFFLINE_PDF }
+  // The pages are all in the device's cache: no address needed
+  return { pages: saved.pages.map((p) => ({ name: p.name, url: '' })), pdfUrl: null }
+}
 
 async function getChapterPages(chapterId: string): Promise<{ pages: PageData[]; pdfUrl: string | null }> {
-  const { data } = await api.get<ChapterPagesResponse>(`/media/chapters/${chapterId}/pages`)
+  if (isKept(chapterId)) {
+    const kept = await keptChapterPages(chapterId)
+    if (kept) return kept
+  }
+  let data: ChapterPagesResponse
+  try {
+    data = (await api.get<ChapterPagesResponse>(`/media/chapters/${chapterId}/pages`)).data
+  } catch (err) {
+    // No connection: the pages already read stay on the device
+    const kept = (err as { response?: unknown }).response ? null : await keptChapterPages(chapterId)
+    if (kept) return kept
+    throw err
+  }
   const token    = await getStreamToken()
 
   if (data.type === 'pdf' && data.pdfUrl) {
@@ -138,6 +157,11 @@ export default function MangaReaderPage() {
     window.addEventListener('keydown', handleKey)
     return () => window.removeEventListener('keydown', handleKey)
   }, [mode, pages.length])
+
+  // Offline: the kept chapters now start at this one (the ones before leave the device)
+  useEffect(() => {
+    if (id && chapterId) noteRead(id, chapterId, chapters.find((c) => c.id === chapterId)?.language ?? null)
+  }, [id, chapterId, chapters])
 
   // Save read progress
   useEffect(() => {
@@ -263,7 +287,7 @@ export default function MangaReaderPage() {
       ) : pdfUrl && pdf.error ? (
         <div className="flex-1 grid place-items-center min-h-[100dvh] text-white [--label:#f5f5f7] [--label-2:#98989d] [--label-3:#636366]">
           <EmptyState tone="error" title="Ce PDF ne peut pas être affiché" message={`${pdf.error}. Tu peux le télécharger pour le lire ailleurs.`}
-            action={<a className="inline-flex items-center px-4 min-h-[32px] rounded-full bg-white text-black text-[13px] font-medium" href={pdfUrl} target="_blank" rel="noopener noreferrer">Ouvrir le PDF</a>} />
+            action={pdfUrl === OFFLINE_PDF ? undefined : <a className="inline-flex items-center px-4 min-h-[32px] rounded-full bg-white text-black text-[13px] font-medium" href={pdfUrl} target="_blank" rel="noopener noreferrer">Ouvrir le PDF</a>} />
         </div>
       ) : pages.length === 0 ? (
         <div className="flex-1 grid place-items-center min-h-[100dvh] text-white [--label:#f5f5f7] [--label-2:#98989d] [--label-3:#636366]">

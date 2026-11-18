@@ -8,9 +8,10 @@ import App from './App'
 import { useAuthStore } from '@/stores/authStore'
 import { registerServiceWorker } from '@/services/pushService'
 import { installNativeFeel } from '@/services/nativeFeel'
+import { clearOffline } from '@/services/offlineManga'
 import './index.css'
 
-// Push notifications (PWA): the service worker only handles notifications
+// Service worker: push notifications, and the app offline when mangas are kept (offlineManga)
 void registerServiceWorker()
 // Touch screens: a long press never opens the browser's menus (feels like an installed app)
 installNativeFeel()
@@ -26,7 +27,9 @@ const queryClient = new QueryClient({
 })
 
 // Signed out: nothing of that account stays in memory for the next one (its queue, its lists)
-useAuthStore.subscribe((state, prev) => { if (prev.isAuth && !state.isAuth) queryClient.clear() })
+useAuthStore.subscribe((state, prev) => {
+  if (prev.isAuth && !state.isAuth) { queryClient.clear(); void clearOffline() }
+})
 
 ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>

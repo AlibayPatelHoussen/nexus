@@ -12,7 +12,7 @@
 - **Full server control** — files, services, terminal, network, users
 - **Media center** — films, series, animes, manga/webtoon with metadata from TMDB & AniList
 - **Custom video player** — resume, favorites, history; plays every format in the browser (MKV, AVI, HEVC… converted on the fly with ffmpeg, like Jellyfin)
-- **Manga/Webtoon reader** — vertical scroll & page mode
+- **Manga/Webtoon reader** — vertical scroll & page mode; **offline**: a manga's « Hors ligne » switch (off by default) keeps the next chapters on the phone (5, 10, 25 or all) to read them without a connection, the chapters read leave on their own; ↓ on a chapter keeps that one until removed
 - **Jarvis assistant** — chat (voice too) with the local AI assistant running on the server ([jarvis-backend](https://github.com/AlibayPatelHoussen/jarvis-backend)), relayed by Nexus
 - **Real-time stats** — CPU, RAM, disk, temperature via WebSocket
 - **Transferts** — *Aperçu › Transferts* (admins): send a file from the iPhone, download it on the computer (and back); it arrives live with a notification, erased after 7 days. *Fichiers*: upload progress with « Annuler », drag & drop, folders and selections downloaded as a .zip
@@ -286,6 +286,15 @@ the last admin).
 one or several at once from an M3U list (pasted or a file). They show like the other channels,
 first in their country. The links stay in this server's database (never on GitHub, never sent to
 a browser: only their host is shown) and play through Nexus' relay (and the IPTV VPN).
+
+### Mangas offline
+
+On a manga's page, *Chapitres › Hors ligne* (off by default): the PWA keeps the next chapters from
+the one being read (5, 10, 25 or all) in Cache Storage, and the service worker (`frontend/public/sw.js`)
+keeps the app itself (the files listed in `app-files.json`, written at each build) — only while at
+least one manga is kept. Without a connection the app opens and those chapters read; chapters read
+leave the device, and everything leaves when the switch (or the account) is turned off. HTTPS only
+(the Cloudflare address), like the notifications.
 
 ### Transferts (between devices)
 
