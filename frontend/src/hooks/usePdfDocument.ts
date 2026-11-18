@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import type { PDFDocumentProxy } from 'pdfjs-dist/legacy/build/pdf.mjs'
-import { getMeta, getPage, putMeta, putPage } from '@/services/readerCache'
+import { getMeta, getPage, getPdf, putMeta, putPage } from '@/services/readerCache'
 
 export interface PdfDocument {
   numPages: number
@@ -43,8 +43,11 @@ export function usePdfDocument(url: string | null, chapterId: string | undefined
       const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs')
       const worker = await import('pdfjs-dist/legacy/build/pdf.worker.min.mjs?url')
       pdfjs.GlobalWorkerOptions.workerSrc = worker.default
+      // Kept for offline reading: the whole PDF is on the device
+      const kept = chapterId ? await getPdf(chapterId) : null
+      if (!kept && url.startsWith('offline:')) throw new Error('Ce chapitre n’est plus sur l’appareil')
       const task = pdfjs.getDocument({
-        url,
+        ...(kept ? { data: new Uint8Array(await kept.arrayBuffer()) } : { url }),
         isEvalSupported: false,
         disableStream: true,      // no full download in the background…
         disableAutoFetch: true,   // …only the pieces the drawn pages need
@@ -55,7 +58,7 @@ export function usePdfDocument(url: string | null, chapterId: string | undefined
     })()
     docRef.current.catch(() => { docRef.current = null })
     return docRef.current
-  }, [url])
+  }, [url, chapterId])
 
   useEffect(() => {
     setNumPages(0); setError(null)

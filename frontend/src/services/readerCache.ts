@@ -7,14 +7,20 @@
  * are kept. Cache Storage needs a secure context (HTTPS or localhost):
  * elsewhere everything still works, without the cache.
  */
+import { pinnedChapterIds } from './offlineIndex'
+
 const CACHE = 'nexus-reader-v1'
 const INDEX_KEY = 'nexus-reader-cache-index'
 const MAX_CHAPTERS = 40
 const PREFIX = '/__reader-cache/'
 
+/** Page width asked to the server: the screen's, in 160 px steps (shared cache) */
+export const PAGE_WIDTH = typeof window === 'undefined' ? 960
+  : Math.min(1600, Math.max(480, Math.round(Math.min(window.innerWidth, 900) * Math.min(window.devicePixelRatio || 1, 3) / 160) * 160))
+
 export interface ChapterMeta { kind: 'pdf' | 'images'; numPages: number; ratios?: Record<number, number> }
 
-const available = () => typeof window !== 'undefined' && 'caches' in window && window.isSecureContext
+export const available = () => typeof window !== 'undefined' && 'caches' in window && window.isSecureContext
 
 const pageKey = (chapterId: string, n: number) => `${PREFIX}${chapterId}/page/${n}`
 const metaKey = (chapterId: string) => `${PREFIX}${chapterId}/meta`
@@ -24,12 +30,14 @@ async function open(): Promise<Cache | null> {
   try { return await caches.open(CACHE) } catch { return null }
 }
 
-/** Remember that a chapter was opened; forget the oldest ones beyond the limit. */
+/** Remember that a chapter was opened; forget the oldest ones beyond the limit (never the ones kept offline). */
 async function touch(chapterId: string) {
   let index: Record<string, number> = {}
   try { index = JSON.parse(localStorage.getItem(INDEX_KEY) || '{}') } catch { /* corrupted */ }
   index[chapterId] = Date.now()
-  const old = Object.entries(index).sort((a, b) => b[1] - a[1]).slice(MAX_CHAPTERS).map(([id]) => id)
+  const kept = pinnedChapterIds()
+  const old = Object.entries(index).filter(([id]) => !kept.has(id))
+    .sort((a, b) => b[1] - a[1]).slice(MAX_CHAPTERS).map(([id]) => id)
   for (const id of old) delete index[id]
   try { localStorage.setItem(INDEX_KEY, JSON.stringify(index)) } catch { /* private mode */ }
   if (!old.length) return
@@ -66,6 +74,47 @@ export async function putMeta(chapterId: string, meta: ChapterMeta): Promise<voi
   if (!cache) return
   await cache.put(metaKey(chapterId), new Response(JSON.stringify(meta), { headers: { 'Content-Type': 'application/json' } })).catch(() => {})
   void touch(chapterId)
+}
+
+// ─── Offline reading: what the reader needs without the server ───────────────
+const key = (name: string) => `${PREFIX}${name}`
+
+export async function putJson(name: string, data: unknown): Promise<void> {
+  const cache = await open()
+  await cache?.put(key(name), new Response(JSON.stringify(data), { headers: { 'Content-Type': 'application/json' } })).catch(() => {})
+}
+
+export async function getJson<T>(name: string): Promise<T | null> {
+  const cache = await open()
+  const res = await cache?.match(key(name)).catch(() => undefined)
+  if (!res) return null
+  try { return (await res.json()) as T } catch { return null }
+}
+
+export async function deleteKey(name: string): Promise<void> {
+  const cache = await open()
+  await cache?.delete(key(name)).catch(() => false)
+}
+
+/** A PDF chapter, whole (PDF.js opens it from here without the server) */
+export async function putPdf(chapterId: string, blob: Blob): Promise<void> {
+  const cache = await open()
+  await cache?.put(key(`${chapterId}/pdf`), new Response(blob, { headers: { 'Content-Type': 'application/pdf' } })).catch(() => {})
+}
+
+export async function getPdf(chapterId: string): Promise<Blob | null> {
+  const cache = await open()
+  const res = await cache?.match(key(`${chapterId}/pdf`)).catch(() => undefined)
+  return res ? res.blob() : null
+}
+
+/** Everything kept of a chapter (pages, PDF, page list) */
+export async function deleteChapter(chapterId: string): Promise<void> {
+  const cache = await open()
+  if (!cache) return
+  for (const req of await cache.keys()) {
+    if (new URL(req.url).pathname.startsWith(`${PREFIX}${chapterId}/`)) await cache.delete(req)
+  }
 }
 
 const inflight = new Map<string, Promise<Blob>>()

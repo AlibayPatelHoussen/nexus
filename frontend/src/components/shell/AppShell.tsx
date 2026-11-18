@@ -14,6 +14,7 @@ import { ShellContext, type ShellState } from './shellContext'
 import { useRouteMotion } from './useRouteMotion'
 import { useAccess } from './access'
 import { authService } from '@/services/authService'
+import { startOfflineSync } from '@/services/offlineManga'
 import EmptyState from '@/components/ui/EmptyState'
 import Button from '@/components/ui/Button'
 import { RadioTower } from 'lucide-react'
@@ -41,6 +42,9 @@ export default function AppShell() {
     authService.me().then((me) => updateUser({ role: me.role, username: me.username, canMedia: me.canMedia, canIptv: me.canIptv }))
       .catch(() => { /* signed out: the API client handles it */ })
   }, [updateUser])
+
+  // Mangas kept offline: what was left to download (and again when the connection comes back)
+  useEffect(() => { if (access.media) startOfflineSync() }, [access.media])
 
   // « IPTV seulement » accounts use the IPTV's own address: sent there (to sign in again)
   const iptvOnly = !access.admin && !access.media && !access.iptvHost

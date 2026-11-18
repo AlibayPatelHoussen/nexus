@@ -367,6 +367,63 @@ test('UI: manga reader loads image pages and PDF chapters', async () => {
   await page.context().close()
 })
 
+test('UI: manga offline — off by default; switched on, the next chapters stay on the phone; without a connection the app opens and they read', async () => {
+  admin = await login('admin', 'Admin1234')
+  const solo = sql(`SELECT id FROM media_items WHERE title LIKE '%Solo%'`)
+  const chs = sql(`SELECT id FROM chapters WHERE media_item_id='${solo}' ORDER BY chapter_number`).split('\n')
+  eq(chs.length, 2, 'two chapters')
+  const page = await newPage(admin)
+  const ctx = page.context()
+  await page.goto(`${B}/media/${solo}`, { waitUntil: 'networkidle' })
+  await page.evaluate(() => navigator.serviceWorker.ready)
+  const sw = page.locator('[role="switch"][aria-label="Garder des chapitres pour les lire hors ligne"]')
+  eq(await sw.getAttribute('aria-checked'), 'false', 'off by default')
+  await page.waitForSelector('text=Rien n’est gardé')
+  eq(await page.evaluate(async () => (await caches.keys()).some((k) => k.startsWith('nexus-app-'))), false, 'nothing of the app kept while off')
+
+  await sw.click()
+  await page.waitForSelector('text=/2 chapitres · [0-9]/', { timeout: 20000 })
+  eq(await page.locator('[aria-label="Disponible hors ligne"]').count(), 2, 'both chapters marked')
+  // The app itself, kept by the service worker
+  // (polled from here: waitForFunction would take an async check's promise as « true »)
+  const appKept = () => page.evaluate(async () => {
+    const res = await caches.match('/__offline/state', { cacheName: 'nexus-offline-state' })
+    const app = res ? (await res.json()).app : null
+    return !!app && (await caches.has(app)) && !!(await caches.match('/index.html', { cacheName: app }))
+  })
+  for (let i = 0; i < 60 && !(await appKept()); i++) await sleep(500)
+  assert(await appKept(), 'the app is kept by the service worker')
+
+  // No connection: the app opens, the manga, its chapters, the reader
+  await ctx.setOffline(true)
+  await page.reload({ waitUntil: 'domcontentloaded' })
+  await page.waitForSelector('text=/2 chapitres · [0-9]/', { timeout: 20000 })
+  await page.screenshot({ path: `${SHOTS}/manga-offline.png` })
+  await page.locator('[role="listitem"]', { hasText: 'Chapter 2' }).first().click().catch(async () => {
+    await page.goto(`${B}/reader/${solo}?ch=${chs[1]}`)
+  })
+  await page.waitForURL(/\/reader\//, { timeout: 10000 })
+  await page.waitForFunction(() => [...document.images].filter((i) => i.naturalWidth > 0 && i.alt.startsWith('Page')).length >= 3, null, { timeout: 20000 })
+  // The library without a connection: the kept manga
+  await page.goto(`${B}/manga`)
+  await page.waitForSelector('text=Sur cet appareil', { timeout: 20000 })
+  assert(!page.url().includes('/login'), 'still signed in without a connection')
+  await ctx.setOffline(false)
+
+  // Chapter 2 was read: chapter 1 left the device
+  await page.goto(`${B}/media/${solo}`, { waitUntil: 'networkidle' })
+  await page.waitForSelector('text=/1 chapitre · [0-9]/', { timeout: 20000 })
+  // Off: the pages and the app's copy leave the phone
+  await sw.click()
+  await page.waitForSelector('text=Rien n’est gardé')
+  const appGone = () => page.evaluate(async () => !(await caches.keys()).some((k) => k.startsWith('nexus-app-')))
+  for (let i = 0; i < 20 && !(await appGone()); i++) await sleep(500)
+  assert(await appGone(), 'the app copy is deleted')
+  const left = await page.evaluate(async () => (await (await caches.open('nexus-reader-v1')).keys()).map((r) => new URL(r.url).pathname).filter((p) => p.endsWith('/manifest') || p.includes('/media/')))
+  eq(left, [], 'nothing kept for offline reading')
+  await ctx.close()
+})
+
 test('UI: admin pages (files, services, network, settings)', async () => {
   const page = await newPage(admin, { width: 1280, height: 800 })
   await page.goto(`${B}/files?path=${encodeURIComponent(cfg.media)}`, { waitUntil: 'networkidle' })

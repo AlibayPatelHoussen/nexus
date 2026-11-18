@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { useNavigate, useSearchParams } from 'react-router-dom'
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { AlertTriangle, LayoutGrid, List, MoreHorizontal, RotateCw, Search } from 'lucide-react'
+import { AlertTriangle, LayoutGrid, List, MoreHorizontal, RotateCw, Search, WifiOff } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { mediaService } from '@/services/mediaService'
 import { useDebounce } from '@/hooks/useDebounce'
@@ -26,6 +26,7 @@ import { VIDEO_SECTIONS, SectionMenu, SearchButton, SearchBarOpen } from './Phon
 import { useContextMenu } from '@/components/ui/useContextMenu'
 import { useFavorites } from '@/hooks/useFavorites'
 import { useAutoScan } from '@/hooks/useAutoScan'
+import { offlineTitles } from '@/services/offlineManga'
 
 export interface BrowserTab {
   key:       string
@@ -118,6 +119,9 @@ export default function MediaBrowser({ title, tabs, yearFilter, emptyIcon, video
     }),
     enabled: hasFilters,
   })
+
+  // No connection: the mangas kept on this device (« Hors ligne ») can still be read
+  const { data: keptTitles } = useQuery({ queryKey: ['offline-titles'], queryFn: offlineTitles, enabled: books && isError, gcTime: 0 })
 
   const items = useMemo(() => catalog?.items ?? [], [catalog])
   const favorites = useFavorites()
@@ -275,7 +279,15 @@ export default function MediaBrowser({ title, tabs, yearFilter, emptyIcon, video
 
   /* ── Content ────────────────────────────────────────────────────────── */
   let content: React.ReactNode
-  if (isError) {
+  if (isError && keptTitles?.length) {
+    content = (
+      <div>
+        <EmptyState className="py-8" icon={<WifiOff strokeWidth={1.25} />} title="Pas de connexion"
+          message="Les mangas gardés sur cet appareil restent lisibles." />
+        <MediaRow title="Sur cet appareil" items={keptTitles} kind={shelf} />
+      </div>
+    )
+  } else if (isError) {
     content = <EmptyState tone="error" icon={<AlertTriangle strokeWidth={1.25} />} title="Bibliothèque indisponible" message="Le serveur n’a pas répondu. Vérifie qu’il tourne, puis recharge la page." />
   } else if (hasFilters) {
     content = (

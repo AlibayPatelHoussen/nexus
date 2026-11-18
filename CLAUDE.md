@@ -89,6 +89,14 @@ npm workspaces (`frontend`, `backend`); run from the repo root unless noted.
   `utils/saveFile.tsx` with a link built inside the tap (`hooks/useStreamToken.ts`, token fetched ahead): in place in a
   browser; in the iPhone home-screen app the share sheet (≤ 1 GB) or the in-app browser sheet — never a page opened
   first and filled later (it stays « about:blank » there).
+- **Mangas offline** (PWA, « Hors ligne » in `components/media/ChaptersSection.tsx`, off by default):
+  `services/offlineManga.ts` keeps, per title, the next chapters from the one read last (`wantedChapters`, 5 / 10 / 25 /
+  all) in the reader's Cache Storage (`services/readerCache.ts`, same page keys; kept chapters are pinned out of its LRU
+  via `services/offlineIndex.ts`, localStorage) plus each title's JSON and each chapter's page list (manifest) or whole
+  PDF; the reader uses them first (`getChapterPages`, `usePdfDocument`), `mediaService.getById` falls back to them, the
+  Manga library shows « Sur cet appareil » without a connection. `public/sw.js` keeps the app shell (`app-files.json`
+  from the Vite plugin, cache `nexus-app-<version>`, matched with `ignoreVary`) and the kept titles' artwork, only
+  while a title is kept (page → SW message `offline`). A failed refresh without a server answer never signs out.
 - **Security**: secrets only in `backend/.env` (Nexus refuses to start without `JWT_SECRET`); the file manager never
   reads or changes secrets and leaves the Nexus folder read-only (`assertAllowed` in `services/files.ts`, code
   `PROTECTED_FILE`); `trust proxy` = loopback (cloudflared on this machine); http visitors via Cloudflare are

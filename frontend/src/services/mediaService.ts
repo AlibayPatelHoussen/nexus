@@ -1,4 +1,5 @@
 import { api } from './api'
+import { isOfflineTitle, offlineMedia } from './offlineManga'
 import type { MediaItem, Episode, Chapter } from '@/types'
 
 export interface WatchHistoryItem extends Pick<MediaItem, 'id' | 'type' | 'title' | 'posterPath' | 'year'> {
@@ -45,8 +46,16 @@ export const mediaService = {
   },
 
   async getById(id: string): Promise<MediaItem & { episodes?: Episode[]; chapters?: Chapter[] }> {
-    const { data } = await api.get<{ success: boolean; data: MediaItem & { episodes?: Episode[]; chapters?: Chapter[] } }>(`/media/${id}`)
-    return data.data
+    // A manga kept offline: shown as last seen when the server cannot be reached (a short wait at most)
+    const kept = isOfflineTitle(id)
+    try {
+      const { data } = await api.get<{ success: boolean; data: MediaItem & { episodes?: Episode[]; chapters?: Chapter[] } }>(`/media/${id}`, kept ? { timeout: 8000 } : undefined)
+      return data.data
+    } catch (err) {
+      const copy = kept && !(err as { response?: unknown }).response ? await offlineMedia(id) : null
+      if (copy) return copy
+      throw err
+    }
   },
 
   async getRecent(type?: string, limit = 12): Promise<MediaItem[]> {
