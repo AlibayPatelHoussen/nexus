@@ -424,6 +424,44 @@ test('UI: manga offline — off by default; switched on, the next chapters stay 
   await ctx.close()
 })
 
+test('UI: manga offline — one chapter chosen by hand (switch off) stays after reading, until removed', async () => {
+  admin = await login('admin', 'Admin1234')
+  const vin = sql(`SELECT id FROM media_items WHERE title LIKE '%Vinland%'`)
+  const chs = sql(`SELECT id FROM chapters WHERE media_item_id='${vin}' ORDER BY chapter_number`).split('\n')
+  const page = await newPage(admin)
+  const ctx = page.context()
+  await page.goto(`${B}/media/${vin}`, { waitUntil: 'networkidle' })
+  await page.evaluate(() => navigator.serviceWorker.ready)
+  eq(await page.locator('[role="switch"][aria-label="Garder des chapitres pour les lire hors ligne"]').getAttribute('aria-checked'), 'false', 'switch off')
+  await page.click('button[aria-label="Garder « Chapitre 2 » hors ligne"]')
+  await page.locator('button[aria-label="« Chapitre 2 » est sur l’appareil : le retirer"]').waitFor({ timeout: 20000 })
+  await page.waitForSelector('text=/1 chapitre choisi · [0-9]/')
+  eq(await page.locator('button[aria-label^="Garder « Chapitre"]').count(), 2, 'the others are not kept')
+  // Without a connection: that chapter reads
+  const appKept = () => page.evaluate(async () => {
+    const res = await caches.match('/__offline/state', { cacheName: 'nexus-offline-state' })
+    const app = res ? (await res.json()).app : null
+    return !!app && (await caches.has(app)) && !!(await caches.match('/index.html', { cacheName: app }))
+  })
+  for (let i = 0; i < 60 && !(await appKept()); i++) await sleep(500)
+  await ctx.setOffline(true)
+  await page.goto(`${B}/reader/${vin}?ch=${chs[1]}`)
+  await page.waitForFunction(() => [...document.images].filter((i) => i.naturalWidth > 0 && i.alt.startsWith('Page')).length >= 1, null, { timeout: 20000 })
+  await ctx.setOffline(false)
+  // Reading a later chapter does not take it away (chosen by hand)
+  await page.goto(`${B}/reader/${vin}?ch=${chs[2]}`, { waitUntil: 'networkidle' })
+  await page.goto(`${B}/media/${vin}`, { waitUntil: 'networkidle' })
+  await page.locator('button[aria-label="« Chapitre 2 » est sur l’appareil : le retirer"]').waitFor({ timeout: 10000 })
+  // Removed by hand: nothing left, the app copy goes too
+  await page.click('button[aria-label="« Chapitre 2 » est sur l’appareil : le retirer"]')
+  await page.locator('button[aria-label="Garder « Chapitre 2 » hors ligne"]').waitFor({ timeout: 10000 })
+  await page.waitForSelector('text=Rien n’est gardé')
+  const appGone = () => page.evaluate(async () => !(await caches.keys()).some((k) => k.startsWith('nexus-app-')))
+  for (let i = 0; i < 20 && !(await appGone()); i++) await sleep(500)
+  assert(await appGone(), 'the app copy is deleted')
+  await ctx.close()
+})
+
 test('UI: admin pages (files, services, network, settings)', async () => {
   const page = await newPage(admin, { width: 1280, height: 800 })
   await page.goto(`${B}/files?path=${encodeURIComponent(cfg.media)}`, { waitUntil: 'networkidle' })

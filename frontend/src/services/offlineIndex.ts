@@ -22,13 +22,15 @@ export interface OfflineChapter {
 
 export interface OfflineIndex {
   titles:   Record<string, OfflineTitle>
+  /** Chapters chosen one by one (chapter id → title id): kept until removed, read or not */
+  manual:   Record<string, string>
   chapters: Record<string, OfflineChapter>
   /** Last chapter opened of each title (the kept chapters start there) */
   lastRead: Record<string, string>
 }
 
 const KEY = 'nexus-offline-v1'
-const empty = (): OfflineIndex => ({ titles: {}, chapters: {}, lastRead: {} })
+const empty = (): OfflineIndex => ({ titles: {}, manual: {}, chapters: {}, lastRead: {} })
 
 export function readIndex(): OfflineIndex {
   try {
@@ -46,6 +48,11 @@ export function writeIndex(change: (index: OfflineIndex) => void): OfflineIndex 
 
 export function clearIndex() {
   try { localStorage.removeItem(KEY) } catch { /* private mode */ }
+}
+
+/** Titles with something kept: the switch on, or chapters chosen one by one */
+export function keptMediaIds(index = readIndex()): string[] {
+  return [...new Set([...Object.keys(index.titles), ...Object.values(index.manual)])]
 }
 
 /** Chapters kept for offline reading: never pushed out of the reader's cache */

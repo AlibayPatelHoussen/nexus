@@ -12,7 +12,7 @@
 - **Full server control** — files, services, terminal, network, users
 - **Media center** — films, series, animes, manga/webtoon with metadata from TMDB & AniList
 - **Custom video player** — resume, favorites, history; plays every format in the browser (MKV, AVI, HEVC… converted on the fly with ffmpeg, like Jellyfin)
-- **Manga/Webtoon reader** — vertical scroll & page mode; **offline**: a manga's « Hors ligne » switch (off by default) keeps the next chapters on the phone (5, 10, 25 or all) to read them without a connection, the chapters read leave on their own
+- **Manga/Webtoon reader** — vertical scroll & page mode; **offline**: a manga's « Hors ligne » switch (off by default) keeps the next chapters on the phone (5, 10, 25 or all) to read them without a connection, the chapters read leave on their own; ↓ on a chapter keeps that one until removed
 - **Jarvis assistant** — chat (voice too) with the local AI assistant running on the server ([jarvis-backend](https://github.com/AlibayPatelHoussen/jarvis-backend)), relayed by Nexus
 - **Real-time stats** — CPU, RAM, disk, temperature via WebSocket
 - **Transferts** — *Aperçu › Transferts* (admins): send a file from the iPhone, download it on the computer (and back); it arrives live with a notification, erased after 7 days. *Fichiers*: upload progress with « Annuler », drag & drop, folders and selections downloaded as a .zip

@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest'
 import { noteRead, wantedChapters } from './offlineManga'
-import { pinnedChapterIds, readIndex, writeIndex } from './offlineIndex'
+import { keptMediaIds, pinnedChapterIds, readIndex, writeIndex } from './offlineIndex'
 import type { Chapter } from '@/types'
 
 const ch = (n: number, language: string | null = 'VF'): Chapter => ({
@@ -41,5 +41,10 @@ describe('offline index', () => {
     noteRead('other', 'x-1', 'VF')
     expect(readIndex().titles.other).toBeUndefined()
     expect(readIndex().lastRead.other).toBe('x-1')
+  })
+
+  it('a title counts as kept with its switch on, or with chapters chosen by hand', () => {
+    writeIndex((i) => { i.titles.a = { count: 5, version: null, title: 'A' }; i.manual['b-3'] = 'b' })
+    expect(keptMediaIds().sort()).toEqual(['a', 'b'])
   })
 })

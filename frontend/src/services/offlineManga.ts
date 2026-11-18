@@ -3,7 +3,7 @@ import { getStreamToken, withStreamToken } from './streamToken'
 import {
   PAGE_WIDTH, available, deleteChapter, deleteKey, getJson, getPage, putJson, putPage, putPdf,
 } from './readerCache'
-import { clearIndex, readIndex, writeIndex, type OfflineCount, type OfflineIndex } from './offlineIndex'
+import { clearIndex, keptMediaIds, readIndex, writeIndex, type OfflineCount, type OfflineIndex } from './offlineIndex'
 import { chapterVersions } from '@/components/media/chapterVersions'
 import type { Chapter, MediaItem } from '@/types'
 
@@ -45,7 +45,7 @@ const refreshIndex = (index = readIndex()) => emit({ index })
 // ─── The service worker keeps the app itself (and these titles' pictures) ────
 function tellServiceWorker() {
   if (!('serviceWorker' in navigator)) return
-  const media = Object.keys(readIndex().titles)
+  const media = keptMediaIds()
   void navigator.serviceWorker.ready.then((reg) => reg.active?.postMessage({ type: 'offline', on: media.length > 0, media }))
     .catch(() => {})
 }
@@ -60,11 +60,11 @@ const manifestKey = (chapterId: string) => `${chapterId}/manifest`
 export const offlineMedia = (id: string) => getJson<OfflineMedia>(mediaKey(id))
 export const offlineManifest = (chapterId: string) => getJson<ChapterManifest>(manifestKey(chapterId))
 export const isKept = (chapterId: string) => !!readIndex().chapters[chapterId]
-export const isOfflineTitle = (mediaId: string) => !!readIndex().titles[mediaId]
+export const isOfflineTitle = (mediaId: string) => keptMediaIds().includes(mediaId)
 
 /** Titles kept on this device (the manga library without a connection) */
 export async function offlineTitles(): Promise<OfflineMedia[]> {
-  const ids = Object.keys(readIndex().titles)
+  const ids = keptMediaIds()
   const all = await Promise.all(ids.map((id) => offlineMedia(id)))
   return all.filter((m): m is OfflineMedia => !!m)
 }
@@ -99,13 +99,49 @@ export async function setOfflineCount(mediaId: string, count: OfflineCount) {
   void syncOffline(mediaId)
 }
 
+/** Switch off: what it kept leaves (the chapters chosen one by one stay) */
 export async function disableOffline(mediaId: string) {
   aborts.get(mediaId)?.abort()
-  const index = writeIndex((i) => { delete i.titles[mediaId] })
-  const ids = Object.entries(index.chapters).filter(([, c]) => c.mediaId === mediaId).map(([id]) => id)
-  for (const id of ids) await removeChapter(id)
-  await deleteKey(mediaKey(mediaId))
-  emit({ waiting: without(state.waiting, mediaId) })
+  writeIndex((i) => { delete i.titles[mediaId] })
+  await forgetUnwanted(mediaId)
+  // The chapters chosen by hand that were still to come
+  if (keptMediaIds().includes(mediaId)) void syncOffline(mediaId)
+}
+
+/** A chapter chosen by hand: kept until removed, read or not (the switch can stay off) */
+export async function keepChapter(media: OfflineMedia, chapterId: string) {
+  writeIndex((i) => { i.manual[chapterId] = media.id })
+  refreshIndex()
+  void navigator.storage?.persist?.().catch(() => false)
+  await putJson(mediaKey(media.id), media)
+  tellServiceWorker()
+  void syncOffline(media.id)
+}
+
+/** No longer chosen by hand: leaves the device, unless the switch keeps it */
+export async function releaseChapter(mediaId: string, chapterId: string) {
+  writeIndex((i) => { delete i.manual[chapterId] })
+  await forgetUnwanted(mediaId)
+  if (readIndex().titles[mediaId]) void syncOffline(mediaId)
+}
+
+/** Removes the chapters of a title nothing asks for any more (and the title when none is left) */
+async function forgetUnwanted(mediaId: string) {
+  const index = readIndex()
+  const title = index.titles[mediaId]
+  const media = await offlineMedia(mediaId)
+  const wanted = new Set([
+    ...(title && media ? wantedChapters(media.chapters ?? [], title.count, title.version, index.lastRead[mediaId]).map((c) => c.id) : []),
+    ...Object.entries(index.manual).filter(([, m]) => m === mediaId).map(([id]) => id),
+  ])
+  for (const [id, c] of Object.entries(index.chapters)) {
+    if (c.mediaId === mediaId && !wanted.has(id)) await removeChapter(id)
+  }
+  if (!keptMediaIds().includes(mediaId)) {
+    aborts.get(mediaId)?.abort()
+    await deleteKey(mediaKey(mediaId))
+    emit({ waiting: without(state.waiting, mediaId) })
+  }
   refreshIndex()
   tellServiceWorker()
 }
@@ -146,7 +182,7 @@ let running: Promise<void> | null = null
 /** Brings the kept chapters of these titles (all of them by default) up to date. */
 export function syncOffline(mediaId?: string): Promise<void> {
   if (!offlineSupported()) return Promise.resolve()
-  const ids = mediaId ? [mediaId] : Object.keys(readIndex().titles)
+  const ids = mediaId ? [mediaId] : keptMediaIds()
   for (const id of ids) queue.add(id)
   emit({ waiting: { ...state.waiting, ...Object.fromEntries(ids.map((id) => [id, null])) } })
   running ??= (async () => {
@@ -162,8 +198,7 @@ export function syncOffline(mediaId?: string): Promise<void> {
 }
 
 async function syncTitle(mediaId: string) {
-  const title = readIndex().titles[mediaId]
-  if (!title) return
+  if (!keptMediaIds().includes(mediaId)) return
   const ctrl = new AbortController()
   aborts.set(mediaId, ctrl)
   const done = (error: string | null) => {
@@ -179,20 +214,26 @@ async function syncTitle(mediaId: string) {
     } catch { media = await offlineMedia(mediaId) }
     if (!media || ctrl.signal.aborted) { done(null); return }
 
+    // The switch's chapters (from the one read last), then the ones chosen by hand
     const index = readIndex()
-    const wanted = wantedChapters(media.chapters ?? [], title.count, title.version, index.lastRead[mediaId])
+    const title = index.titles[mediaId]
+    const all = media.chapters ?? []
+    const auto = title ? wantedChapters(all, title.count, title.version, index.lastRead[mediaId]) : []
+    const chosen = all.filter((c) => index.manual[c.id] === mediaId && !auto.some((a) => a.id === c.id))
+    const wanted = [...auto, ...chosen]
     const keep = new Set(wanted.map((c) => c.id))
     for (const [id, c] of Object.entries(index.chapters)) {
       if (c.mediaId === mediaId && !keep.has(id)) await removeChapter(id)
     }
     refreshIndex()
 
+    const stillWanted = (id: string) => { const i = readIndex(); return !!i.titles[mediaId] || i.manual[id] === mediaId }
     for (const ch of wanted) {
-      if (ctrl.signal.aborted || !readIndex().titles[mediaId]) break
-      if (readIndex().chapters[ch.id]) continue
+      if (ctrl.signal.aborted) break
+      if (readIndex().chapters[ch.id] || !stillWanted(ch.id)) continue
       if (!navigator.onLine) { done('En attente de connexion'); return }
       const { bytes, pages } = await downloadChapter(mediaId, ch.id, ctrl.signal)
-      if (ctrl.signal.aborted || !readIndex().titles[mediaId]) { await deleteChapter(ch.id); break }
+      if (ctrl.signal.aborted || !stillWanted(ch.id)) { await deleteChapter(ch.id); continue }
       writeIndex((i) => { i.chapters[ch.id] = { mediaId, bytes, pages, at: Date.now() } })
       refreshIndex()
     }
@@ -256,5 +297,5 @@ export function startOfflineSync() {
   started = true
   window.addEventListener('online', () => { void syncOffline() })
   tellServiceWorker()
-  if (Object.keys(readIndex().titles).length) void syncOffline()
+  if (keptMediaIds().length) void syncOffline()
 }
