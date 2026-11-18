@@ -383,7 +383,7 @@ test('UI: manga offline — off by default; switched on, the next chapters stay 
 
   await sw.click()
   await page.waitForSelector('text=/2 chapitres · [0-9]/', { timeout: 20000 })
-  eq(await page.locator('[aria-label="Disponible hors ligne"]').count(), 2, 'both chapters marked')
+  eq(await page.locator('button[aria-label$="(Hors ligne) : le garder même lu"]').count(), 2, 'both chapters marked (kept by the switch)')
   // The app itself, kept by the service worker
   // (polled from here: waitForFunction would take an async check's promise as « true »)
   const appKept = () => page.evaluate(async () => {
