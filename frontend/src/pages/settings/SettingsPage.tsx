@@ -14,6 +14,7 @@ import Button from '@/components/ui/Button'
 import { useConfirm } from '@/components/ui/useConfirm'
 import type { Appearance } from '@/types'
 import NotificationsGroup from './NotificationsGroup'
+import RenameRows from './RenameRows'
 import { useAccess } from '@/components/shell/access'
 import { ACCESS_LABEL } from '@/services/usersService'
 import { DevicesGroup, SignInsGroup, UsersGroup } from './AccountsGroups'
@@ -108,6 +109,8 @@ export default function SettingsPage() {
           <ListRow wrap title="Nettoyer la bibliothèque" subtitle="Retire les titres dont le fichier n’existe plus.">
             <Button size="small" variant="destructive" loading={pruning} onClick={handlePrune}>Nettoyer…</Button>
           </ListRow>
+          {/* The files on the server: admins */}
+          {isAdmin && !access.iptvHost && <RenameRows />}
         </Group>}
 
         {/* Notifications: the downloads (and, for admins, new devices): with the media */}

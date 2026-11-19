@@ -69,6 +69,7 @@ function knowsPicky(): Promise<boolean> {
 interface ProbeOut {
   streams?: { codec_type?: string; codec_name?: string; pix_fmt?: string; width?: number; height?: number; disposition?: { attached_pic?: number } }[]
   frames?: { media_type?: string; interlaced_frame?: number }[]
+  format?: { format_name?: string }
 }
 
 async function probe(id: string, s: number, token: string): Promise<Content> {
@@ -80,7 +81,7 @@ async function probe(id: string, s: number, token: string): Promise<Content> {
       '-v', 'error', ...flags, '-rw_timeout', '25000000',
       // A few frames are read too: a playlist does not say whether its video is interlaced, its frames do
       '-read_intervals', '%+#120',
-      '-show_entries', 'stream=codec_type,codec_name,pix_fmt,width,height:stream_disposition=attached_pic:frame=media_type,interlaced_frame', '-of', 'json',
+      '-show_entries', 'stream=codec_type,codec_name,pix_fmt,width,height:stream_disposition=attached_pic:frame=media_type,interlaced_frame:format=format_name', '-of', 'json',
       inputUrl(id, s, token),
     ], { timeout: 40_000, maxBuffer: 4 * 1024 * 1024 })
     return JSON.parse(stdout) as ProbeOut
@@ -95,6 +96,9 @@ async function probe(id: string, s: number, token: string): Promise<Content> {
     flags = []
     out = await run(flags)
   }
+  // Kept for a playlist only: ffprobe 8 accepts the option for any stream, ffmpeg refuses it
+  // for anything else (a bare MPEG-TS stream would never be converted)
+  if (flags.length && !(out.format?.format_name ?? '').split(',').includes('hls')) flags = []
   const streams = out.streams ?? []
   // The largest picture (a playlist lists every quality); a cover image is not a picture
   const videos = streams.filter((st) => st.codec_type === 'video' && !st.disposition?.attached_pic)

@@ -37,6 +37,7 @@ import iptvRoutes     from './routes/iptv'
 import jarvisRoutes   from './routes/jarvis'
 import usersRoutes    from './routes/users'
 import transfersRoutes from './routes/transfers'
+import renameRoutes from './routes/rename'
 import { startTransfersWorker } from './services/transfers'
 import { iptvPublicUrl, startIptvWorker } from './services/iptv'
 import { registerSocketHandlers } from './socket'
@@ -125,6 +126,7 @@ app.use('/api/iptv', iptvRoutes)
 app.use('/api/jarvis', jarvisRoutes)
 app.use('/api/users', usersRoutes)
 app.use('/api/transfers', transfersRoutes)
+app.use('/api/library/rename', renameRoutes)
 app.use('/api/terminal', terminalRoutes)
 app.get('/api/health', (_req, res) => {
   void iptvPublicUrl().catch(() => null).then((iptvUrl) => res.json({

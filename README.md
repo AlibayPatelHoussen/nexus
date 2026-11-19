@@ -15,6 +15,7 @@
 - **Manga/Webtoon reader** — vertical scroll & page mode; **offline**: a manga's « Hors ligne » switch (off by default) keeps the next chapters on the phone (5, 10, 25 or all) to read them without a connection, the chapters read leave on their own; ↓ on a chapter keeps that one until removed
 - **Jarvis assistant** — chat (voice too) with the local AI assistant running on the server ([jarvis-backend](https://github.com/AlibayPatelHoussen/jarvis-backend)), relayed by Nexus
 - **Real-time stats** — CPU, RAM, disk, temperature via WebSocket
+- **Names for Jellyfin** — new downloads renamed as they finish (`Titre (Année) [tmdbid-N]/Season 01/Titre S01E01.mkv`), the library already there after a preview, undo; Nexus keeps progress and favourites
 - **Transferts** — *Aperçu › Transferts* (admins): send a file from the iPhone, download it on the computer (and back); it arrives live with a notification, erased after 7 days. *Fichiers*: upload progress with « Annuler », drag & drop, folders and selections downloaded as a .zip
 - **Dark/Light theme**
 - **JWT authentication** with bcrypt hashing
@@ -286,6 +287,14 @@ the last admin).
 one or several at once from an M3U list (pasted or a file). They show like the other channels,
 first in their country. The links stay in this server's database (never on GitHub, never sent to
 a browser: only their host is shown) and play through Nexus' relay (and the IPTV VPN).
+
+### Names for Jellyfin
+
+*Réglages › Bibliothèque › Noms pour Jellyfin* (admins): films → `Titre (Année) [tmdbid-N]/Titre (Année).mkv`,
+séries / animes → `Titre (Année) [tmdbid-N]/Season 01/Titre S01E01.mkv`. New downloads are renamed as they
+finish (switch, on by default); *Renommer la bibliothèque* previews then renames what is already there;
+every batch can be undone. Nexus follows the files (progress, favourites kept). API: `/api/library/rename`
+(`GET /plan`, `POST /apply`, `GET /history`, `POST /undo/:batch`, `GET|PUT /settings`).
 
 ### Mangas offline
 

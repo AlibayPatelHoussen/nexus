@@ -1023,6 +1023,37 @@ test('UI: iPhone home-screen app — a download goes to the share sheet (never a
   await page.context().close()
 })
 
+test('UI: Réglages › Noms pour Jellyfin — preview, rename the library (rows follow), undo puts every name back', async () => {
+  admin = await login('admin', 'Admin1234')
+  const film = `${cfg.media}/films/Tu.ne.tueras.point.2016.MULTi.1080p.mp4`
+  assert(fs.existsSync(film), 'release-named film present')
+  const id = sql(`SELECT id FROM media_items WHERE file_path = '${film}'`)
+  assert(id, 'film indexed')
+  const old = new Date(Date.now() - 3600_000)
+  for (const f of fs.readdirSync(`${cfg.media}/films`)) fs.utimesSync(`${cfg.media}/films/${f}`, old, old)
+  const page = await newPage(admin)
+  await page.goto(`${B}/settings`, { waitUntil: 'networkidle' })
+  const auto = page.locator('[role="switch"][aria-label="Renommer automatiquement les nouveaux téléchargements"]')
+  eq(await auto.getAttribute('aria-checked'), 'true', 'automatic renaming on by default')
+  await page.click('button:has-text("Vérifier…")')
+  const sheet = page.locator('[role="dialog"]')
+  await sheet.locator('text=Tu.ne.tueras.point.2016.MULTi.1080p.mp4').waitFor({ timeout: 15000 })
+  await page.screenshot({ path: `${SHOTS}/rename-preview.png` })
+  await page.click('[role="dialog"] button:has-text("Renommer")')
+  await page.waitForSelector('text=/\\d+ titres? renommés?/', { timeout: 30000 })
+  const [title, year, tmdb] = sql(`SELECT title || '|' || COALESCE(year::text, '') || '|' || COALESCE(tmdb_id::text, '') FROM media_items WHERE id = '${id}'`).split('|')
+  const base = `${title}${year ? ` (${year})` : ''}`
+  const now = sql(`SELECT file_path FROM media_items WHERE id = '${id}'`)
+  eq(now, `${cfg.media}/films/${base}${tmdb ? ` [tmdbid-${tmdb}]` : ''}/${base}.mp4`, 'renamed for Jellyfin')
+  assert(fs.existsSync(now) && !fs.existsSync(film), 'moved on disk')
+  // Undo: every name back, the rows too
+  await page.click('[role="dialog"] button:has-text("Annuler ce renommage")')
+  await page.waitForSelector('text=Noms d’origine remis', { timeout: 30000 })
+  eq(sql(`SELECT file_path FROM media_items WHERE id = '${id}'`), film, 'row back')
+  assert(fs.existsSync(film), 'file back')
+  await page.context().close()
+})
+
 test('UI: settings shows matching interface/server versions', async () => {
   const commit = (await api('/api/health')).json.build.commit
   const page = await newPage(admin, { width: 1280, height: 800 })

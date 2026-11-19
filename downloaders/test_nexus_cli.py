@@ -111,6 +111,20 @@ class SeriesFolder(unittest.TestCase):
         self.assertFalse((self.root / self.MOVIX).exists())
         self.assertEqual(self.folder(), self.root / self.OX)       # nothing left to merge
 
+    def test_folder_renamed_for_jellyfin_wins(self):
+        # Renamed by Nexus (« Titre (Année) [tmdbid-N] »): never merged into another folder
+        jf = "Georgie & Mandy's First Marriage (2025) [tmdbid-258854]"
+        self.put(jf, "Season 01", "Georgie & Mandy's First Marriage S01E01.mkv", hint=258854)
+        self.put(self.MOVIX, "VF", "Saison_1", "Episode_2.mp4")
+        self.put(self.MOVIX, "VF", "Saison_1", "Episode_3.mp4")
+        self.assertEqual(self.folder(), self.root / jf)
+        self.assertTrue((self.root / jf / "VF" / "Saison_1" / "Episode_3.mp4").exists())
+        self.assertTrue((self.root / jf / "Season 01" / "Georgie & Mandy's First Marriage S01E01.mkv").exists())
+        self.assertFalse((self.root / self.MOVIX).exists())
+        # Found again by its name alone too
+        (self.root / jf / ".nexus.json").unlink()
+        self.assertEqual(self.folder(tmdb=None), self.root / jf)
+
     def test_french_title_changed(self):
         self.put("Georgie & Mandy : leur premier mariage", "VF", "Saison_1", "e1.mp4", hint=258854)
         self.assertEqual(self.folder(), self.root / "Georgie & Mandy : leur premier mariage")
