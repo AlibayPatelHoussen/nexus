@@ -3,14 +3,14 @@ import http from 'http'
 import os from 'os'
 import path from 'path'
 import { AddressInfo } from 'net'
-import { execFileSync } from 'child_process'
+import { execFileSync, spawnSync } from 'child_process'
 import request from 'supertest'
 import { app } from '../../src/index'
 import { query } from '../../src/config/database'
 import { makeToken } from '../helpers'
 import { checkChannel, checkDueChannels, importCatalogue, refreshCatalogue, sourcesChanged } from '../../src/services/iptv'
 import { dropSoundOnlyVariants, rewritePlaylist } from '../../src/services/iptvProxy'
-import { convertJobs, stopConversions } from '../../src/services/iptvConvert'
+import { convertArgs, convertJobs, stopConversions } from '../../src/services/iptvConvert'
 import net from 'net'
 
 /*
@@ -688,7 +688,19 @@ if (!hasFfmpeg) console.warn('ffmpeg not installed: IPTV conversion tests skippe
     expect(told).toEqual({ video: 'h264', audio: 'ac3', interlaced: true, plain: true, convert: false, reason: null })
     for (const s of [0, 1]) {
       // With its reason: a conversion that did not start says why (« failed », « busy »…)
-      expect((await request(app).post(`/api/iptv/play/Tnt.fr/${s}/convert`).set(alice)).body.data).toMatchObject({ video: 'h264', audio: 'ac3', convert: true, reason: null })
+      const answer = (await request(app).post(`/api/iptv/play/Tnt.fr/${s}/convert`).set(alice)).body.data
+      if (!answer.convert) {
+        // TEMPORARY diagnosis (CI only fails here): what ffmpeg says, run by hand with the same arguments
+        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'diag-'))
+        const input = `${process.env.NEXUS_INTERNAL_URL}/api/iptv/play/Tnt.fr/${s}/index.m3u8?token=${encodeURIComponent(token())}`
+        const version = execFileSync('ffmpeg', ['-version']).toString().split('\n')[0]
+        const runs = [['-extension_picky', '0'], []].map((flags) => {
+          const r = spawnSync('ffmpeg', convertArgs(input, dir, flags).map((a) => a === 'error' ? 'warning' : a), { timeout: 60_000 })
+          return `flags=${JSON.stringify(flags)} exit=${r.status}\n${String(r.stderr).slice(-3000)}`
+        })
+        console.log(`DIAG s=${s} ${version}\n${runs.join('\n---\n')}`)
+      }
+      expect(answer).toMatchObject({ video: 'h264', audio: 'ac3', convert: true, reason: null })
       const list = await request(app).get(`/api/iptv/play/Tnt.fr/${s}/converted/index.m3u8?token=${token()}`)
       const line = list.text.split('\n').find((l) => /^seg\d+\.ts\?token=/.test(l))!
       const seg = await request(app).get(`/api/iptv/play/Tnt.fr/${s}/converted/${line}`).buffer(true)
