@@ -430,6 +430,19 @@ async function launch(row: DownloadRow) {
  * versions it replaces are deleted (only inside the library folder of this
  * kind) and their jobs leave the queue.
  */
+/** Where a downloaded file is now, after the renames for Jellyfin (media_renames) */
+async function renamedTo(file: string): Promise<string> {
+  let p = file
+  for (let i = 0; i < 5; i++) {
+    const { rows } = await query<{ from_path: string; to_path: string }>(
+      `SELECT from_path, to_path FROM media_renames WHERE undone_at IS NULL AND ($1 = from_path OR left($1, length(from_path) + 1) = from_path || '/')
+        ORDER BY created_at DESC, seq DESC LIMIT 1`, [p]).catch(() => ({ rows: [] as { from_path: string; to_path: string }[] }))
+    if (!rows[0]) return p
+    p = rows[0].to_path + p.slice(rows[0].from_path.length)
+  }
+  return p
+}
+
 export async function removeReplaced(row: DownloadRow) {
   const ids = (row.options.replaces ?? []).filter((id) => /^[0-9a-f-]{36}$/i.test(id) && id !== row.id)
   if (!ids.length) return
@@ -438,7 +451,8 @@ export async function removeReplaced(row: DownloadRow) {
   const { rows } = await query<DownloadRow>('SELECT * FROM downloads WHERE id = ANY($1::uuid[])', [ids])
   for (const old of rows) {
     for (const f of ((old.progress as { files?: string[] }).files ?? [])) {
-      const file = path.resolve(String(f))
+      // Renamed for Jellyfin since (services/renamer.ts): where it is now
+      const file = path.resolve(await renamedTo(String(f)))
       if (!file.startsWith(root + path.sep) || mine.has(file)) continue
       await fs.unlink(file).catch(() => {})
       await fs.unlink(path.join(path.dirname(file), `.${path.basename(file)}.nexus.json`)).catch(() => {})

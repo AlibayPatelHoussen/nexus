@@ -97,6 +97,13 @@ npm workspaces (`frontend`, `backend`); run from the repo root unless noted.
   Manga library shows « Sur cet appareil » without a connection. `public/sw.js` keeps the app shell (`app-files.json`
   from the Vite plugin, cache `nexus-app-<version>`, matched with `ignoreVary`) and the kept titles' artwork, only
   while a title is kept (page → SW message `offline`). A failed refresh without a server answer never signs out.
+- **Names for Jellyfin** (`services/renamer.ts`, `routes/rename.ts` → `/api/library/rename`, admins; UI
+  `pages/settings/RenameRows.tsx`): films `Titre (Année) [tmdbid-N]/Titre (Année).ext`, shows `Titre (Année) [tmdbid-N]/Season NN/Titre
+  SNNEMM.ext`. `planRenames` (preview) / `applyRenames` (under `MediaScanner.exclusive('rename')`): files moved (sudo fallback),
+  then the rows in one transaction (same ids: progress, favourites); a folder made again by a script for a title already renamed
+  joins it (`mergeInto`). Every move in `media_renames` by batch (`undoRenames`); `app_settings('rename').auto` (on by
+  default) renames each finished download (`onDownloadFinished`). Never: files playing / written < 2 min, folders being
+  downloaded. `downloads.removeReplaced` follows renamed paths; `downloaders/nexus_cli.series_folder` prefers Jellyfin-named folders.
 - **Security**: secrets only in `backend/.env` (Nexus refuses to start without `JWT_SECRET`); the file manager never
   reads or changes secrets and leaves the Nexus folder read-only (`assertAllowed` in `services/files.ts`, code
   `PROTECTED_FILE`); `trust proxy` = loopback (cloudflared on this machine); http visitors via Cloudflare are

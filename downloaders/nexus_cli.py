@@ -779,6 +779,10 @@ def release_title(name: str) -> str:
     return re.sub(r"[._]+", " ", head).strip(" -")
 
 
+# A folder named the way Jellyfin reads it (Nexus renames the library so: services/renamer.ts)
+_JELLYFIN_NAME = re.compile(r"\[tmdbid-\d+\]$|^.+ \((?:19|20)\d{2}\)$")
+
+
 def _hint_tmdb(folder: Path):
     try:
         hint = json.loads((folder / ".nexus.json").read_text(encoding="utf-8"))
@@ -820,8 +824,10 @@ def series_folder(dest, title: str, default_name: str, tmdb_id=None) -> Path:
             matches.append(d)
     if not matches:
         return default
-    # Keep a folder named after the series (not a torrent's release name), then the fullest one
-    target = max(matches, key=lambda d: (release_title(d.name) == d.name.replace("_", " ").strip(), len(_files(d)), d == default))
+    # Keep the folder Nexus renamed for Jellyfin (« Titre (2008) [tmdbid-1396] »), else one named
+    # after the series (not a torrent's release name), then the fullest one
+    target = max(matches, key=lambda d: (bool(_JELLYFIN_NAME.search(d.name)), release_title(d.name) == d.name.replace("_", " ").strip(),
+                                         len(_files(d)), d == default))
     for other in matches:
         if other == target:
             continue
