@@ -11,6 +11,9 @@ All notable changes to Nexus will be documented here.
 - Nexus follows the files (same rows: progress, « Reprendre », favourites, automatic downloads); never touched: a file being played or still written, a folder being downloaded (later), hidden files, manga and YouTube. Moves need no rights Nexus lacks (sudo when allowed, else the command to run). The download scripts keep finding a renamed folder (`nexus_cli.series_folder` prefers it), and « Remplacer » finds the renamed files of the version it replaces
 - Jellyfin takes the new names at its next library scan (its own watched marks may start over for renamed titles)
 
+### Fixed — IPTV picture converted with ffmpeg 8
+- A bare MPEG-TS stream (not a playlist) was never converted with ffmpeg 8: its ffprobe accepts the HLS option `-extension_picky 0` for any stream, its ffmpeg refuses it. The option is now kept only when the stream is a playlist
+
 ### Added — Mangas offline (PWA)
 - On a manga's page, in *Chapitres*: **Hors ligne**, a switch, **off by default** (nothing is kept on the phone otherwise). Switched on, this device keeps the next chapters from the one being read — **À garder**: 5, 10 (default), 25 or all — and they read without a connection (metro, plane). Chapters already read leave on their own to free the room; switched off, what it kept is removed. The switch says how many chapters and how much room
 - **One chapter at a time** too, switch on or off: **↓** on a chapter's line keeps that one; it stays (read or not) until **✓** removes it; a chapter kept by the switch (grey arrow) is kept for good with a tap; a ring while it downloads (a tap cancels it)

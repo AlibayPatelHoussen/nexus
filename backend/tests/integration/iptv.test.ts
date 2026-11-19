@@ -3,14 +3,14 @@ import http from 'http'
 import os from 'os'
 import path from 'path'
 import { AddressInfo } from 'net'
-import { execFileSync, spawn } from 'child_process'
+import { execFileSync } from 'child_process'
 import request from 'supertest'
 import { app } from '../../src/index'
 import { query } from '../../src/config/database'
 import { makeToken } from '../helpers'
 import { checkChannel, checkDueChannels, importCatalogue, refreshCatalogue, sourcesChanged } from '../../src/services/iptv'
 import { dropSoundOnlyVariants, rewritePlaylist } from '../../src/services/iptvProxy'
-import { convertArgs, convertJobs, stopConversions } from '../../src/services/iptvConvert'
+import { convertJobs, stopConversions } from '../../src/services/iptvConvert'
 import net from 'net'
 
 /*
@@ -688,30 +688,7 @@ if (!hasFfmpeg) console.warn('ffmpeg not installed: IPTV conversion tests skippe
     expect(told).toEqual({ video: 'h264', audio: 'ac3', interlaced: true, plain: true, convert: false, reason: null })
     for (const s of [0, 1]) {
       // With its reason: a conversion that did not start says why (« failed », « busy »…)
-      const answer = (await request(app).post(`/api/iptv/play/Tnt.fr/${s}/convert`).set(alice)).body.data
-      if (!answer.convert) {
-        // TEMPORARY diagnosis (CI only fails here): what ffmpeg says, run by hand with the same arguments
-        // (asynchronously: the relay it reads answers from this process)
-        const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'diag-'))
-        const input = `${process.env.NEXUS_INTERNAL_URL}/api/iptv/play/Tnt.fr/${s}/index.m3u8?token=${encodeURIComponent(token())}`
-        const version = execFileSync('ffmpeg', ['-version']).toString().split('\n')[0]
-        const run = (cmd: string, args: string[]) => new Promise<string>((resolve) => {
-          const p = spawn(cmd, args, { stdio: ['ignore', 'pipe', 'pipe'] })
-          let out = ''
-          p.stdout.on('data', (d) => { out += String(d) })
-          p.stderr.on('data', (d) => { out += String(d) })
-          const t = setTimeout(() => p.kill('SIGKILL'), 40_000)
-          p.on('close', (code) => { clearTimeout(t); resolve(`${cmd} ${JSON.stringify(args.slice(0, 6))} exit=${code}\n${out.slice(-2500)}`) })
-        })
-        const runs: string[] = []
-        runs.push(await run('ffprobe', ['-v', 'error', '-extension_picky', '0', '-show_entries', 'stream=codec_name', '-of', 'csv=p=0', input]))
-        for (const flags of [['-extension_picky', '0'], []]) {
-          fs.rmSync(dir, { recursive: true, force: true }); fs.mkdirSync(dir)
-          runs.push(await run('ffmpeg', convertArgs(input, dir, flags).map((a) => a === 'error' ? 'warning' : a)))
-        }
-        console.log(`DIAG s=${s} ${version}\n${runs.join('\n---\n')}`)
-      }
-      expect(answer).toMatchObject({ video: 'h264', audio: 'ac3', convert: true, reason: null })
+      expect((await request(app).post(`/api/iptv/play/Tnt.fr/${s}/convert`).set(alice)).body.data).toMatchObject({ video: 'h264', audio: 'ac3', convert: true, reason: null })
       const list = await request(app).get(`/api/iptv/play/Tnt.fr/${s}/converted/index.m3u8?token=${token()}`)
       const line = list.text.split('\n').find((l) => /^seg\d+\.ts\?token=/.test(l))!
       const seg = await request(app).get(`/api/iptv/play/Tnt.fr/${s}/converted/${line}`).buffer(true)
