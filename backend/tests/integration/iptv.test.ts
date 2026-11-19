@@ -687,7 +687,8 @@ if (!hasFfmpeg) console.warn('ffmpeg not installed: IPTV conversion tests skippe
     const told = (await request(app).post('/api/iptv/play/Tnt.fr/0/convert?probe=1').set(alice)).body.data
     expect(told).toEqual({ video: 'h264', audio: 'ac3', interlaced: true, plain: true, convert: false, reason: null })
     for (const s of [0, 1]) {
-      expect((await request(app).post(`/api/iptv/play/Tnt.fr/${s}/convert`).set(alice)).body.data).toMatchObject({ video: 'h264', audio: 'ac3', convert: true })
+      // With its reason: a conversion that did not start says why (« failed », « busy »…)
+      expect((await request(app).post(`/api/iptv/play/Tnt.fr/${s}/convert`).set(alice)).body.data).toMatchObject({ video: 'h264', audio: 'ac3', convert: true, reason: null })
       const list = await request(app).get(`/api/iptv/play/Tnt.fr/${s}/converted/index.m3u8?token=${token()}`)
       const line = list.text.split('\n').find((l) => /^seg\d+\.ts\?token=/.test(l))!
       const seg = await request(app).get(`/api/iptv/play/Tnt.fr/${s}/converted/${line}`).buffer(true)
