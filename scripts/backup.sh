@@ -20,10 +20,22 @@
 #  sudo bash scripts/backup.sh drive       send every backup to Google Drive (once)
 #  sudo bash scripts/backup.sh drive get [AAAA-MM-JJ]   fetch a backup from Drive
 #  sudo bash scripts/backup.sh drive off   stop sending (what is on Drive stays)
+#  sudo bash scripts/backup.sh serveur     the whole server too, every night (once)
+#  sudo bash scripts/backup.sh serveur off stop copying the whole server
+#
+#  The whole server (« serveur », needs « drive »): every night a copy of everything needed to
+#  rebuild it on a new machine with scripts/restaurer-serveur.sh — /etc, /home, /root, /opt, /srv,
+#  /usr/local, /var (its useful part), /media/scripts, every database (pg_dumpall), the list of the
+#  packages, services, disks and of the media files. restic: encrypted with the same passphrase,
+#  only what changed is sent, 7 daily, 4 weekly and 6 monthly copies kept (« serveur/ » on Drive,
+#  with restaurer-serveur.sh and LISEZ-MOI.txt next to it). Left out: what the system and its
+#  packages give back (/usr, /boot…), caches, node_modules and venvs (rebuilt), the media files
+#  themselves (only their list) and any file over 1 GB (listed).
 #
 #  Options (in /etc/default/nexus-backup): BACKUP_DIR=/var/backups/nexus,
 #  KEEP=14, COPY_TO=/mnt/disque2/nexus-backups (a copy on another disk),
-#  DRIVE_REMOTE (written by « drive »)
+#  DRIVE_REMOTE (written by « drive »), SERVER_BACKUP=1 (written by « serveur »),
+#  SERVER_MAX_FILE=1G (bigger files are left out of the server copy, and listed)
 # ══════════════════════════════════════════════════════════════════════
 set -euo pipefail
 
@@ -45,6 +57,15 @@ DRIVE_FOLDER="Sauvegardes Nexus"
 DRIVE_STATE="$BACKUP_DIR/.drive-state"
 # The installation: where this script is (from the repository), or the one saved at install
 NEXUS_DIR=${NEXUS_DIR:-$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)}
+# The whole server (« serveur »)
+SERVER_BACKUP=${SERVER_BACKUP:-0}
+SERVER_ROOT=${SERVER_ROOT:-/}
+SERVER_DIR=${SERVER_DIR:-${SERVER_ROOT%/}/var/backups/nexus-server}
+SERVER_MAX_FILE=${SERVER_MAX_FILE:-1G}
+SERVER_STATE="$BACKUP_DIR/.server-state"
+SERVER_TAG=nexus-serveur
+# Never in the server copy: what the system or its packages give back, what is not a file
+SERVER_SKIP_TOP=" proc sys dev run tmp mnt media lost+found boot usr bin sbin lib lib32 lib64 libx32 snap cdrom swap.img swapfile "
 
 need_root() { [ "$(id -u)" -eq 0 ] || { echo "❌ Lance-le avec sudo : sudo bash scripts/backup.sh $1"; exit 1; }; }
 
@@ -130,6 +151,193 @@ drive_send() {
   echo "☁️  Envoyée sur Google Drive, chiffrée (« ${DRIVE_REMOTE#*:} »)"
 }
 
+# ─── The whole server (restic, encrypted, next to the backups on Drive) ──
+restic_() {
+  RCLONE_CONFIG="$RCLONE_CONF" RESTIC_PASSWORD_FILE="$PASSFILE" restic -r "rclone:$DRIVE_REMOTE/serveur" "$@"
+}
+
+# What is copied: every folder at the root but the system's own, plus the parts of /usr and /media
+# that are not the system's or the library's
+server_targets() {
+  local R=${SERVER_ROOT%/} e
+  for e in "$R"/*; do
+    if [ ! -d "$e" ] || [ -L "$e" ]; then continue; fi
+    case "$SERVER_SKIP_TOP" in *" ${e##*/} "*) continue ;; esac
+    echo "$e"
+  done
+  for e in "$R/usr/local" "$R/usr/share/keyrings" "$R/media/scripts"; do
+    if [ -d "$e" ]; then echo "$e"; fi
+  done
+}
+
+server_excludes() {
+  local R=${SERVER_ROOT%/} p
+  for p in /var/cache /var/tmp /var/crash /var/lib/apt/lists /var/lib/postgresql /var/lib/docker/overlay2 \
+           /var/lib/docker/image /var/lib/docker/containers /var/lib/containerd /var/lib/snapd \
+           /var/lib/systemd/coredump /var/log/journal; do
+    echo "--exclude=$R$p"
+  done
+  # (already on Drive; sent again each day; written again each day)
+  for p in "$BACKUP_DIR" "$NEXUS_DIR/transfers" "$NEXUS_DIR/logs"; do
+    case "$p" in "$R"/*) echo "--exclude=$p" ;; *) echo "--exclude=$R$p" ;; esac
+  done
+  # Rebuilt by restaurer-serveur.sh, or not worth keeping
+  for p in node_modules .cache .npm .venv venv __pycache__ .local/share/Trash .pm2/logs '.part-*'; do
+    echo "--exclude=$p"
+  done
+}
+
+# What the copy alone does not say: packages, services, disks, every database, the media files' list
+server_manifest() {
+  local R=${SERVER_ROOT%/} M="$SERVER_DIR/manifest" owner targets
+  mapfile -t targets < <(server_targets)
+  rm -rf "$M"; install -d -m 700 "$SERVER_DIR" "$M"
+  {
+    echo "Copie du serveur faite le $(date '+%F %T %Z')"
+    echo "Nom : $(hostname)"
+    grep -E '^(PRETTY_NAME|VERSION_ID)=' "$R/etc/os-release" 2>/dev/null || true
+    echo "Noyau : $(uname -r)"
+    echo "Fuseau horaire : $(cat "$R/etc/timezone" 2>/dev/null || true)"
+    echo "Nexus : $NEXUS_DIR ($(git -C "$NEXUS_DIR" rev-parse --short HEAD 2>/dev/null || echo '?'))"
+  } > "$M/systeme.txt"
+  printf '%s\n' "$SERVER_ROOT" > "$M/racine.txt"
+  { lsblk -f 2>/dev/null; echo; df -hT 2>/dev/null; } > "$M/disques.txt" || true
+  findmnt -rn -o TARGET,SOURCE,FSTYPE,OPTIONS > "$M/montages.txt" 2>/dev/null || true
+  apt-mark showmanual > "$M/paquets-manuels.txt" 2>/dev/null || true
+  dpkg-query -W -f '${Package}\t${Version}\n' > "$M/paquets-tous.txt" 2>/dev/null || true
+  if command -v snap >/dev/null; then snap list > "$M/snaps.txt" 2>/dev/null || true; fi
+  if command -v npm >/dev/null; then
+    { npm ls -g --depth=0 --parseable 2>/dev/null || true; } | sed -n 's#.*/node_modules/##p' | { grep -vx 'npm\|corepack' || true; } > "$M/npm-global.txt"
+  fi
+  systemctl list-unit-files --state=enabled --no-legend --no-pager 2>/dev/null | awk '{print $1}' > "$M/services-actifs.txt" || true
+  if command -v docker >/dev/null; then
+    { docker ps -a 2>&1; echo; docker images 2>&1; echo; docker volume ls 2>&1; } > "$M/docker.txt" || true
+  fi
+  # Rebuilt after a restore (from the requirements.txt / package-lock.json next to them)
+  { find "${targets[@]}" -xdev -type d \( -name node_modules -o -name .venv -o -name venv \) -prune -print 2>/dev/null || true; } > "$M/a-reconstruire.txt"
+  # Left out because too big: listed, to fetch again
+  { find "${targets[@]}" -xdev -type f -size "+$SERVER_MAX_FILE" -not -path '*/node_modules/*' -printf '%s\t%p\n' 2>/dev/null || true; } > "$M/gros-fichiers.txt"
+  # The media library: only its list (the files stay on their disks)
+  { find "$R/media" "$R/mnt" -path "$R/media/scripts" -prune -o -type f -printf '%s\t%p\n' 2>/dev/null || true; } | gzip > "$M/mediatheque.txt.gz"
+  # pm2's processes, saved where « pm2 resurrect » reads them
+  owner=$(stat -c %U "$NEXUS_DIR" 2>/dev/null || true)
+  if [ -n "$owner" ] && [ "$owner" != root ] && command -v pm2 >/dev/null; then
+    runuser -u "$owner" -- pm2 save --force >/dev/null 2>&1 || true
+  fi
+  # Every database (Nexus, Jarvis…) and its roles: a consistent dump, never the live files
+  if command -v pg_dumpall >/dev/null \
+     && as_postgres pg_dumpall --clean --if-exists 2>"$M/postgres-erreurs.txt" | gzip > "$SERVER_DIR/postgres.sql.gz.part"; then
+    mv "$SERVER_DIR/postgres.sql.gz.part" "$SERVER_DIR/postgres.sql.gz"; rm -f "$M/postgres-erreurs.txt"
+  else
+    rm -f "$SERVER_DIR/postgres.sql.gz.part"
+    echo "⚠️  Bases PostgreSQL non copiées : $(tail -1 "$M/postgres-erreurs.txt" 2>/dev/null)" >&2
+  fi
+}
+
+# The copy of the whole server, then only the copies kept (7 days, 4 weeks, 6 months).
+# Never fails the backup itself; one at a time.
+server_snapshot() {
+  [ "$SERVER_BACKUP" = 1 ] || return 0
+  local when out rc=0 added targets excludes
+  when=$(date '+%F %T')
+  if ! drive_ready || [ ! -s "$PASSFILE" ] || ! command -v restic >/dev/null; then
+    echo "échec le $when : Google Drive ou restic manquant (sudo bash scripts/backup.sh serveur)" > "$SERVER_STATE"
+    echo "⚠️  Copie du serveur impossible : Google Drive ou restic manquant" >&2
+    return 0
+  fi
+  exec 9>"$BACKUP_DIR/.server.lock"
+  if ! flock -n 9; then echo "⏭  Copie du serveur déjà en cours"; return 0; fi
+  echo "🖥  Copie du serveur…"
+  server_manifest
+  if ! restic_ cat config >/dev/null 2>&1 && ! restic_ init >/dev/null 2>&1; then
+    echo "échec le $when : dépôt « serveur » impossible à créer sur Google Drive" > "$SERVER_STATE"
+    echo "⚠️  Copie du serveur impossible : dépôt impossible à créer sur Google Drive" >&2
+    return 0
+  fi
+  mapfile -t targets < <(server_targets)
+  mapfile -t excludes < <(server_excludes)
+  out=$(mktemp)
+  # (progress in the journal every minute: « status » shows it)
+  RESTIC_PROGRESS_FPS=0.0166 restic_ backup --one-file-system --exclude-caches --exclude-larger-than "$SERVER_MAX_FILE" \
+    --tag "$SERVER_TAG" "${excludes[@]}" "${targets[@]}" > "$out" 2>&1 || rc=$?
+  # 3: saved, but some files could not be read
+  if [ "$rc" -ne 0 ] && [ "$rc" -ne 3 ]; then
+    echo "échec le $when : $(grep -v '^\[' "$out" | tail -1 | cut -c1-250)" > "$SERVER_STATE"
+    echo "⚠️  Copie du serveur ratée : $(tail -1 "$out")" >&2
+    rm -f "$out"; return 0
+  fi
+  added=$(sed -n 's/^Added to the repository: \([^(]*\).*/\1/p' "$out" | tail -1 | sed 's/ *$//')
+  rm -f "$out"
+  local prune=()
+  if [ "$(date +%u)" = 7 ]; then prune=(--prune); fi
+  restic_ forget --tag "$SERVER_TAG" --keep-daily 7 --keep-weekly 4 --keep-monthly 6 "${prune[@]}" >/dev/null 2>&1 || true
+  # What rebuilds it, next to it (no secret in them)
+  local f
+  for f in restaurer-serveur.sh LISEZ-MOI-restauration.txt; do
+    if [ -f "$NEXUS_DIR/scripts/$f" ]; then
+      rclone_ copyto "$NEXUS_DIR/scripts/$f" "$DRIVE_REMOTE/${f/LISEZ-MOI-restauration/LISEZ-MOI}" 2>/dev/null || true
+    fi
+  done
+  local note=''
+  if [ "$rc" = 3 ]; then note=', quelques fichiers illisibles laissés'; fi
+  echo "copiée le $when (${added:-?} envoyés$note)" > "$SERVER_STATE"
+  echo "✅ Serveur copié sur Google Drive (${added:-?} envoyés)"
+}
+
+server_setup() {
+  need_root serveur
+  if ! drive_ready || [ ! -s "$PASSFILE" ]; then
+    echo "❌ Connecte d'abord Google Drive : sudo bash scripts/backup.sh drive"; exit 1
+  fi
+  if ! command -v restic >/dev/null; then
+    echo "📦 Installation de restic…"
+    apt-get install -y -qq restic >/dev/null 2>&1 \
+      || { apt-get update -qq >/dev/null 2>&1 && apt-get install -y -qq restic >/dev/null 2>&1; } \
+      || { echo "❌ Installation impossible : sudo apt-get install -y restic"; exit 1; }
+  fi
+  echo "🖥  Copie complète du serveur sur Google Drive"
+  echo ""
+  echo "   Chaque nuit, tout ce qu'il faut pour reconstruire ce serveur sur une nouvelle machine"
+  echo "   (scripts/restaurer-serveur.sh) : réglages (/etc), dossiers des comptes, /opt (Nexus, Jarvis…),"
+  echo "   /srv, /usr/local, toutes les bases de données, la liste des paquets, services et disques."
+  echo "   Chiffrée avec ta phrase de passe ; seul ce qui a changé repart les nuits suivantes."
+  echo "   Pas copiés : les films / séries / mangas eux-mêmes (leur liste oui), ce que les paquets"
+  echo "   redonnent, les caches, et tout fichier de plus de $SERVER_MAX_FILE (listés)."
+  echo ""
+  local est free ans=''
+  if ! restic_ cat config >/dev/null 2>&1 && ! restic_ init >/dev/null 2>&1; then
+    echo "❌ Impossible de créer le dépôt sur Google Drive"; exit 1
+  fi
+  echo "📏 Calcul de la taille…"
+  local targets excludes
+  mapfile -t targets < <(server_targets)
+  mapfile -t excludes < <(server_excludes)
+  est=$(restic_ backup --dry-run --one-file-system --exclude-caches --exclude-larger-than "$SERVER_MAX_FILE" \
+          "${excludes[@]}" "${targets[@]}" 2>/dev/null | sed -n 's/^Would add to the repository: \([^(]*\).*/\1/p' | tail -1 | sed 's/ *$//')
+  free=$(rclone_ about "$DRIVE_NAME:" --json 2>/dev/null | sed -n 's/.*"free": *\([0-9]*\).*/\1/p' | head -1)
+  echo "   À envoyer la première fois : ${est:-?} (avant compression)"
+  if [ -n "$free" ]; then echo "   Place libre sur Google Drive : $(numfmt --to=iec-i --suffix=B "$free" 2>/dev/null || echo "$free octets")"; fi
+  read -r -p "Continuer ? (O/n) " ans
+  if [[ $ans =~ ^[nN] ]]; then echo "Annulé."; exit 0; fi
+  set_conf SERVER_BACKUP 1
+  SERVER_BACKUP=1
+  write_units
+  echo ""
+  if systemctl start --no-block $NAME.service 2>/dev/null; then
+    echo "✅ La première copie part maintenant, en arrière-plan : elle peut prendre plusieurs heures"
+    echo "   (ensuite, seul ce qui a changé). Suis-la avec : sudo bash scripts/backup.sh status"
+  else
+    do_backup
+  fi
+  echo "   Pour reconstruire le serveur : « LISEZ-MOI.txt » dans « $DRIVE_FOLDER » sur Google Drive."
+}
+
+server_off() {
+  need_root "serveur off"
+  set_conf SERVER_BACKUP ''
+  echo "Copie du serveur arrêtée : celles déjà sur Google Drive (« $DRIVE_FOLDER/serveur ») y restent."
+}
+
 # ─── Backups ─────────────────────────────────────────────────────────
 # $1: a label for the file names (« avant-restauration », « avant-mise-a-jour »)
 do_backup() {
@@ -184,6 +392,7 @@ do_backup() {
   fi
   echo "✅ Sauvegarde : $(basename "$dump") ($(du -h "$dump" | cut -f1))$saved"
   drive_send "$dump" "$files"
+  if [ -z "$label" ]; then server_snapshot; fi
 }
 
 # This script in /usr/local/sbin and the nightly timer
@@ -205,6 +414,7 @@ After=postgresql.service network-online.target
 Type=oneshot
 Nice=10
 IOSchedulingClass=idle
+TimeoutStartSec=24h
 ExecStart=$BIN now
 EOF
   cat > /etc/systemd/system/$NAME.timer <<EOF
@@ -247,6 +457,18 @@ do_status() {
   else
     echo "Google Drive : non (pour y envoyer chaque sauvegarde : sudo bash scripts/backup.sh drive)"
   fi
+  echo ""
+  if [ "$SERVER_BACKUP" = 1 ]; then
+    echo "Copie du serveur : dernière $(cat "$SERVER_STATE" 2>/dev/null || echo 'pas encore faite')"
+    if systemctl is-active --quiet $NAME.service 2>/dev/null; then
+      echo "  en cours : $(journalctl -u $NAME.service -n 1 -o cat --no-pager 2>/dev/null | cut -c1-150)"
+    elif drive_ready && command -v restic >/dev/null; then
+      restic_ snapshots --tag $SERVER_TAG --compact 2>/dev/null | grep -E '^[0-9a-f]{8} ' | tail -3 | sed 's/^/  /' || true
+    fi
+  else
+    echo "Copie du serveur : non (pour pouvoir le reconstruire : sudo bash scripts/backup.sh serveur)"
+  fi
+  echo ""
   journalctl -u $NAME.service -n 5 --no-pager 2>/dev/null | tail -5 || true
 }
 
@@ -519,5 +741,11 @@ case "${1:-}" in
       off) drive_off ;;
       *)   echo "Usage : sudo bash scripts/backup.sh drive [get [AAAA-MM-JJ] | off]"; exit 1 ;;
     esac ;;
-  *) sed -n '3,26p' "$0" | sed 's/^# \{0,2\}//'; exit 1 ;;
+  serveur)
+    case "${2:-}" in
+      '')  server_setup ;;
+      off) server_off ;;
+      *)   echo "Usage : sudo bash scripts/backup.sh serveur [off]"; exit 1 ;;
+    esac ;;
+  *) sed -n '3,40p' "$0" | sed 's/^# \{0,2\}//'; exit 1 ;;
 esac
