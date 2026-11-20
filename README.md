@@ -17,6 +17,7 @@
 - **Real-time stats** — CPU, RAM, disk, temperature via WebSocket
 - **Names for Jellyfin** — new downloads renamed as they finish (`Titre (Année) [tmdbid-N]/Season 01/Titre S01E01.mkv`), the library already there after a preview, undo; Nexus keeps progress and favourites
 - **Transferts** — *Aperçu › Transferts* (admins): send a file from the iPhone, download it on the computer (and back); it arrives live with a notification, erased after 7 days. *Fichiers*: upload progress with « Annuler », drag & drop, folders and selections downloaded as a .zip
+- **Backups** — every night and before each update that changes the database (database + settings), optionally sent encrypted to your Google Drive (`sudo bash scripts/backup.sh drive`)
 - **Dark/Light theme**
 - **JWT authentication** with bcrypt hashing
 - **Accounts** — admins have everything; « user » accounts get the media, manga, their own downloads (automatic ones too), their settings and the storage (no Jarvis, services, files, terminal). Admins create user accounts in *Réglages › Utilisateurs*, optionally for a limited time (1 month, 6 months, 1 year or any date); admin accounts are only made and deleted in the terminal (`bash scripts/create-admin.sh`, `bash scripts/delete-account.sh`)
@@ -315,15 +316,32 @@ when the disk would have less than 2 GB left.
 
 ### Automatic backups
 
-Every night the database (accounts, library, lists, history, IPTV) and the settings
-(`backend/.env`, the Web Push keys) are saved to `/var/backups/nexus` (root only, the last
-14 kept). The media files are not copied: keep them on a second disk.
+Every night, and before each update that changes the database, the database (accounts, library,
+lists, history, IPTV) and the settings (`backend/.env`, the Web Push keys) are saved to
+`/var/backups/nexus` (root only, the last 14 kept). The media files are not copied: keep them on a
+second disk.
 ```
 sudo bash scripts/backup.sh install      # timer + a first backup now
-sudo bash scripts/backup.sh status       # last backups, next run
+sudo bash scripts/backup.sh status       # last backups, next run, Google Drive
 sudo bash scripts/backup.sh restore /var/backups/nexus/nexus-db-….dump   # asks to type RESTAURER
 ```
 `/etc/default/nexus-backup`: `KEEP=30`, `COPY_TO=/mnt/disque2/nexus-backups` (a copy on another disk).
+
+**Google Drive** — each backup can also go to your Google Drive, encrypted before it leaves (gpg,
+AES-256, with a passphrase you choose), into a folder « Sauvegardes Nexus », the last 14 kept there:
+```
+sudo bash scripts/backup.sh drive        # once: connect the Google account, choose the passphrase
+sudo bash scripts/backup.sh drive get    # the newest backup from Drive (or « drive get 2026-11-20 »)
+sudo bash scripts/backup.sh drive off    # stop sending (what is on Drive stays)
+```
+`drive` works from Nexus' own Terminal page, even on the iPhone: it shows a Google link to open on
+any device; after allowing « rclone », the browser lands on a page that does not open
+(`127.0.0.1:53682/?state=…`) — paste that address into the terminal. rclone (installed if missing)
+only gets the `drive.file` access: it sees the files it created, never the rest of the Drive. Its
+connection and the passphrase stay in `/etc/nexus-backup` (root only). **Keep the passphrase**
+(password manager): without it the backups on Drive cannot be opened. A new server: install Nexus,
+`drive` (it asks the passphrase of the backups already there), `drive get`, then `restore` and
+`tar -xzf nexus-settings-….tar.gz -C <installation>` for the settings.
 
 ### Security
 
