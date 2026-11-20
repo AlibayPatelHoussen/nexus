@@ -336,13 +336,21 @@ local_query() {
 # created: never the rest of the Drive). Works from any device: the link is opened on the phone or
 # the computer, and the address it ends on is pasted here.
 drive_connect() {
-  local attempt log new pid link state google pasted query
+  local attempt log new pid link state google pasted query mask
   new="$DRIVE_DIR/rclone.conf.new"
+  mask=$(umask)
+  # A connection left waiting by an earlier run (stopped with Ctrl+C) still holds rclone's port
+  if pkill -f "rclone config create $DRIVE_NAME drive" 2>/dev/null; then sleep 1; fi
   for attempt in 1 2 3; do
     log=$(mktemp); rm -f "$new"
-    ( umask 077; timeout 900 rclone config create "$DRIVE_NAME" drive scope=drive.file config_is_local=true \
-        --config "$new" </dev/null >"$log" 2>&1 ) &
+    umask 077
+    timeout 900 rclone config create "$DRIVE_NAME" drive scope=drive.file config_is_local=true \
+      --config "$new" </dev/null >"$log" 2>&1 &
     pid=$!
+    umask "$mask"
+    # Stopped here (Ctrl+C, closed terminal): the waiting rclone goes too
+    trap 'kill "$pid" 2>/dev/null; rm -f "$log" "$new"' EXIT
+    trap 'exit 130' INT TERM HUP
     link=''
     for _ in $(seq 1 60); do
       link=$({ grep -o 'http://127\.0\.0\.1:53682/auth?state=[A-Za-z0-9_-]*' "$log" || true; } | head -1)
@@ -356,13 +364,15 @@ drive_connect() {
     state=${link##*state=}
     google=$(curl -s -o /dev/null -w '%{redirect_url}' "$link" || true)
     echo ""
-    echo "1. Ouvre ce lien (sur ton iPhone ou ton Mac), choisis ton compte Google et autorise « rclone »"
-    echo "   (l'outil qui envoie les fichiers ; il ne voit que les fichiers qu'il crée) :"
+    echo "1. Ouvre ce lien, choisis ton compte Google et autorise « rclone » (l'outil qui envoie les"
+    echo "   fichiers ; il ne voit que les fichiers qu'il crée). Dans le Terminal de Nexus : le bouton"
+    echo "   « Ouvrir accounts.google.com » en bas (le lien est trop long pour être touché sur iPhone)."
     echo ""
     echo "$google"
     echo ""
     echo "2. Le navigateur arrive ensuite sur une page qui ne s'ouvre pas (« 127.0.0.1 ») : c'est normal."
-    echo "   Copie toute l'adresse de cette page et colle-la ici."
+    echo "   Copie toute l'adresse de cette page (sur iPhone : touche la barre d'adresse, ou Partager ›"
+    echo "   Copier) et colle-la ici (Terminal de Nexus : « … » › Coller)."
     while :; do
       read -r -p "Adresse : " pasted
       if query=$(local_query "$pasted" "$state"); then break; fi
@@ -370,6 +380,7 @@ drive_connect() {
     done
     curl -s --max-time 30 -o /dev/null "http://127.0.0.1:53682/?$query" || true
     if wait "$pid" && grep -qs '^token = ' "$new"; then
+      trap - EXIT INT TERM HUP
       mv "$new" "$RCLONE_CONF"; chmod 600 "$RCLONE_CONF"; rm -f "$log"
       echo "✅ Google Drive connecté"
       return 0

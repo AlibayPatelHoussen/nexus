@@ -483,6 +483,13 @@ test('UI: terminal — login shell, clean env, session survives leaving the page
   await page.waitForSelector('[data-testid="terminal-title"]:has-text("@")', { timeout: 10000 })
   await run('echo nexus-$((40+2))')
   await waitText('nexus-42')
+  // A long link spread over several rows (it cannot be tapped there on a phone): « Ouvrir … » has it whole
+  const long = 'https://accounts.google.com/o/oauth2/auth?client_id=x&scope=https%3A%2F%2Fwww.googleapis.com%2Fauth' + '&p=' + 'a'.repeat(180) + '&state=end42'
+  await run(`echo '${long}'`)
+  await page.waitForSelector('[data-testid="terminal-link"] a:has-text("Ouvrir accounts.google.com")', { timeout: 10000 })
+  eq(await page.getAttribute('[data-testid="terminal-link"] a', 'href'), long, 'the whole link')
+  await page.click('[data-testid="terminal-link"] button[aria-label="Masquer"]')
+  await page.waitForSelector('[data-testid="terminal-link"]', { state: 'detached' })
   // Real terminal type, no Nexus secrets in the shell environment
   await run('echo "T=$TERM S=[${JWT_SECRET}${DB_PASSWORD}] N=[${NODE_ENV}]"')
   await waitText('T=xterm-256color S=[] N=[]')
