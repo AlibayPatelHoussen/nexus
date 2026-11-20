@@ -4,6 +4,10 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Fixed — Connecting Google Drive from the iPhone
+- The Google link of `backup.sh drive` is long and spreads over several rows of the terminal; on a touch screen it could not be tapped, and a long press opened only a piece of it (« https://2fwww.googleapis.com/ »). Nexus' Terminal now shows the last address on screen, joined back whole, in a glass capsule at the bottom: **« Ouvrir accounts.google.com »**, copy, hide (`pages/terminal/links.ts`)
+- `backup.sh drive` stopped with Ctrl+C no longer leaves rclone waiting on its port (the next run said « rclone n'a pas démarré la connexion »): it is stopped with the script, and one left by an older run is closed first; the instructions say where the button and « Coller » are, and how to copy the address on iPhone
+
 ### Added — Backups on Google Drive
 - `sudo bash scripts/backup.sh drive` (once, also from Nexus' Terminal on the iPhone): connects your Google account through rclone (only the `drive.file` access: it sees the files it created, never the rest of the Drive) and asks a passphrase; from then on **each backup is also sent to Google Drive, encrypted** (gpg AES-256) in « Sauvegardes Nexus », the last 14 kept there. No browser on the server needed: the Google link opens on any device, and the address the browser ends on is pasted into the terminal
 - A Drive that fails never fails the backup: `status` says when the last one was sent (or why not) and lists those on Drive; `drive get [date]` brings one back (opened), `restore` also takes a `.gpg` from Drive; `drive off` stops sending

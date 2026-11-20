@@ -335,8 +335,9 @@ sudo bash scripts/backup.sh drive get    # the newest backup from Drive (or « d
 sudo bash scripts/backup.sh drive off    # stop sending (what is on Drive stays)
 ```
 `drive` works from Nexus' own Terminal page, even on the iPhone: it shows a Google link to open on
-any device; after allowing « rclone », the browser lands on a page that does not open
-(`127.0.0.1:53682/?state=…`) — paste that address into the terminal. rclone (installed if missing)
+any device (in Nexus' Terminal: the « Ouvrir accounts.google.com » button at the bottom — the link is
+too long to be tapped there); after allowing « rclone », the browser lands on a page that does not
+open (`127.0.0.1:53682/?state=…`) — copy that address and paste it into the terminal (« … › Coller »). rclone (installed if missing)
 only gets the `drive.file` access: it sees the files it created, never the rest of the Drive. Its
 connection and the passphrase stay in `/etc/nexus-backup` (root only). **Keep the passphrase**
 (password manager): without it the backups on Drive cannot be opened. A new server: install Nexus,

@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import { ClipboardPaste, Copy, Ellipsis, Maximize2, Minimize2, Minus, Plus, RotateCcw } from 'lucide-react'
+import { ClipboardPaste, Copy, Ellipsis, Link2, Maximize2, Minimize2, Minus, Plus, RotateCcw, X } from 'lucide-react'
 import toast from 'react-hot-toast'
 import type { Terminal as XTerm } from '@xterm/xterm'
 import type { FitAddon } from '@xterm/addon-fit'
@@ -11,6 +11,7 @@ import { useCoarsePointer } from '@/hooks/useDevice'
 import { useContextMenu } from '@/components/ui/useContextMenu'
 import Button from '@/components/ui/Button'
 import { cn } from '@/utils'
+import { lastLinkOnScreen } from './links'
 
 // Keys missing from mobile on-screen keyboards
 const MOBILE_KEYS: { label: string; seq: string }[] = [
@@ -98,6 +99,8 @@ export default function TerminalPage() {
   const { device } = useShell()
   const phone = device === 'phone'
   const coarse = useCoarsePointer()
+  const [link,       setLink]       = useState<string | null>(null)
+  const [hidden,     setHidden]     = useState<string | null>(null)
   const statusRef = useRef<Status>('connecting')
   const setStat = (s: Status) => { statusRef.current = s; setStatus(s) }
 
@@ -167,6 +170,12 @@ export default function TerminalPage() {
         },
         onStatus:  (s) => { if (statusRef.current !== 'ended' || s === 'connected') setStat(s) },
       })
+
+      // The last address on screen, looked for a moment after the output settles
+      let scan: ReturnType<typeof setTimeout> | undefined
+      const findLink = () => { clearTimeout(scan); scan = setTimeout(() => setLink(lastLinkOnScreen(term)), 150) }
+      term.onWriteParsed(findLink)
+      term.onScroll(findLink)
 
       term.onData((data) => send(data))
       term.onResize(({ cols, rows }) => resize(cols, rows))
@@ -294,6 +303,25 @@ export default function TerminalPage() {
       )}
       <div className="relative flex-1 min-h-0">
         <div ref={termRef} className="absolute inset-0 overflow-hidden" style={{ padding: '8px 4px 4px 12px' }} />
+        {link && link !== hidden && status !== 'ended' && status !== 'detached' && (
+          <div className="absolute inset-x-0 bottom-3 flex justify-center pointer-events-none px-4">
+            <div className="glass glass-float pointer-events-auto flex items-center max-w-full min-w-0 rounded-pill p-1" data-testid="terminal-link">
+              <a href={link} target="_blank" rel="noopener noreferrer"
+                className={cn('flex items-center gap-2 min-w-0 min-h-hit pl-3 pr-2 rounded-pill font-medium text-accent-text pressable', phone ? 'text-subhead' : 'text-body')}>
+                <Link2 size={18} strokeWidth={1.75} className="flex-shrink-0" aria-hidden="true" />
+                <span className="truncate">Ouvrir {new URL(link).host}</span>
+              </a>
+              <button type="button" className="min-w-hit min-h-hit grid place-items-center rounded-full text-label2 pressable flex-shrink-0" aria-label="Copier le lien"
+                onClick={async () => { if (await copyText(link)) toast.success('Lien copié') }}>
+                <Copy size={17} strokeWidth={1.75} />
+              </button>
+              <button type="button" className="min-w-hit min-h-hit grid place-items-center rounded-full text-label2 pressable flex-shrink-0" aria-label="Masquer"
+                onClick={() => setHidden(link)}>
+                <X size={17} strokeWidth={1.75} />
+              </button>
+            </div>
+          </div>
+        )}
         {(status === 'ended' || status === 'detached') && (
           <div className="absolute inset-x-0 bottom-4 flex justify-center pointer-events-none px-4">
             <div role="status" className="pointer-events-auto flex items-center gap-3 rounded-[12px] material-bar px-4 py-2.5 text-body" style={{ boxShadow: 'var(--shadow-popover)' }}>
