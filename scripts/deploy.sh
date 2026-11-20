@@ -125,6 +125,12 @@ npm run build --workspace=backend
 echo "🎨 Building frontend..."
 npm run build --workspace=frontend
 
+# ── Nightly backups (scripts/backup.sh install): their installed copy follows this version ──
+if [ -x /usr/local/sbin/nexus-backup ] && ! cmp -s scripts/backup.sh /usr/local/sbin/nexus-backup \
+   && sudo -n true 2>/dev/null; then
+  sudo -n install -m 755 scripts/backup.sh /usr/local/sbin/nexus-backup && echo "💾 Backup script updated"
+fi
+
 # ── Apply schema / pending migrations (as postgres superuser) ──
 echo "🗄️  Running DB migrations..."
 bash scripts/migrate-db.sh nexus

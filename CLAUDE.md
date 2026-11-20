@@ -109,7 +109,9 @@ npm workspaces (`frontend`, `backend`); run from the repo root unless noted.
   `PROTECTED_FILE`); `trust proxy` = loopback (cloudflared on this machine); http visitors via Cloudflare are
   redirected to https; JSON bodies 1 MB (11 MB for `/api/files/write` and `/api/iptv/my-channels/import`), uploads 5 GB per file (20 GB per
   transfer); passwords 8–72 characters. Backups:
-  `scripts/backup.sh` (nightly pg_dump + settings to `/var/backups/nexus`).
+  `scripts/backup.sh` (nightly and before pending migrations: pg_dump + settings to `/var/backups/nexus`; with
+  `backup.sh drive`, each one also encrypted (gpg) to Google Drive through rclone, `drive.file` scope, token and
+  passphrase in `/etc/nexus-backup`).
 - **Deploy**: GitHub webhook `routes/deploy.ts` only writes a request file; `scripts/auto-deploy.sh`
   (systemd path unit) runs `scripts/deploy.sh` outside the app (build, `scripts/migrate-db.sh`, restart).
   Settings › Version compares interface and server commits.

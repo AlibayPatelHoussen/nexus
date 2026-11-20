@@ -4,6 +4,11 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Added — Backups on Google Drive
+- `sudo bash scripts/backup.sh drive` (once, also from Nexus' Terminal on the iPhone): connects your Google account through rclone (only the `drive.file` access: it sees the files it created, never the rest of the Drive) and asks a passphrase; from then on **each backup is also sent to Google Drive, encrypted** (gpg AES-256) in « Sauvegardes Nexus », the last 14 kept there. No browser on the server needed: the Google link opens on any device, and the address the browser ends on is pasted into the terminal
+- A Drive that fails never fails the backup: `status` says when the last one was sent (or why not) and lists those on Drive; `drive get [date]` brings one back (opened), `restore` also takes a `.gpg` from Drive; `drive off` stops sending
+- **A backup before each update that changes the database** (`scripts/migrate-db.sh`, before the first pending migration), sent to Drive too; `deploy.sh` keeps the installed copy of the backup script up to date
+
 ### Added — Names for Jellyfin (automatic renaming)
 - The films, séries and animes take the names Jellyfin recognises: films `Titre (Année) [tmdbid-N]/Titre (Année).mkv` (a second version `… - 1080p`, a language folder `… - VF`), séries and animes `Titre (Année) [tmdbid-N]/Season 01/Titre S01E01.mkv` (specials `Season 00`), an anime film like a film. Subtitles (`.fr.srt`…) and Nexus' hints follow their video; the old empty folders go; the TMDB id is left next to the episodes (`.nexus.json`)
 - **New downloads**: renamed as they finish (*Réglages › Bibliothèque › Noms pour Jellyfin*, on by default). A folder a script makes again for a title already renamed (anime-sama names its own) joins it: its episodes move in, its history and favourites too

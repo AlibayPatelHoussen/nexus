@@ -30,12 +30,28 @@ fi
 psql_su -c "CREATE TABLE IF NOT EXISTS schema_migrations (
   version VARCHAR(255) PRIMARY KEY, applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW())"
 
+# Before the first pending migration: a backup (scripts/backup.sh install), sent to Google Drive
+# too when it is set up. Never blocks the update.
+BACKED_UP=0
+backup_first() {
+  [ "$BACKED_UP" = 0 ] || return 0
+  BACKED_UP=1
+  local bin=/usr/local/sbin/nexus-backup
+  [ -x "$bin" ] || return 0
+  echo "💾 Backup before the database changes…"
+  if [ "$(id -u)" = 0 ]; then "$bin" now avant-mise-a-jour || echo "⚠️  Backup failed: the update goes on"
+  elif sudo -n true 2>/dev/null; then sudo -n "$bin" now avant-mise-a-jour || echo "⚠️  Backup failed: the update goes on"
+  else echo "⚠️  No backup (sudo asks for a password): the update goes on"
+  fi
+}
+
 for f in "${MIGRATIONS[@]}"; do
   v=$(basename "$f" .sql)
   [[ "$v" =~ ^[0-9]+_[A-Za-z0-9_]+$ ]] || { echo "❌ Invalid migration name: $v"; exit 1; }
   if [ "$(psql_su -tAc "SELECT 1 FROM schema_migrations WHERE version = '$v'")" = "1" ]; then
     continue
   fi
+  backup_first
   echo "🗄️  Applying migration $v"
   { cat "$f"; echo; echo "INSERT INTO schema_migrations (version) VALUES ('$v');"; } \
     | psql_su --single-transaction
