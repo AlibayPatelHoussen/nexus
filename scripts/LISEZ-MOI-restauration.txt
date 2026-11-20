@@ -1,0 +1,48 @@
+RECONSTRUIRE LE SERVEUR NEXUS (si l'ancien est perdu)
+======================================================
+
+Dans ce dossier « Sauvegardes Nexus » :
+  - serveur/                    la copie complète du serveur, chiffrée (une par nuit : les 7
+                                derniers jours, 4 semaines, 6 mois)
+  - nexus-db-….dump.gpg         la base de Nexus seule, chiffrée (les 14 dernières)
+  - nexus-settings-….tar.gz.gpg les réglages de Nexus seuls, chiffrés
+  - restaurer-serveur.sh        le script qui reconstruit tout
+  - LISEZ-MOI.txt               ce fichier
+
+Il te faut : ta PHRASE DE PASSE des sauvegardes, ton compte Google, et un PC.
+
+1. Sur la nouvelle machine, installe Ubuntu Server, de la même version que l'ancien serveur
+   si possible (la version est dans le journal de la copie ; sinon la dernière LTS), avec
+   « OpenSSH server » coché et un compte (par exemple « houssen »).
+   Note son adresse IP (affichée à la connexion, ou : ip -4 addr).
+
+2. Sur ton PC Windows, télécharge « restaurer-serveur.sh » depuis ce dossier Google Drive,
+   puis dans PowerShell (remplace ADRESSE par l'adresse IP du nouveau serveur) :
+
+     scp $HOME\Downloads\restaurer-serveur.sh houssen@ADRESSE:
+     ssh houssen@ADRESSE
+
+   puis, sur le serveur :
+
+     sudo bash restaurer-serveur.sh
+
+3. Le script demande :
+   - la connexion à Google Drive : il affiche un lien Google. Sélectionne-le en entier dans
+     PowerShell (clic droit le copie), ouvre-le dans Chrome / Edge, choisis ton compte,
+     « Continuer ». Le navigateur arrive sur une page « 127.0.0.1 » qui ne s'ouvre pas : c'est
+     normal. Ctrl+L, Ctrl+C, puis clic droit dans PowerShell pour coller, Entrée ;
+   - ta phrase de passe ;
+   - « RESTAURER » pour confirmer, après t'avoir montré la copie qu'il va remettre.
+
+4. Il remet tout : paquets, comptes (mêmes mots de passe), réglages et .env, /home, /opt (Nexus,
+   Jarvis…), /srv, /usr/local, /media/scripts, toutes les bases de données, les services
+   (Cloudflare Tunnel, pm2, sauvegardes…), le nom du serveur, et rebranche les disques qui sont
+   encore là (les disques des films, s'ils ont survécu). Puis :
+
+     sudo reboot
+
+Pas dans la copie (trop gros) : les fichiers des films, séries, mangas et vidéos eux-mêmes —
+leur liste est dans /var/backups/nexus-server/manifest/mediatheque.txt.gz — et tout fichier de
+plus d'1 Go (listé à la fin de la restauration).
+
+Le journal complet de la restauration : /root/restauration-nexus-<date>.log.

@@ -17,7 +17,7 @@
 - **Real-time stats** — CPU, RAM, disk, temperature via WebSocket
 - **Names for Jellyfin** — new downloads renamed as they finish (`Titre (Année) [tmdbid-N]/Season 01/Titre S01E01.mkv`), the library already there after a preview, undo; Nexus keeps progress and favourites
 - **Transferts** — *Aperçu › Transferts* (admins): send a file from the iPhone, download it on the computer (and back); it arrives live with a notification, erased after 7 days. *Fichiers*: upload progress with « Annuler », drag & drop, folders and selections downloaded as a .zip
-- **Backups** — every night and before each update that changes the database (database + settings), optionally sent encrypted to your Google Drive (`sudo bash scripts/backup.sh drive`)
+- **Backups** — every night and before each update that changes the database (database + settings), optionally sent encrypted to your Google Drive (`sudo bash scripts/backup.sh drive`); and a copy of the **whole server** every night to rebuild it on a new machine (`sudo bash scripts/backup.sh serveur`, `scripts/restaurer-serveur.sh`)
 - **Dark/Light theme**
 - **JWT authentication** with bcrypt hashing
 - **Accounts** — admins have everything; « user » accounts get the media, manga, their own downloads (automatic ones too), their settings and the storage (no Jarvis, services, files, terminal). Admins create user accounts in *Réglages › Utilisateurs*, optionally for a limited time (1 month, 6 months, 1 year or any date); admin accounts are only made and deleted in the terminal (`bash scripts/create-admin.sh`, `bash scripts/delete-account.sh`)
@@ -343,6 +343,25 @@ connection and the passphrase stay in `/etc/nexus-backup` (root only). **Keep th
 (password manager): without it the backups on Drive cannot be opened. A new server: install Nexus,
 `drive` (it asks the passphrase of the backups already there), `drive get`, then `restore` and
 `tar -xzf nexus-settings-….tar.gz -C <installation>` for the settings.
+
+**The whole server** — to rebuild it on a new machine if it is lost, not only Nexus:
+```
+sudo bash scripts/backup.sh serveur      # once (after « drive »): every night, a copy of the whole server
+sudo bash scripts/backup.sh serveur off   # stop (the copies on Drive stay)
+```
+Every night (after the backup above), [restic](https://restic.net) copies to « Sauvegardes Nexus/serveur »
+everything needed to rebuild the server: `/etc` (settings, services, Cloudflare Tunnel, sudo…), the
+accounts' folders, `/root`, `/opt` (Nexus with its `.env`, Jarvis…), `/srv`, `/usr/local`, `/var` (its useful
+part), `/media/scripts`, every database (`pg_dumpall`), and a description: installed packages, services
+switched on, disks, global npm tools, the list of the media files. Encrypted with the same passphrase; only
+what changed is sent after the first time; 7 daily, 4 weekly and 6 monthly copies kept. Not copied: what
+the system and its packages give back (`/usr`, `/boot`…), caches, `node_modules` and Python venvs (rebuilt),
+the media files themselves (their list only) and any file over 1 GB (listed; `SERVER_MAX_FILE`).
+`restaurer-serveur.sh` and `LISEZ-MOI.txt` are put next to it on Drive. On a new Ubuntu:
+`sudo bash restaurer-serveur.sh` — Google Drive, passphrase, then (after « RESTAURER ») the apt sources and
+packages, the accounts (same ids and passwords), the files, the owners, the databases, Nexus rebuilt and
+started by pm2, venvs / node_modules rebuilt, the services switched on, the disks still there mounted
+again, the server's name; what could not be done is listed. Then `sudo reboot`.
 
 ### Security
 

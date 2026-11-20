@@ -111,7 +111,9 @@ npm workspaces (`frontend`, `backend`); run from the repo root unless noted.
   transfer); passwords 8–72 characters. Backups:
   `scripts/backup.sh` (nightly and before pending migrations: pg_dump + settings to `/var/backups/nexus`; with
   `backup.sh drive`, each one also encrypted (gpg) to Google Drive through rclone, `drive.file` scope, token and
-  passphrase in `/etc/nexus-backup`).
+  passphrase in `/etc/nexus-backup`; with `backup.sh serveur`, a restic copy of the whole server (minus `/usr`, caches,
+  venvs / node_modules, media files, files > 1 GB) plus a manifest in `/var/backups/nexus-server`, rebuilt on a new machine
+  by `scripts/restaurer-serveur.sh`).
 - **Deploy**: GitHub webhook `routes/deploy.ts` only writes a request file; `scripts/auto-deploy.sh`
   (systemd path unit) runs `scripts/deploy.sh` outside the app (build, `scripts/migrate-db.sh`, restart).
   Settings › Version compares interface and server commits.
