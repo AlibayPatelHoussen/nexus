@@ -6,6 +6,7 @@ All notable changes to Nexus will be documented here.
 
 ### Fixed — Connecting Google Drive from the iPhone
 - The Google link of `backup.sh drive` is long and spreads over several rows of the terminal; on a touch screen it could not be tapped, and a long press opened only a piece of it (« https://2fwww.googleapis.com/ »). Nexus' Terminal now shows the last address on screen, joined back whole, in a glass capsule at the bottom: **« Ouvrir accounts.google.com »**, copy, hide (`pages/terminal/links.ts`)
+- The capsule never offers the server's own addresses (`127.0.0.1`, `localhost`: opened on a phone, they are the phone): the script's hint « 127.0.0.1:53682/?state=… » had replaced the Google link in it. A piece of the Google link pasted instead of the address (`202264815644.apps.googleusercontent.com`) gets its own explanation
 - `backup.sh drive` stopped with Ctrl+C no longer leaves rclone waiting on its port (the next run said « rclone n'a pas démarré la connexion »): it is stopped with the script, and one left by an older run is closed first; the instructions say where the button and « Coller » are, and how to copy the address on iPhone
 
 ### Added — Backups on Google Drive

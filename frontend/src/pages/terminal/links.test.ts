@@ -42,6 +42,11 @@ describe('lastLinkOnScreen', () => {
     expect(lastLinkOnScreen(t)).toBe(GOOGLE)
   })
 
+  it('never the server\'s own addresses (127.0.0.1 opened on a phone is the phone)', () => {
+    const t = term([GOOGLE, 'Adresse : x', '   elle commence par http://127.0.0.1:53682/?state=…', 'http://localhost:3001/ http://[::1]:80/'], 45, 30)
+    expect(lastLinkOnScreen(t)).toBe(GOOGLE)
+  })
+
   it('only http and https', () => {
     expect(lastLinkOnScreen(term(['file:///etc/passwd ftp://x javascript:alert(1)'], 80, 5))).toBeNull()
   })
