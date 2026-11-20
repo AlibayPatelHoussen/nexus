@@ -376,7 +376,13 @@ drive_connect() {
     while :; do
       read -r -p "Adresse : " pasted
       if query=$(local_query "$pasted" "$state"); then break; fi
-      echo "   Ce n'est pas l'adresse attendue : elle commence par http://127.0.0.1:53682/?state=…"
+      if [[ $pasted == *google* ]]; then
+        echo "   Ça, c'est un morceau du lien Google. Touche « Ouvrir accounts.google.com » en bas, autorise"
+        echo "   rclone, puis copie l'adresse de la page qui ne s'ouvre pas et colle-la ici."
+      else
+        echo "   Ce n'est pas l'adresse attendue : celle de la page qui ne s'ouvre pas, qui commence par"
+        echo "   « 127.0.0.1:53682/?state= »."
+      fi
     done
     curl -s --max-time 30 -o /dev/null "http://127.0.0.1:53682/?$query" || true
     if wait "$pid" && grep -qs '^token = ' "$new"; then
