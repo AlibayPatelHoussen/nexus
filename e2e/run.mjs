@@ -367,6 +367,49 @@ test('UI: manga reader loads image pages and PDF chapters', async () => {
   await page.context().close()
 })
 
+test('UI: manga reader on a phone — two fingers zoom in (the bars stay their size), a double tap zooms out and in again, in both modes', async () => {
+  const ber = sql(`SELECT id FROM media_items WHERE title LIKE '%Berserk%'`)
+  const pch = sql(`SELECT id FROM chapters WHERE media_item_id='${ber}' LIMIT 1`)
+  for (const mode of ['vertical', 'page']) {
+    const page = await newPage(admin)
+    await page.addInitScript((m) => localStorage.setItem('nexus-reader-mode', m), mode)
+    await page.goto(`${B}/reader/${ber}?ch=${pch}`)
+    await page.waitForFunction(() => [...document.images].some((i) => i.alt === 'Page 1' && i.naturalWidth > 0), null, { timeout: 30000 })
+    await page.waitForTimeout(400)
+    const cdp = await page.context().newCDPSession(page)
+    // Two fingers moving apart around (195, 420)
+    const pinch = async (from, to) => {
+      const pts = (d) => [{ x: 195 - d, y: 420, id: 1 }, { x: 195 + d, y: 420, id: 2 }]
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: pts(from) })
+      for (let i = 1; i <= 12; i++) { await cdp.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: pts(from + (to - from) * i / 12) }); await page.waitForTimeout(16) }
+      await cdp.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] })
+      await page.waitForTimeout(400)
+    }
+    const doubleTap = async () => { await page.touchscreen.tap(195, 420); await page.waitForTimeout(90); await page.touchscreen.tap(195, 420); await page.waitForTimeout(700) }
+    const pageWidth = () => page.evaluate(() => Math.round([...document.images].find((i) => i.alt === 'Page 1').getBoundingClientRect().width))
+    const state = () => page.evaluate(() => ({
+      scale: window.visualViewport.scale,                                  // never the browser's own zoom
+      bars: getComputedStyle(document.querySelector('.glass-media')).opacity,
+      barW: Math.round(document.querySelector('.glass-media').getBoundingClientRect().width),
+    }))
+    const before = await state()
+    eq(await pageWidth(), 390, `${mode}: page as wide as the phone`)
+    await pinch(30, 75)
+    eq(await pageWidth(), 975, `${mode}: two fingers: 2.5 ×`)
+    eq(await state(), before, `${mode}: the browser does not zoom, the bars stay as they were`)
+    await doubleTap()
+    eq(await pageWidth(), 390, `${mode}: a double tap zooms out`)
+    await doubleTap()
+    eq(await pageWidth(), 975, `${mode}: and in again where tapped`)
+    eq((await state()).bars, before.bars, `${mode}: a double tap does not toggle the bars`)
+    await doubleTap()
+    eq(await pageWidth(), 390, `${mode}: out again`)
+    await page.touchscreen.tap(195, 420)
+    await page.waitForFunction(() => getComputedStyle(document.querySelector('.glass-media')).opacity === '0', null, { timeout: 3000 })
+    await page.context().close()
+  }
+})
+
 test('UI: manga offline — off by default; switched on, the next chapters stay on the phone; without a connection the app opens and they read', async () => {
   admin = await login('admin', 'Admin1234')
   const solo = sql(`SELECT id FROM media_items WHERE title LIKE '%Solo%'`)

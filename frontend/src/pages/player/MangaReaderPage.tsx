@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 import PageFlip, { type PageFlipHandle } from '@/components/media/PageFlip'
 import { useParams, useSearchParams, useNavigate } from 'react-router-dom'
 import { useQuery } from '@tanstack/react-query'
@@ -17,6 +17,9 @@ import { useMediaQuery } from '@/hooks/useMediaQuery'
 import { getStreamToken, withStreamToken } from '@/services/streamToken'
 import type { Chapter } from '@/types'
 import { usePdfDocument } from '@/hooks/usePdfDocument'
+import { DOUBLE_TAP_MS, tapTracker } from '@/utils/doubleTap'
+import { usePanZoom, useWidthZoom } from '@/components/media/readerZoom'
+import { useCoarsePointer } from '@/hooks/useDevice'
 import ReaderPage from '@/components/media/ReaderPage'
 import { chapterVersions, versionName } from '@/components/media/chapterVersions'
 import { PAGE_WIDTH, loadImagePage, prefetchPages } from '@/services/readerCache'
@@ -101,6 +104,15 @@ export default function MangaReaderPage() {
   const flip = useRef<PageFlipHandle>(null)
   const reducedMotion = useMediaQuery('(prefers-reduced-motion: reduce)')
   const containerRef = useRef<HTMLDivElement>(null)
+  // Touch screens: the reader's own zoom (two fingers, double tap), see components/media/readerZoom
+  const coarse = useCoarsePointer()
+  const taps = useRef(tapTracker())
+  const tapTimer = useRef<ReturnType<typeof setTimeout>>()
+  const lastDoubleTap = useRef(0)
+  const hscrollRef = useRef<HTMLDivElement>(null)
+  const columnRef = useRef<HTMLDivElement>(null)
+  const pageAreaRef = useRef<HTMLDivElement>(null)
+  const pageContentRef = useRef<HTMLDivElement>(null)
 
   const { data: media } = useQuery({
     queryKey: ['media', id],
@@ -118,6 +130,18 @@ export default function MangaReaderPage() {
   const pdf = usePdfDocument(pdfUrl, chapterId)
   const pdfPlaceholders = Array.from({ length: pdf.numPages }, (_, i) => ({ url: '', name: `page-${i + 1}` }))
   const pages = pdfUrl ? pdfPlaceholders : (chapterData?.pages ?? [])
+
+  const scrollY = useCallback((dy: number) => {
+    (fullscreen ? containerRef.current : window)?.scrollBy({ top: dy, behavior: 'instant' as ScrollBehavior })
+  }, [fullscreen])
+  const widthZoom = useWidthZoom({
+    active: coarse && mode === 'vertical' && pages.length > 0, root: containerRef, scroller: hscrollRef,
+    column: columnRef, zoom, setZoom, scrollY, pad: 56,
+  })
+  const panZoom = usePanZoom({
+    active: coarse && mode !== 'vertical' && pages.length > 0, area: pageAreaRef, content: pageContentRef,
+    resetKey: `${chapterId}-${currentPage}-${mode}`,
+  })
 
   const chapters: Chapter[] = media?.chapters || []
   const langs = chapterVersions(chapters)
@@ -168,12 +192,28 @@ export default function MangaReaderPage() {
     if (!id || !chapterId || !pages.length) return
   }, [currentPage, id, chapterId, pages.length])
 
-  // Touch: a tap toggles the reader UI
+  // Touch: a tap toggles the reader UI — a moment later, in case it is a double tap (zoom)
+  function toggleSoon() {
+    clearTimeout(tapTimer.current)
+    // (the click of the double tap's second tap comes right after it)
+    if (performance.now() - lastDoubleTap.current < 200) return
+    tapTimer.current = setTimeout(() => {
+      if (uiTimer.current) clearTimeout(uiTimer.current)
+      setShowUI((v) => !v)
+    }, DOUBLE_TAP_MS)
+  }
+  useEffect(() => () => clearTimeout(tapTimer.current), [])
   function handleTap(e: React.MouseEvent) {
     if (lastPointer.current === 'mouse') return
     if ((e.target as HTMLElement).closest('button, a, input')) return
-    if (uiTimer.current) clearTimeout(uiTimer.current)
-    setShowUI((v) => !v)
+    toggleSoon()
+  }
+  // Double tap: zoomed in → back to the page's size; else zoomed in where tapped
+  function handleDoubleTap(p: { x: number; y: number }) {
+    clearTimeout(tapTimer.current)
+    lastDoubleTap.current = performance.now()
+    if (mode === 'vertical') widthZoom.doubleTap(p)
+    else panZoom.doubleTap(p)
   }
 
   function changeChapter(chap: Chapter) {
@@ -234,6 +274,14 @@ export default function MangaReaderPage() {
       className={`${fullscreen ? 'fixed inset-0 z-50 overflow-y-auto' : 'min-h-[100dvh]'} flex flex-col select-none bg-black`}
       onMouseMove={handleMouseMove}
       onPointerDown={(e) => { lastPointer.current = e.pointerType }}
+      onPointerDownCapture={(e) => taps.current.down(e)}
+      onPointerUpCapture={(e) => {
+        if (taps.current.up(e) && !(e.target as HTMLElement).closest('button, a, input')) handleDoubleTap({ x: e.clientX, y: e.clientY })
+      }}
+      onPointerCancelCapture={() => taps.current.cancel()}
+      onDoubleClick={(e) => {
+        if (lastPointer.current === 'mouse' && zoom !== 100 && !(e.target as HTMLElement).closest('button, a, input')) setZoom(100)
+      }}
       onClick={handleTap}
     >
       {/* Top bar: appears on move / tap, fades while reading */}
@@ -294,27 +342,34 @@ export default function MangaReaderPage() {
           <EmptyState title="Ce chapitre est vide" message="Aucune page n’a été trouvée. Lance une analyse depuis la page du manga." action={<Button onClick={() => navigate(`/media/${id}`)}>Retour à la fiche</Button>} />
         </div>
       ) : mode === 'vertical' ? (
-        <div className="flex flex-col items-center pt-14 pb-8 gap-0.5" style={{ minHeight: '100dvh' }}>
-          {pages.map((page, i) => (
-            <ReaderPage
-              key={`${chapterId}-${i}`}
-              n={i + 1}
-              load={loadPage(i + 1, page.url)}
-              ratio={pdfUrl ? pdf.ratio(i + 1) : undefined}
-              revoke={!pdfUrl}
-              eager={i < 2}
-              className="block"
-              style={{ width: isDesktop ? `${zoom}%` : '100%', maxWidth: '900px' }}
-            />
-          ))}
-          <div className="flex flex-wrap justify-center gap-3 mt-10 px-4" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }} onClick={(e) => e.stopPropagation()}>
+        <div style={{ minHeight: '100dvh' }}>
+          {/* Touch screens: the zoom is the column's width (both scrolls stay the browser's own) */}
+          <div ref={hscrollRef} className="overflow-x-auto overflow-y-hidden scrollbar-none" style={coarse ? { touchAction: 'pan-x pan-y' } : undefined}>
+            <div ref={columnRef} className="flex flex-col items-center pt-14 pb-8 gap-0.5" style={{ minHeight: '100dvh', width: coarse ? `${zoom}%` : undefined }}>
+              {pages.map((page, i) => (
+                <ReaderPage
+                  key={`${chapterId}-${i}`}
+                  n={i + 1}
+                  load={loadPage(i + 1, page.url)}
+                  ratio={pdfUrl ? pdf.ratio(i + 1) : undefined}
+                  revoke={!pdfUrl}
+                  eager={i < 2}
+                  className="block"
+                  style={coarse ? { width: '100%', maxWidth: `${9 * zoom}px` } : { width: isDesktop ? `${zoom}%` : '100%', maxWidth: '900px' }}
+                />
+              ))}
+            </div>
+          </div>
+          <div className="flex flex-wrap justify-center gap-3 mt-2 mb-8 px-4" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }} onClick={(e) => e.stopPropagation()}>
             {prevChapter && <button type="button" className={`${pill} bg-white/15 text-white hover:bg-white/25`} onClick={() => changeChapter(prevChapter)}>Chapitre précédent</button>}
             {nextChapter && <button type="button" className={`${pill} bg-white text-black`} onClick={() => changeChapter(nextChapter)}>Chapitre suivant</button>}
           </div>
         </div>
       ) : (
-        <div className="flex-1 relative" style={{ minHeight: '100dvh' }}>
-          {/* Page by page: a paper page that folds under the finger (tap the edges, or drag it) */}
+        <div ref={pageAreaRef} className="flex-1 relative overflow-hidden" style={{ minHeight: '100dvh' }}>
+          {/* Page by page: a paper page that folds under the finger (tap the edges, or drag it);
+              touch screens: enlarged with two fingers / a double tap, moved with one */}
+          <div ref={pageContentRef} className="absolute inset-0">
           <PageFlip
             key={chapterId}
             ref={flip}
@@ -325,7 +380,8 @@ export default function MangaReaderPage() {
             ratioOf={ratioOf}
             instant={reducedMotion}
             onChange={setCurrentPage}
-            onCenterTap={() => { if (lastPointer.current !== 'mouse') { if (uiTimer.current) clearTimeout(uiTimer.current); setShowUI((v) => !v) } }}
+            onCenterTap={() => { if (lastPointer.current !== 'mouse') toggleSoon() }}
+            isLocked={panZoom.locked}
             render={(i) => (
               <div className="w-full h-full" onLoadCapture={(e) => {
                 const img = e.target as HTMLImageElement
@@ -344,6 +400,7 @@ export default function MangaReaderPage() {
               </div>
             )}
           />
+          </div>
           {isDesktop && (() => {
             // Right to left (manga): the next page is on the left
             const rtl = mode === 'page-rtl'
