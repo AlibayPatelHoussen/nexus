@@ -125,6 +125,9 @@ npm workspaces (`frontend`, `backend`); run from the repo root unless noted.
   `design/motion.ts` (springs), `index.css` (glass / bar utilities, shelves), `components/ui/*`,
   `components/media/*` (Hero billboard, MediaRow shelves, MediaCard, DetailHero, EpisodesSection).
   `cn()` in `utils` is tailwind-merge extended with the custom type scale and radii.
+  Manga reader (`pages/player/MangaReaderPage.tsx`): on touch screens its own zoom (`components/media/readerZoom.ts`:
+  pinch, double tap via `utils/doubleTap.ts`; vertical = the column's width, page by page = transform + pan, `PageFlip`
+  `isLocked` while enlarged); the browser's page zoom is blocked there (`gesturestart`, two-finger `touchmove`).
 
 ## Design: iOS 26 / macOS 26 "Liquid Glass" — always
 

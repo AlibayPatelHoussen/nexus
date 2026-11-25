@@ -12,7 +12,7 @@
 - **Full server control** — files, services, terminal, network, users
 - **Media center** — films, series, animes, manga/webtoon with metadata from TMDB & AniList
 - **Custom video player** — resume, favorites, history; plays every format in the browser (MKV, AVI, HEVC… converted on the fly with ffmpeg, like Jellyfin)
-- **Manga/Webtoon reader** — vertical scroll & page mode; **offline**: a manga's « Hors ligne » switch (off by default) keeps the next chapters on the phone (5, 10, 25 or all) to read them without a connection, the chapters read leave on their own; ↓ on a chapter keeps that one until removed
+- **Manga/Webtoon reader** — vertical scroll & page mode; on a phone, two fingers zoom and a double tap zooms back out (double click on desktop); **offline**: a manga's « Hors ligne » switch (off by default) keeps the next chapters on the phone (5, 10, 25 or all) to read them without a connection, the chapters read leave on their own; ↓ on a chapter keeps that one until removed
 - **Jarvis assistant** — chat (voice too) with the local AI assistant running on the server ([jarvis-backend](https://github.com/AlibayPatelHoussen/jarvis-backend)), relayed by Nexus
 - **Real-time stats** — CPU, RAM, disk, temperature via WebSocket
 - **Names for Jellyfin** — new downloads renamed as they finish (`Titre (Année) [tmdbid-N]/Season 01/Titre S01E01.mkv`), the library already there after a preview, undo; Nexus keeps progress and favourites

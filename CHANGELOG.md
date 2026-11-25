@@ -4,6 +4,10 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Added — Manga reader: zoom with two fingers, double tap to zoom out
+- On a phone or a tablet the reader zooms by itself, like Apple Books: two fingers enlarge the page (up to 4 ×) around them, a **double tap zooms back out** — or, at the page's size, zooms in (2.5 ×) where it was tapped. Vertical reading: the zoom is the pages' width, so the page scrolls both ways as usual; page by page: the page is enlarged and moved with one finger, and turns again once back to its size (the edges still turn pages, a double tap in the middle zooms)
+- The browser's own zoom is off in the reader (it enlarged the bars too, and nothing brought it back). A single tap still shows / hides the bars, a double tap never does. Desktop: a double click puts the zoom back to 100 %
+
 ### Added — A copy of the whole server, to rebuild it on a new machine
 - `sudo bash scripts/backup.sh serveur` (once, after `drive`): every night, after the usual backup, restic copies to Google Drive (« Sauvegardes Nexus/serveur ») everything needed to rebuild the server — `/etc`, the accounts' folders, `/root`, `/opt` (Nexus with its `.env`, Jarvis…), `/srv`, `/usr/local`, `/var` (its useful part), `/media/scripts`, every database (`pg_dumpall`), and a description of the machine (installed packages, services switched on, disks and mounts, global npm tools, Docker, the list of the media files, what is left out). Encrypted with the backups' passphrase, only what changed is sent after the first time, 7 daily / 4 weekly / 6 monthly copies kept; the first copy runs in the background (`status` shows its progress), and the size to send and the free space on Drive are shown first
 - Left out on purpose: what the system and its packages give back (`/usr`, `/boot`…), caches, `node_modules` and Python venvs (rebuilt), the media files themselves (only their list), files over 1 GB (listed, `SERVER_MAX_FILE`)

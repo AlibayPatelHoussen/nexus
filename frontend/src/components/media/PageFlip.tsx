@@ -13,7 +13,8 @@ import { spring } from '@/design/motion'
  * - one tap on the outer edge: next page, on the spine side: previous page (animated
  *   the same way), in the middle: onCenterTap (show / hide the reader bars);
  * - right to left (manga): the spine is on the right; only the geometry is mirrored,
- *   never the pictures.
+ *   never the pictures;
+ * - isLocked (the reader enlarged the page, or is pinching it): no turn, no tap.
  *
  * The geometry is computed in « page space » (left to right, spine at x = 0, page
  * width w, height h) and written straight to the elements' styles on each frame
@@ -35,6 +36,8 @@ interface Props {
   onCenterTap?: () => void
   /** Reduced motion: pages change at once */
   instant?: boolean
+  /** The reader enlarged the page (or is pinching it): no turn, no tap */
+  isLocked?: () => boolean
 }
 
 const EDGE = 0.3            // outer / inner tap zones: 30 % of the area each
@@ -60,7 +63,7 @@ function clip(poly: Pt[], m: Pt, n: Pt, sign: 1 | -1): Pt[] {
 }
 
 const PageFlip = forwardRef<PageFlipHandle, Props>(function PageFlip(
-  { page, count, rtl, widthFraction = 1, ratioOf, render, onChange, onCenterTap, instant }, ref,
+  { page, count, rtl, widthFraction = 1, ratioOf, render, onChange, onCenterTap, instant, isLocked }, ref,
 ) {
   const area = useRef<HTMLDivElement>(null)
   const [size, setSize] = useState({ w: 0, h: 0 })
@@ -188,12 +191,19 @@ const PageFlip = forwardRef<PageFlipHandle, Props>(function PageFlip(
 
   function onPointerDown(e: React.PointerEvent) {
     if (anim.current || (e.pointerType === 'mouse' && e.button !== 0)) return
+    if (isLocked?.()) return
     const p = toPage(e)
     drag.current = { id: e.pointerId, start: p, startT: performance.now(), dir: 0, ay: Math.min(Math.max(p.y, 0), r.h), last: p, lastT: performance.now(), vx: 0 }
   }
   function onPointerMove(e: React.PointerEvent) {
     const g = drag.current
     if (!g || g.id !== e.pointerId) return
+    // A second finger came (a pinch): the page falls back, nothing turns
+    if (isLocked?.()) {
+      drag.current = null
+      if (g.dir) finish(g.dir, { x: g.dir === 1 ? r.w : -r.w, y: g.ay }, g.ay, false)
+      return
+    }
     const p = toPage(e)
     const now = performance.now()
     g.vx = (p.x - g.last.x) / Math.max(1, now - g.lastT)
@@ -250,7 +260,7 @@ const PageFlip = forwardRef<PageFlipHandle, Props>(function PageFlip(
     <div
       ref={area}
       className="absolute inset-0 select-none"
-      style={{ touchAction: 'pinch-zoom' }}
+      style={{ touchAction: 'none' }}
       onPointerDown={onPointerDown}
       onPointerMove={onPointerMove}
       onPointerUp={onPointerUp}
