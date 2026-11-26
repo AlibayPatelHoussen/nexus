@@ -4,6 +4,12 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Added — Manga: reading progress, « Continuer », « Marquer comme lu »
+- Nexus remembers where each account is in each manga: the page reached in every chapter (saved as you read, page by page or in vertical scrolling), and a chapter read to its last page is **read**. The chapters show it: « ✓ Lu » (title greyed) or « Page 12 sur 40 » in blue for one being read; the chapters' header says how many are read
+- The title's button follows: **« Commencer »**, then **« Continuer · Chapitre N »** — the chapter being read, opened at the page left — or, when the last one opened is finished, the next one after the furthest read; « Relire » once everything is read. A line under the buttons sums it up (« 12 chapitres lus · Chapitre 13 en cours, page 7 »). Versions (colour / black & white) are one chapter: read in one, read in both, and « Continuer » stays in the version being read
+- **Marquer comme lu / non lu**: a long press (right click on a computer) on a chapter — also « Marquer comme lus jusqu’au chapitre N » to catch up in one go — or **« Sélectionner »**: tap the chapters (shift-click a range on a computer, « Sélectionner jusqu’ici » in the menu), « Tout sélectionner », then « Marquer comme lu (N) » / « non lu ». A chapter already started keeps its page
+- Server: `read_history` (already in the schema, unused until now), `services/readProgress.ts`; `GET|POST /api/media/:id/reading`, `POST /api/media/chapters/:chapterId/reading`
+
 ### Added — Manga reader: zoom with two fingers, double tap to zoom out
 - On a phone or a tablet the reader zooms by itself, like Apple Books: two fingers enlarge the page (up to 4 ×) around them, a **double tap zooms back out** — or, at the page's size, zooms in (2.5 ×) where it was tapped. Vertical reading: the zoom is the pages' width, so the page scrolls both ways as usual; page by page: the page is enlarged and moved with one finger, and turns again once back to its size (the edges still turn pages, a double tap in the middle zooms)
 - The browser's own zoom is off in the reader (it enlarged the bars too, and nothing brought it back). A single tap still shows / hides the bars, a double tap never does. Desktop: a double click puts the zoom back to 100 %

@@ -1,5 +1,5 @@
-import { useMemo, useState } from 'react'
-import { ArrowDownToLine, BookOpen, ChevronsUpDown, CircleArrowDown, CircleCheck, RotateCw } from 'lucide-react'
+import { useMemo, useRef, useState } from 'react'
+import { ArrowDownToLine, BookOpen, Check, CheckCheck, ChevronsUpDown, CircleArrowDown, CircleCheck, Circle, ListChecks, RotateCw } from 'lucide-react'
 import toast from 'react-hot-toast'
 import type { Chapter } from '@/types'
 import { Group, ListRow } from '@/components/ui/GroupedList'
@@ -8,6 +8,8 @@ import EmptyState from '@/components/ui/EmptyState'
 import SegmentedControl from '@/components/ui/SegmentedControl'
 import Toggle from '@/components/ui/Toggle'
 import PullDownMenu from '@/components/ui/PullDownMenu'
+import { useContextMenu } from '@/components/ui/useContextMenu'
+import type { MenuItem } from '@/components/ui/ContextMenu'
 import { useShell } from '@/components/shell/shellContext'
 import { useOfflineManga } from '@/hooks/useOfflineManga'
 import {
@@ -17,18 +19,24 @@ import {
 import type { OfflineCount } from '@/services/offlineIndex'
 import { cn, formatBytes } from '@/utils'
 import { chapterVersions, versionName } from './chapterVersions'
+import type { ReadingState } from './readingState'
 
 interface Props {
   /** The title (kept as is for reading offline) */
   media:     OfflineMedia
   chapters:  Chapter[]
-  /** version = the folder the chapter is in (« VF », « VF Noir et blanc »), for the reader */
-  onRead:    (chapterId: string, version?: string) => void
+  /** What this account read (title page: readingState) */
+  reading:   ReadingState
+  /** version = the folder the chapter is in (« VF », « VF Noir et blanc »), for the reader; page = where it was left */
+  onRead:    (chapterId: string, version?: string, page?: number) => void
+  /** « Marquer comme lu / non lu » */
+  onMark:    (chapterIds: string[], read: boolean) => Promise<void>
   onScan:    () => void
   scanning:  boolean
 }
 
 const formatNumber = (n: number) => (Number.isInteger(n) ? String(n) : n.toLocaleString('fr-FR', { maximumFractionDigits: 1 }))
+const chaptersWord = (n: number) => `${n} chapitre${n > 1 ? 's' : ''}`
 
 function kindOf(path: string): 'PDF' | 'CBZ' | null {
   const ext = path.split('.').pop()?.toLowerCase()
@@ -37,21 +45,81 @@ function kindOf(path: string): 'PDF' | 'CBZ' | null {
   return null
 }
 
-/** Chapters of a manga: sorted by number, click to read; clear empty state.
- *  Several versions (VF / VOSTFR, colour / black & white): one at a time, chosen on top. */
-export default function ChaptersSection({ media, chapters, onRead, onScan, scanning }: Props) {
+/** Chapters of a manga: sorted by number, click to read; what is read is greyed with « Lu », a chapter
+ *  started shows its page. Several versions (VF / VOSTFR, colour / black & white): one at a time.
+ *  « Sélectionner » (or a long press / right click on a chapter) marks chapters read or unread at once. */
+export default function ChaptersSection({ media, chapters, reading, onRead, onMark, onScan, scanning }: Props) {
   const [desc, setDesc] = useState(false)
   const phone = useShell().device === 'phone'
   const versions = useMemo(() => chapterVersions(chapters), [chapters])
   const [picked, setPicked] = useState<string | null>(null)
-  const version = picked && versions.includes(picked) ? picked : versions[0] ?? null
+  // The version being read first (where « Continuer » goes), else the default one
+  const readingVersion = reading.next?.chapter.language ?? null
+  const version = picked && versions.includes(picked) ? picked
+    : readingVersion && versions.includes(readingVersion) ? readingVersion : versions[0] ?? null
   const shown = useMemo(() => (version ? chapters.filter((c) => c.language === version) : chapters), [chapters, version])
   const sorted = useMemo(
     () => [...shown].sort((a, b) => (desc ? -1 : 1) * (a.chapterNumber - b.chapterNumber || a.folderPath.localeCompare(b.folderPath, undefined, { numeric: true }))),
     [shown, desc],
   )
+  const [selecting, setSelecting] = useState(false)
+  const [selected, setSelected] = useState<Set<string>>(new Set())
+  const anchor = useRef<string | null>(null)
+  const [busy, setBusy] = useState(false)
+  const menu = useContextMenu()
 
   const offline = useOfflineOf(media, chapters)
+  const isRead = (c: Chapter) => reading.readNumbers.has(c.chapterNumber)
+  const readHere = shown.filter(isRead).length
+
+  /** From the last chapter tapped to this one (both included), in the order shown */
+  function rangeTo(id: string): string[] {
+    const from = sorted.findIndex((c) => c.id === (anchor.current ?? id))
+    const to = sorted.findIndex((c) => c.id === id)
+    const [a, b] = from < to ? [from, to] : [to, from]
+    return sorted.slice(a, b + 1).map((c) => c.id)
+  }
+  function toggle(id: string, range = false) {
+    setSelected((s) => {
+      const next = new Set(s)
+      if (range && anchor.current) rangeTo(id).forEach((x) => next.add(x))
+      else if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+    anchor.current = id
+  }
+  function stopSelecting() { setSelecting(false); setSelected(new Set()); anchor.current = null }
+
+  async function mark(ids: string[], read: boolean) {
+    if (!ids.length) return
+    setBusy(true)
+    try {
+      await onMark(ids, read)
+      toast.success(read ? `${chaptersWord(ids.length)} marqué${ids.length > 1 ? 's' : ''} comme lu${ids.length > 1 ? 's' : ''}` : `${chaptersWord(ids.length)} marqué${ids.length > 1 ? 's' : ''} comme non lu${ids.length > 1 ? 's' : ''}`)
+      stopSelecting()
+    } catch { toast.error('Impossible d’enregistrer : réessaie') }
+    finally { setBusy(false) }
+  }
+  /** Every chapter up to this one (by number, in this version) */
+  const upTo = (c: Chapter) => shown.filter((x) => x.chapterNumber <= c.chapterNumber).map((x) => x.id)
+
+  function itemsFor(c: Chapter, name: string): MenuItem[] {
+    if (selecting) {
+      return [{ label: 'Sélectionner jusqu’ici', icon: <ListChecks />, onSelect: () => toggle(c.id, true) }]
+    }
+    const read = isRead(c)
+    const page = reading.pageOf.get(c.id)
+    return [
+      { label: page ? `Reprendre à la page ${page + 1}` : 'Lire', icon: <BookOpen />, onSelect: () => onRead(c.id, version ?? undefined, page) },
+      read
+        ? { label: 'Marquer comme non lu', icon: <Circle />, onSelect: () => void mark([c.id], false) }
+        : { label: 'Marquer comme lu', icon: <Check />, onSelect: () => void mark([c.id], true) },
+      { label: `Marquer comme lus jusqu’au ${name.toLowerCase()}`, icon: <CheckCheck />, onSelect: () => void mark(upTo(c), true) },
+      { separator: true },
+      { label: 'Sélectionner', icon: <ListChecks />, onSelect: () => { setSelecting(true); toggle(c.id) } },
+    ]
+  }
 
   if (chapters.length === 0) {
     return (
@@ -66,46 +134,98 @@ export default function ChaptersSection({ media, chapters, onRead, onScan, scann
     )
   }
 
+  const allSelected = selected.size === sorted.length
+  const selectAll = () => { setSelected(allSelected ? new Set() : new Set(sorted.map((c) => c.id))); anchor.current = null }
+  const selection = [...selected]
+  const selectionRead = selection.length > 0 && selection.every((id) => { const c = shown.find((x) => x.id === id); return !!c && isRead(c) })
+
   return (
-    <div className="mb-10">
+    <div className={cn('mb-10', phone && selecting && 'pb-16')}>
       <div className="flex flex-wrap items-end justify-between gap-3 mb-3">
         <div>
           <h2 className="text-title text-label">Chapitres</h2>
-          <p className="text-subhead text-label2 mt-0.5 tabular">{shown.length} chapitre{shown.length > 1 ? 's' : ''}</p>
+          <p className="text-subhead text-label2 mt-0.5 tabular">
+            {selecting ? (selected.size ? `${chaptersWord(selected.size)} sélectionné${selected.size > 1 ? 's' : ''}` : 'Touche les chapitres à marquer')
+              : `${chaptersWord(shown.length)}${readHere ? ` · ${readHere === shown.length ? 'tous lus' : `${readHere} lu${readHere > 1 ? 's' : ''}`}` : ''}`}
+          </p>
         </div>
         <div className="flex items-center gap-2">
-          <Button variant="plain" onClick={() => setDesc((d) => !d)} aria-label={desc ? 'Trier du premier au dernier' : 'Trier du dernier au premier'}>
-            {desc ? 'Du plus récent' : 'Dans l’ordre'}
-          </Button>
-          <Button variant="primary" icon={<BookOpen size={14} strokeWidth={1.75} />} onClick={() => onRead(sorted[desc ? sorted.length - 1 : 0].id, version ?? undefined)}>
-            Commencer
-          </Button>
+          {selecting ? (
+            <>
+              {!phone && (
+                <>
+                  <Button variant="plain" onClick={selectAll}>{allSelected ? 'Tout désélectionner' : 'Tout sélectionner'}</Button>
+                  <Button disabled={!selected.size || busy} onClick={() => void mark(selection, !selectionRead)}>
+                    {selectionRead ? 'Marquer comme non lu' : 'Marquer comme lu'}
+                  </Button>
+                </>
+              )}
+              <Button variant={phone ? 'plain' : 'primary'} className={phone ? 'font-semibold' : undefined} onClick={stopSelecting}>OK</Button>
+            </>
+          ) : (
+            <>
+              <Button variant="plain" onClick={() => setDesc((d) => !d)} aria-label={desc ? 'Trier du premier au dernier' : 'Trier du dernier au premier'}>
+                {desc ? 'Du plus récent' : 'Dans l’ordre'}
+              </Button>
+              <Button variant="plain" onClick={() => setSelecting(true)}>Sélectionner</Button>
+            </>
+          )}
         </div>
       </div>
       {versions.length > 1 && (
-        <SegmentedControl label="Version" value={version ?? ''} onChange={setPicked} full={phone} className="mb-3"
+        <SegmentedControl label="Version" value={version ?? ''} onChange={(v) => { setPicked(v); stopSelecting() }} full={phone} className="mb-3"
           options={versions.map((v) => ({ value: v, label: versionName(v, versions) }))} />
       )}
-      {offline.supported && <OfflineGroup offline={offline} onSwitch={(on) => offline.toggle(on, version)} phone={phone} />}
+      {offline.supported && !selecting && <OfflineGroup offline={offline} onSwitch={(on) => offline.toggle(on, version)} phone={phone} />}
       <Group>
         {sorted.map((c) => {
           const name = c.title || `Chapitre ${formatNumber(c.chapterNumber)}`
-          const detail = [kindOf(c.folderPath), c.pageCount ? `${c.pageCount} p.` : null].filter(Boolean).join(' · ')
-          return offline.supported ? (
-            // The row reads the chapter; the button on its right keeps it on the device (or not)
+          const read = isRead(c)
+          const page = reading.pageOf.get(c.id)
+          const on = selected.has(c.id)
+          const detail = page != null && !read
+            ? `Page ${page + 1}${c.pageCount ? ` sur ${c.pageCount}` : ''}`
+            : [kindOf(c.folderPath), c.pageCount ? `${c.pageCount} p.` : null].filter(Boolean).join(' · ')
+          return (
+            // The row reads the chapter (or selects it); the button on its right keeps it on the device (or not)
             <div key={c.id} role="listitem" className="nx-row relative flex items-center min-h-row">
-              <button type="button" className="flex-1 min-w-0 flex items-center gap-3 pl-4 pr-1 min-h-row text-left pressable hoverable"
-                onClick={() => onRead(c.id, version ?? undefined)}>
-                <span className="flex-1 min-w-0 truncate text-label py-[7px] max-md:py-[11px]">{name}</span>
-                {detail && <span className="text-label2 tabular truncate max-w-[45%] text-right">{detail}</span>}
+              <button type="button"
+                className={cn('flex-1 min-w-0 flex items-center gap-3 pl-4 min-h-row text-left pressable hoverable', offline.supported && !selecting ? 'pr-1' : 'pr-4')}
+                onClick={(e) => (selecting ? toggle(c.id, e.shiftKey) : onRead(c.id, version ?? undefined, page))}
+                aria-pressed={selecting ? on : undefined}
+                {...menu.bind(itemsFor(c, name), name)}>
+                {selecting && (
+                  <span className={cn('w-[22px] h-[22px] rounded-full grid place-items-center flex-shrink-0', on ? 'bg-accent text-white' : 'border-[1.5px] border-label3')} aria-hidden="true">
+                    {on && <Check size={14} strokeWidth={3} />}
+                  </span>
+                )}
+                <span className={cn('flex-1 min-w-0 truncate py-[7px] max-md:py-[11px]', read ? 'text-label2' : 'text-label')}>{name}</span>
+                {read ? (
+                  <span className="flex items-center gap-1 text-label2 flex-shrink-0" aria-label="Lu">
+                    <Check size={phone ? 16 : 14} strokeWidth={2.25} aria-hidden="true" />Lu
+                  </span>
+                ) : detail ? (
+                  <span className={cn('tabular truncate max-w-[45%] text-right', page != null ? 'text-accent-text' : 'text-label2')}>{detail}</span>
+                ) : null}
               </button>
-              <OfflineButton name={name} state={offline.stateOf(c.id)} onKeep={() => offline.keep(c.id)} onRelease={() => offline.release(c.id)} />
+              {offline.supported && !selecting && (
+                <OfflineButton name={name} state={offline.stateOf(c.id)} onKeep={() => offline.keep(c.id)} onRelease={() => offline.release(c.id)} />
+              )}
             </div>
-          ) : (
-            <ListRow key={c.id} onClick={() => onRead(c.id, version ?? undefined)} title={name} detail={detail} accessory="chevron" />
           )
         })}
       </Group>
+
+      {/* Phone: the selection's toolbar, above the tab bar */}
+      {phone && selecting && (
+        <div className="fixed inset-x-0 z-40 material-bar hairline-t flex items-center justify-between px-4" style={{ bottom: 'calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px))', height: 48 }}>
+          <Button variant="plain" className="text-[17px]" onClick={selectAll}>{allSelected ? 'Tout désélectionner' : 'Tout sélectionner'}</Button>
+          <Button variant="plain" className="text-[17px] font-semibold" disabled={!selected.size || busy} onClick={() => void mark(selection, !selectionRead)}>
+            {selectionRead ? 'Non lu' : 'Marquer comme lu'}{selected.size ? ` (${selected.size})` : ''}
+          </Button>
+        </div>
+      )}
+      {menu.element}
     </div>
   )
 }

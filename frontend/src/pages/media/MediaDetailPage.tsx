@@ -16,6 +16,9 @@ import { mangaPills } from '@/components/media/mangaKind'
 import Artwork from '@/components/media/Artwork'
 import Skeleton from '@/components/ui/Skeleton'
 import ChaptersSection from '@/components/media/ChaptersSection'
+import { readingState } from '@/components/media/readingState'
+import { chapterVersions } from '@/components/media/chapterVersions'
+import { readingService } from '@/services/readingService'
 import { mediaService } from '@/services/mediaService'
 import { formatDuration, formatBytes, statusLabel } from '@/utils'
 import EpisodesSection from '@/components/media/EpisodesSection'
@@ -39,6 +42,9 @@ function libraryOf(type?: MediaItem['type']): { to: string; label: string } {
     default: return { to: '/cinema', label: 'Films' }
   }
 }
+
+/** « Chapitre 12 » (or the chapter's own title) */
+const chapterName = (c: Chapter) => c.title || `Chapitre ${Number.isInteger(c.chapterNumber) ? c.chapterNumber : c.chapterNumber.toLocaleString('fr-FR')}`
 
 export default function MediaDetailPage() {
   const { id }     = useParams<{ id: string }>()
@@ -76,6 +82,14 @@ export default function MediaDetailPage() {
     queryKey: ['episodes-progress', id],
     queryFn:  () => mediaService.getEpisodesProgress(id!),
     enabled:  !!id,
+  })
+  // Mangas: what this account read (chapters read, page reached) — offline, nothing (reading still works)
+  const readingTitle = media?.type === 'manga' || media?.type === 'webtoon'
+  const { data: readRows = [] } = useQuery({
+    queryKey: ['reading', id],
+    queryFn:  () => readingService.of(id!),
+    enabled:  !!id && readingTitle,
+    retry:    false,
   })
 
   // Tab bar / sidebar: this title's library stays selected (Manga for a manga…)
@@ -182,11 +196,21 @@ export default function MediaDetailPage() {
     ? Math.round((progress.progress / progress.duration) * 100)
     : 0
 
-  function play(episodeId?: string, chapterId?: string, version?: string) {
+  // Mangas: « Continuer » — the chapter being read (at its page), else the one after the last read
+  const reading = readingState(chapters, readRows, chapterVersions(chapters)[0] ?? null)
+  const continueTo = reading.next ?? (chapters.length ? { chapter: [...chapters].sort((a, b) => a.chapterNumber - b.chapterNumber)[0], page: 0 } : null)
+  async function markChapters(ids: string[], read: boolean) {
+    const rows = await readingService.mark(id!, ids, read)
+    qc.setQueryData(['reading', id], rows)
+  }
+
+  function play(episodeId?: string, chapterId?: string, version?: string, page?: number) {
     if (isReading) {
-      const chapId = chapterId || chapters[0]?.id
-      if (!chapId) { toast.error('Aucun chapitre : lance une analyse.'); return }
-      navigate(`/reader/${id}?ch=${chapId}${version ? `&lang=${encodeURIComponent(version)}` : ''}`)
+      const target = chapterId ? { id: chapterId, version, page } : continueTo
+        ? { id: continueTo.chapter.id, version: continueTo.chapter.language ?? undefined, page: continueTo.page }
+        : null
+      if (!target) { toast.error('Aucun chapitre : lance une analyse.'); return }
+      navigate(`/reader/${id}?ch=${target.id}${target.version ? `&lang=${encodeURIComponent(target.version)}` : ''}${target.page ? `&page=${target.page}` : ''}`)
     } else if (isShow) {
       // A series is never played as a whole: always open a specific episode
       const epId = episodeId || resumeEpisode?.id || episodes[0]?.id
@@ -221,7 +245,10 @@ export default function MediaDetailPage() {
         ? 'Lire le premier épisode'
         : `${nextResumes ? 'Reprendre' : 'Lire'} · S${nextEpisode?.season ?? 1} É${nextEpisode?.episodeNumber}`
     : isReading
-      ? chapters.length === 0 ? 'Aucun chapitre' : 'Lire'
+      ? chapters.length === 0 ? 'Aucun chapitre'
+        : !reading.started || !continueTo ? 'Commencer'
+        : reading.finished ? `Relire · ${chapterName(continueTo.chapter)}`
+        : `Continuer · ${chapterName(continueTo.chapter)}`
       : progress && progressPct > 0 && progressPct < 95
         ? `Reprendre · ${progressPct} %`
         : 'Lecture'
@@ -302,12 +329,18 @@ export default function MediaDetailPage() {
               </Button>
             )}
           </div>
+          {isReading && reading.started && (
+            <p className="text-subhead text-label2 mt-4 tabular">
+              {reading.finished ? 'Tous les chapitres sont lus'
+                : `${reading.readCount} chapitre${reading.readCount > 1 ? 's' : ''} lu${reading.readCount > 1 ? 's' : ''}${reading.next?.page ? ` · ${chapterName(reading.next.chapter)} en cours, page ${reading.next.page + 1}` : ''}`}
+            </p>
+          )}
           {nextEpisode && isShow && (
             <p className="text-subhead text-label mt-4 font-medium">
               S{nextEpisode.season ?? 1}, É{nextEpisode.episodeNumber}{nextEpisode.title ? ` · ${nextEpisode.title}` : ''}
             </p>
           )}
-          <p className={cn('text-callout text-label2 max-w-[68ch]', !(nextEpisode && isShow) && 'mt-4')} style={phone ? { textAlign: 'left', alignSelf: 'stretch' } : undefined}>
+          <p className={cn('text-callout text-label2 max-w-[68ch]', !(nextEpisode && isShow) && !(isReading && reading.started) && 'mt-4')} style={phone ? { textAlign: 'left', alignSelf: 'stretch' } : undefined}>
             {media.overview || 'Aucun synopsis disponible.'}
           </p>
         </div>
@@ -339,7 +372,10 @@ export default function MediaDetailPage() {
       )}
 
       {/* Chapters (manga / webtoon) */}
-      {isReading && !isPlaceholderData && <ChaptersSection media={media} chapters={chapters} onRead={(chapterId, version) => play(undefined, chapterId, version)} onScan={scan} scanning={scanning} />}
+      {isReading && !isPlaceholderData && (
+        <ChaptersSection media={media} chapters={chapters} reading={reading} onMark={markChapters}
+          onRead={(chapterId, version, page) => play(undefined, chapterId, version, page)} onScan={scan} scanning={scanning} />
+      )}
 
       {/* Automatic downloads of what comes next (off unless switched on) */}
       {(media.type === 'anime' || media.type === 'serie' || media.type === 'manga' || media.type === 'webtoon') && (
