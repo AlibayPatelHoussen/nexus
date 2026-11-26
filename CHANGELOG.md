@@ -4,6 +4,11 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Fixed — Manga reader: « Page N illisible »
+- **Long webtoon strips**: the server turns each page into a light WebP, and WebP stops at 16 383 px high — a taller strip always failed (« Page 3 illisible »). Such a page now comes as a JPEG (never enlarged); a page the server cannot prepare is written in its log with the reason
+- A page that fails is asked again once by itself, then shows **« Réessayer »**; a reader left open longer than its reading permission (6 h) gets a new one and goes on; a copy on the device that cannot be read back is downloaded again
+- **« Continuer » in vertical reading** stays on its page while the pages above it arrive (on iPhone a long strip above pushed it thousands of pixels down), until you move yourself; the pages around it load first
+
 ### Added — Manga: reading progress, « Continuer », « Marquer comme lu »
 - Nexus remembers where each account is in each manga: the page reached in every chapter (saved as you read, page by page or in vertical scrolling), and a chapter read to its last page is **read**. The chapters show it: « ✓ Lu » (title greyed) or « Page 12 sur 40 » in blue for one being read; the chapters' header says how many are read
 - The title's button follows: **« Commencer »**, then **« Continuer · Chapitre N »** — the chapter being read, opened at the page left — or, when the last one opened is finished, the next one after the furthest read; « Relire » once everything is read. A line under the buttons sums it up (« 12 chapitres lus · Chapitre 13 en cours, page 7 »). Versions (colour / black & white) are one chapter: read in one, read in both, and « Continuer » stays in the version being read

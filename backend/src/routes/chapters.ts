@@ -6,6 +6,7 @@ import fs from 'fs/promises'
 import { chapterKind } from '../services/chapters'
 import { isInsideDir } from '../services/files'
 import { hasPdfTools, pageCount, pageImage, pageWidth, warmNext } from '../services/pageImages'
+import { logger } from '../utils/logger'
 
 const router = Router()
 const MEDIA_ROOT = process.env.MEDIA_ROOT || '/media'
@@ -31,13 +32,14 @@ router.get('/chapters/:id/page/:n', authenticateStream, requireMedia, asyncHandl
   const width = pageWidth(req.query.w)
   try {
     const out = await pageImage(req.params.id, file, n, width)
-    res.setHeader('Content-Type', 'image/webp')
+    res.setHeader('Content-Type', out.endsWith('.jpg') ? 'image/jpeg' : 'image/webp')
     // Same URL = same image (the file version is in the cache name): keep it
     res.setHeader('Cache-Control', 'private, max-age=31536000, immutable')
     res.sendFile(out)
     pageCount(file).then((total) => warmNext(req.params.id, file, n, width, total)).catch(() => {})
   } catch (e) {
     const status = (e as { status?: number }).status ?? 500
+    if (status === 500) logger.warn(`Manga page ${n} of chapter ${req.params.id} (${file}) unreadable: ${(e as Error).message}`)
     res.status(status).json({ success: false, error: status === 404 ? 'Page introuvable' : 'Page illisible' })
   }
 }))

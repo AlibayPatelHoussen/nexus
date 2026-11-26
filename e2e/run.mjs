@@ -416,6 +416,58 @@ test('UI: manga reading progress — a chapter read to its end is « Lu », « C
   await page.context().close()
 })
 
+test('UI: manga reader — a page that fails is asked again, then « Réessayer »; an expired reading token is renewed', async () => {
+  const solo = mediaId('Solo Leveling')
+  const ch = sql(`SELECT id FROM chapters WHERE media_item_id='${solo}' ORDER BY chapter_number LIMIT 1`)
+  const page = await newPage(alice)
+  await page.addInitScript(() => localStorage.setItem('nexus-reader-mode', 'vertical'))
+  let broken = true
+  let refused = 0
+  await page.route(/\/api\/media\/chapters\/[^/]+\/page\/(2|3)\?/, (route) => {
+    if (/\/page\/2\?/.test(route.request().url())) return broken ? route.fulfill({ status: 500, contentType: 'application/json', body: '{"success":false,"error":"Page illisible"}' }) : route.continue()
+    // page 3: the token ran out once
+    if (refused++ === 0) return route.fulfill({ status: 401, contentType: 'application/json', body: '{"success":false}' })
+    return route.continue()
+  })
+  const tokens = []
+  page.on('request', (r) => { if (r.url().includes('/api/auth/stream-token')) tokens.push(r.url()) })
+  await page.goto(`${B}/reader/${solo}?ch=${ch}`, { waitUntil: 'networkidle' })
+  // Page 3: refused (401), a new token, shown
+  await page.waitForSelector('img[alt="Page 3"]', { timeout: 15000 })
+  assert(tokens.length >= 2, `a new reading token was asked (${tokens.length})`)
+  // Page 2: failed twice (once by itself), then « Réessayer »
+  await page.waitForFunction(() => document.body.innerText.includes('Page 2 illisible'), null, { timeout: 15000 })
+  broken = false
+  await page.getByRole('button', { name: 'Réessayer' }).click()
+  await page.waitForSelector('img[alt="Page 2"]', { timeout: 15000 })
+  assert(!(await page.locator('text=illisible').count()), 'no page left unreadable')
+  await page.context().close()
+})
+
+test('UI: manga reader — « Continuer » in vertical reading stays on its page while a tall page above it arrives', async () => {
+  const solo = mediaId('Solo Leveling')
+  const ch = sql(`SELECT id FROM chapters WHERE media_item_id='${solo}' ORDER BY chapter_number LIMIT 1`)
+  const page = await newPage(alice)
+  await page.addInitScript(() => localStorage.setItem('nexus-reader-mode', 'vertical'))
+  // Like Safari: no scroll anchoring of the browser's own
+  await page.addInitScript(() => document.addEventListener('DOMContentLoaded', () => {
+    const st = document.createElement('style'); st.textContent = '* { overflow-anchor: none !important }'; document.head.append(st)
+  }))
+  // Page 1: a long webtoon strip, arriving after the reader placed itself on page 2
+  const strip = '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="4000"><rect width="400" height="4000" fill="#3a6"/></svg>'
+  await page.route(/\/api\/media\/chapters\/[^/]+\/page\/1\?/, async (route) => {
+    await new Promise((ok) => setTimeout(ok, 1200))
+    await route.fulfill({ status: 200, contentType: 'image/svg+xml', body: strip })
+  })
+  await page.goto(`${B}/reader/${solo}?ch=${ch}&page=1`, { waitUntil: 'domcontentloaded' })
+  await page.waitForSelector('img[alt="Page 1"]', { timeout: 15000 })
+  await page.waitForSelector('img[alt="Page 2"]', { timeout: 15000 })
+  await page.waitForTimeout(600)
+  const top = await page.evaluate(() => Math.round(document.querySelector('img[alt="Page 2"]').getBoundingClientRect().top))
+  assert(Math.abs(top) < 20, `page 2 at the top of the screen (top ${top})`)
+  await page.context().close()
+})
+
 test('UI: manga reader on a phone — two fingers zoom in (the bars stay their size), a double tap zooms out and in again, in both modes', async () => {
   const ber = sql(`SELECT id FROM media_items WHERE title LIKE '%Berserk%'`)
   const pch = sql(`SELECT id FROM chapters WHERE media_item_id='${ber}' LIMIT 1`)
