@@ -10,7 +10,7 @@
 ## Features
 
 - **Full server control** — files, services, terminal, network, users
-- **Media center** — films, series, animes, manga/webtoon with metadata from TMDB & AniList
+- **Media center** — films, series, animes, manga/webtoon with metadata from TMDB & AniList; episodes watched per account (by the player, or « Marquer comme vu » on one episode, up to one, a season or a selection), the play button goes on from there
 - **Custom video player** — resume, favorites, history; plays every format in the browser (MKV, AVI, HEVC… converted on the fly with ffmpeg, like Jellyfin)
 - **Manga/Webtoon reader** — vertical scroll & page mode; **reading progress** per account (page reached, chapters « Lu », « Continuer · Chapitre N » opens where you stopped; « Marquer comme lu » on one chapter, up to one, or a selection); on a phone, two fingers zoom and a double tap zooms back out (double click on desktop); **offline**: a manga's « Hors ligne » switch (off by default) keeps the next chapters on the phone (5, 10, 25 or all) to read them without a connection, the chapters read leave on their own; ↓ on a chapter keeps that one until removed
 - **Jarvis assistant** — chat (voice too) with the local AI assistant running on the server ([jarvis-backend](https://github.com/AlibayPatelHoussen/jarvis-backend)), relayed by Nexus
@@ -150,6 +150,7 @@ GET    /api/media/series
 GET    /api/media/animes
 GET    /api/media/manga
 GET    /api/media/:id
+POST   /api/media/:id/episodes/watched   ({ episodeIds, watched }: séries / animes « Marquer comme vu / non vu »)
 GET    /api/media/:id/reading            (this account's progress in a manga)
 POST   /api/media/:id/reading            ({ chapterIds, read }: « Marquer comme lu / non lu »)
 POST   /api/media/chapters/:id/reading   ({ page, total }: the reader, 0-based page)

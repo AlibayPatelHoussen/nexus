@@ -8,6 +8,7 @@ import EmptyState from '@/components/ui/EmptyState'
 import SegmentedControl from '@/components/ui/SegmentedControl'
 import Toggle from '@/components/ui/Toggle'
 import PullDownMenu from '@/components/ui/PullDownMenu'
+import SelectionBar from '@/components/ui/SelectionBar'
 import { useContextMenu } from '@/components/ui/useContextMenu'
 import type { MenuItem } from '@/components/ui/ContextMenu'
 import { useShell } from '@/components/shell/shellContext'
@@ -218,12 +219,12 @@ export default function ChaptersSection({ media, chapters, reading, onRead, onMa
 
       {/* Phone: the selection's toolbar, above the tab bar */}
       {phone && selecting && (
-        <div className="fixed inset-x-0 z-40 material-bar hairline-t flex items-center justify-between px-4" style={{ bottom: 'calc(var(--tabbar-h) + env(safe-area-inset-bottom, 0px))', height: 48 }}>
+        <SelectionBar>
           <Button variant="plain" className="text-[17px]" onClick={selectAll}>{allSelected ? 'Tout désélectionner' : 'Tout sélectionner'}</Button>
           <Button variant="plain" className="text-[17px] font-semibold" disabled={!selected.size || busy} onClick={() => void mark(selection, !selectionRead)}>
             {selectionRead ? 'Non lu' : 'Marquer comme lu'}{selected.size ? ` (${selected.size})` : ''}
           </Button>
-        </div>
+        </SelectionBar>
       )}
       {menu.element}
     </div>

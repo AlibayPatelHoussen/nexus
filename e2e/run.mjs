@@ -468,6 +468,51 @@ test('UI: manga reader — « Continuer » in vertical reading stays on its page
   await page.context().close()
 })
 
+test('UI: series — episodes marked as watched (one, a selection, a season), the play button follows', async () => {
+  const show = mediaId('Série 48727')
+  const aliceId = sql(`SELECT id FROM users WHERE username = 'alice'`)
+  const eps = Object.fromEntries(sql(`SELECT season || 'x' || episode_number, id FROM episodes WHERE media_item_id='${show}'`).split('\n').map((l) => l.split('|')))
+  const watched = () => sql(`SELECT coalesce(string_agg(e.season || 'x' || e.episode_number, ',' ORDER BY e.season, e.episode_number), '') FROM watch_history w JOIN episodes e ON e.id = w.episode_id WHERE w.user_id='${aliceId}' AND w.media_item_id='${show}' AND w.completed`)
+  sql(`DELETE FROM watch_history WHERE user_id = '${aliceId}' AND media_item_id = '${show}'`)
+  const page = await newPage(alice)
+  const shows = (text) => page.waitForFunction((t) => document.body.innerText.includes(t), text, { timeout: 10000 })
+  const card = (season, n) => page.locator(`button[aria-label*="Saison ${season} épisode ${n} :"]`)
+  await page.goto(`${B}/media/${show}`, { waitUntil: 'networkidle' })
+  await shows('Lire le premier épisode')
+  // One episode: long press / right click
+  await card(1, 1).click({ button: 'right' })
+  await page.click('[role="menuitem"]:has-text("Marquer comme vu")')
+  await shows('Lire · S1 É2')
+  eq(watched(), '1x1', 'S1E1 watched')
+  assert(await card(1, 1).getAttribute('aria-label').then((l) => l.endsWith(', vu')), 'the card says « vu »')
+  await shows('1 vu')
+  // A selection
+  await page.getByRole('button', { name: 'Sélectionner', exact: true }).click()
+  await card(1, 2).click()
+  await page.click('button:has-text("Marquer comme vu (1)")')
+  await shows('Lire · S2 É1')
+  eq(watched(), '1x1,1x2', 'S1E2 watched')
+  // The season shown stays; the next one is picked
+  await page.locator('button[aria-label^="Saison : "]').click()
+  await page.click('[role="menuitemradio"]:has-text("Saison 2")')
+  await shows('Titre S2E1')
+  // A whole season: everything watched
+  await card(2, 1).click({ button: 'right' })
+  await page.click('[role="menuitem"]:has-text("Marquer la saison 2 comme vue")')
+  await shows('Revoir · S1 É1')
+  await shows('tous vus')
+  eq(watched(), '1x1,1x2,2x1', 'everything watched')
+  await page.screenshot({ path: `${SHOTS}/series-watched.png` })
+  // Not watched after all
+  await card(2, 1).click({ button: 'right' })
+  await page.click('[role="menuitem"]:has-text("Marquer comme non vu")')
+  await shows('Lire · S2 É1')
+  eq(watched(), '1x1,1x2', 'S2E1 not watched any more')
+  assert(eps['2x1'], 'fixtures')
+  sql(`DELETE FROM watch_history WHERE user_id = '${aliceId}' AND media_item_id = '${show}'`)
+  await page.context().close()
+})
+
 test('UI: manga reader on a phone — two fingers zoom in (the bars stay their size), a double tap zooms out and in again, in both modes', async () => {
   const ber = sql(`SELECT id FROM media_items WHERE title LIKE '%Berserk%'`)
   const pch = sql(`SELECT id FROM chapters WHERE media_item_id='${ber}' LIMIT 1`)

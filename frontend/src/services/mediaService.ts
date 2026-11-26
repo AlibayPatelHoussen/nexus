@@ -112,6 +112,12 @@ export const mediaService = {
     return data.data
   },
 
+  /** « Marquer comme vu / non vu » (séries, animes): the episodes' progress afterwards */
+  async markEpisodes(id: string, episodeIds: string[], watched: boolean): Promise<EpisodeProgress[]> {
+    const { data } = await api.post<{ success: boolean; data: EpisodeProgress[] }>(`/media/${id}/episodes/watched`, { episodeIds, watched })
+    return data.data
+  },
+
   async getMetadataStatus(): Promise<{ tmdb: boolean }> {
     const { data } = await api.get<{ success: boolean; data: { tmdb: boolean } }>('/media/metadata/status')
     return data.data

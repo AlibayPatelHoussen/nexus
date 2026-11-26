@@ -13,6 +13,7 @@ import Spinner from '@/components/ui/Spinner'
 import { Group, ListRow } from '@/components/ui/GroupedList'
 import { rating } from '@/components/media/mediaActions'
 import type { Episode } from '@/types'
+import { regularEpisodes, watchState } from '@/components/media/watchState'
 
 /** Human-readable reason why the playback authorisation failed. */
 function describeTokenError(err: unknown): string {
@@ -75,10 +76,8 @@ export default function PlayerPage() {
   })
   useEffect(() => {
     if (episodeId || !media?.episodes?.length || !episodesProgress) return
-    const eps  = media.episodes
-    const last = episodesProgress[0]
-    const idx  = last ? eps.findIndex((e: Episode) => e.id === last.episodeId) : -1
-    const next = idx === -1 ? eps[0] : last.completed ? (eps[idx + 1] ?? eps[idx]) : eps[idx]
+    // Same « next up » as the title page: in progress, else after the furthest watched
+    const next = watchState(media.episodes, episodesProgress).next?.episode ?? regularEpisodes(media.episodes)[0]
     navigate(`/player/${id}?ep=${next.id}`, { replace: true })
   }, [episodeId, media, episodesProgress, id, navigate])
 
