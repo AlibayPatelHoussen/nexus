@@ -14,7 +14,7 @@ import { Group, ListRow } from '@/components/ui/GroupedList'
 import { mediaService } from '@/services/mediaService'
 import { api } from '@/services/api'
 import { useMediaQuery } from '@/hooks/useMediaQuery'
-import { getStreamToken, withStreamToken } from '@/services/streamToken'
+import { forgetStreamToken, getStreamToken, replaceStreamToken, withStreamToken } from '@/services/streamToken'
 import type { Chapter } from '@/types'
 import { usePdfDocument } from '@/hooks/usePdfDocument'
 import { DOUBLE_TAP_MS, tapTracker } from '@/utils/doubleTap'
@@ -221,11 +221,25 @@ export default function MangaReaderPage() {
     const p = Math.min(startPage, pages.length - 1)
     if (mode !== 'vertical') { setCurrentPage(p); return }
     setVPage(p)
-    requestAnimationFrame(() => {
-      const el = columnRef.current?.children[p] as HTMLElement | undefined
-      if (p > 0 && el) el.scrollIntoView({ block: 'start' })
-      else (fullscreen && containerRef.current ? containerRef.current : window).scrollTo({ top: 0 })
-    })
+    const column = columnRef.current
+    const keep = () => (column?.children[p] as HTMLElement | undefined)?.scrollIntoView({ block: 'start' })
+    if (p === 0 || !column) {
+      const raf = requestAnimationFrame(() => (fullscreen && containerRef.current ? containerRef.current : window).scrollTo({ top: 0 }))
+      return () => cancelAnimationFrame(raf)
+    }
+    // The pages above arrive after and grow (a webtoon strip: thousands of pixels); Safari does not keep
+    // the view where it was: the page stays at the top until the reader moves (or 15 s)
+    const raf = requestAnimationFrame(keep)
+    const ro = new ResizeObserver(keep)
+    ro.observe(column)
+    const events = ['touchstart', 'wheel', 'keydown', 'pointerdown'] as const
+    const stop = () => {
+      ro.disconnect(); clearTimeout(timer); cancelAnimationFrame(raf)
+      events.forEach((ev) => window.removeEventListener(ev, stop, true))
+    }
+    events.forEach((ev) => window.addEventListener(ev, stop, { capture: true, passive: true }))
+    const timer = setTimeout(stop, 15_000)
+    return stop
   }, [chapterId, pages.length, mode, startPage, fullscreen])
   const readPage = mode === 'vertical' ? vPage : currentPage
   const pendingSave = useRef<{ ch: string; page: number; total: number } | null>(null)
@@ -292,7 +306,14 @@ export default function MangaReaderPage() {
   const ratioOf = (i: number) => ratios[`${chapterId}-${i + 1}`] ?? (pdfUrl ? pdf.ratio(i + 1) : undefined) ?? 0.68
   /** Page image: device cache first; PDF pages drawn by PDF.js, image pages downloaded once */
   const loadPage = (n: number, url: string) => () =>
-    pdfUrl ? pdf.render(n) : loadImagePage(chapterId ?? '', n, url).then((b) => {
+    pdfUrl ? pdf.render(n) : loadImagePage(chapterId ?? '', n, url).catch(async (e: { status?: number }) => {
+      // The reader stayed open longer than the reading token lasts (6 h): a new one, and the page again
+      if (e.status !== 401) throw e
+      forgetStreamToken()
+      const fresh = replaceStreamToken(url, await getStreamToken())
+      void qc.invalidateQueries({ queryKey: ['chapter-pages', chapterId] })
+      return loadImagePage(chapterId ?? '', n, fresh)
+    }).then((b) => {
       // Like manga sites: the next pages are already coming while this one is read
       void prefetchPages(chapterId ?? '', pages.slice(n, n + 4).map((p, i) => ({ n: n + 1 + i, url: p.url })))
       return URL.createObjectURL(b)
@@ -415,7 +436,7 @@ export default function MangaReaderPage() {
                   load={loadPage(i + 1, page.url)}
                   ratio={pdfUrl ? pdf.ratio(i + 1) : undefined}
                   revoke={!pdfUrl}
-                  eager={i < 2}
+                  eager={i >= startPage && i < startPage + 2}
                   className="block"
                   style={coarse ? { width: '100%', maxWidth: `${9 * zoom}px` } : { width: isDesktop ? `${zoom}%` : '100%', maxWidth: '900px' }}
                 />

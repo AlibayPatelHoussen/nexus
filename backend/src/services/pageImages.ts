@@ -93,29 +93,56 @@ async function slot<T>(job: () => Promise<T>): Promise<T> {
 
 const inflight = new Map<string, Promise<string>>()
 
-/** Path of the ready-to-serve WebP of page n (converted once, then from disk). */
+/** WebP stops at 16383 px a side: a taller page (a webtoon strip) is served as JPEG (65535 px). */
+const WEBP_MAX = 16383
+const JPEG_MAX = 65500
+
+/** Size of the page once turned upright and brought to `width` (never enlarged). */
+async function outputSize(original: Buffer, width: number): Promise<{ width: number; height: number }> {
+  const meta = await sharp(original, { failOn: 'none' }).metadata()
+  let w = meta.width ?? 0
+  let h = meta.height ?? 0
+  if ((meta.orientation ?? 1) >= 5) [w, h] = [h, w]   // EXIF: shot sideways
+  if (!w || !h) return { width, height: 0 }
+  const out = Math.min(width, w)
+  return { width: out, height: Math.round((h * out) / w) }
+}
+
+/**
+ * Path of the ready-to-serve page n (converted once, then from disk): a light WebP at the reader's
+ * width, or a JPEG for a page too tall for WebP (long webtoon strips).
+ */
 export async function pageImage(chapterId: string, chapterPath: string, n: number, width: number): Promise<string> {
   const st = await fs.stat(chapterPath)
   const version = crypto.createHash('sha1').update(`${chapterPath}:${st.mtimeMs}:${st.size}`).digest('hex').slice(0, 10)
-  const file = path.join(CACHE_DIR, chapterId, `${n}-${width}-${version}.webp`)
-  try { await fs.access(file); return file } catch { /* not converted yet */ }
+  const base = path.join(CACHE_DIR, chapterId, `${n}-${width}-${version}`)
+  for (const ext of ['.webp', '.jpg']) {
+    try { await fs.access(base + ext); return base + ext } catch { /* not converted yet */ }
+  }
 
-  const running = inflight.get(file)
+  const running = inflight.get(base)
   if (running) return running
   const job = slot(async () => {
     const original = await source(chapterPath, n, width)
-    await fs.mkdir(path.dirname(file), { recursive: true })
+    await fs.mkdir(path.dirname(base), { recursive: true })
+    const tall = (await outputSize(original, width)).height > WEBP_MAX
+    const file = base + (tall ? '.jpg' : '.webp')
     const tmp = `${file}.${process.pid}.tmp`
-    await sharp(original, { failOn: 'none' })
-      .rotate()
-      .resize({ width, withoutEnlargement: true })
-      .webp({ quality: 78, effort: 3 })
-      .toFile(tmp)
+    const img = sharp(original, { failOn: 'none' }).rotate()
+    if (tall) {
+      await img.resize({ width, height: JPEG_MAX, fit: 'inside', withoutEnlargement: true })
+        .jpeg({ quality: 82, mozjpeg: true })
+        .toFile(tmp)
+    } else {
+      await img.resize({ width, withoutEnlargement: true })
+        .webp({ quality: 78, effort: 3 })
+        .toFile(tmp)
+    }
     await fs.rename(tmp, file)
     return file
   })
-  inflight.set(file, job)
-  try { return await job } finally { inflight.delete(file) }
+  inflight.set(base, job)
+  try { return await job } finally { inflight.delete(base) }
 }
 
 /** Prepares the next pages in the background while the reader looks at page n. */

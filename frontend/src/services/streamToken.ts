@@ -24,6 +24,16 @@ export async function getStreamToken(): Promise<string> {
   return token
 }
 
+/** The token was refused (expired while the page stayed open): the next call fetches a new one. */
+export function forgetStreamToken(): void {
+  cached = null
+}
+
+/** The same media URL with another token. */
+export function replaceStreamToken(url: string, token: string): string {
+  return /[?&]token=/.test(url) ? url.replace(/([?&])token=[^&]*/, `$1token=${encodeURIComponent(token)}`) : withStreamToken(url, token)
+}
+
 export function withStreamToken(url: string, token: string): string {
   return `${url}${url.includes('?') ? '&' : '?'}token=${encodeURIComponent(token)}`
 }

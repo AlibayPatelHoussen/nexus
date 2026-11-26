@@ -51,7 +51,8 @@ async function touch(chapterId: string) {
 export async function getPage(chapterId: string, n: number): Promise<Blob | null> {
   const cache = await open()
   const res = await cache?.match(pageKey(chapterId, n)).catch(() => undefined)
-  return res ? res.blob() : null
+  // A copy the device cannot read back any more: downloaded again
+  return res ? res.blob().catch(() => null) : null
 }
 
 export async function putPage(chapterId: string, n: number, blob: Blob): Promise<void> {
@@ -128,7 +129,7 @@ export function loadImagePage(chapterId: string, n: number, url: string): Promis
     const hit = await getPage(chapterId, n)
     if (hit) return hit
     const res = await fetch(url)
-    if (!res.ok) throw new Error(`page ${n} : erreur ${res.status}`)
+    if (!res.ok) throw Object.assign(new Error(`page ${n} : erreur ${res.status}`), { status: res.status })
     const blob = await res.blob()
     await putPage(chapterId, n, blob)
     return blob

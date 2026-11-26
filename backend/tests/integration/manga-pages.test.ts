@@ -11,6 +11,7 @@ const bearer = { Authorization: `Bearer ${makeToken('user')}` }
 const stream = () => `token=${makeToken('user', 'stream')}`
 let folderChapter = ''
 let pdfChapter = ''
+let stripChapter = ''
 
 // Minimal valid 2-page PDF (A5-ish pages with a filled rectangle)
 function tinyPdf(): Buffer {
@@ -49,6 +50,13 @@ beforeAll(async () => {
     ON CONFLICT (folder_path) DO UPDATE SET chapter_number = 2 RETURNING id`, [media, path.join(ROOT, 'Chapitre 2.pdf')])
   folderChapter = String(c1.rows[0].id)
   pdfChapter = String(c2.rows[0].id)
+  // A webtoon strip: taller than WebP allows (16383 px)
+  const strip = path.join(ROOT, 'Chapitre 3')
+  fs.mkdirSync(strip, { recursive: true })
+  await sharp({ create: { width: 720, height: 20000, channels: 3, background: { r: 240, g: 240, b: 240 } } }).jpeg().toFile(path.join(strip, '01.jpg'))
+  const c3 = await query(`INSERT INTO chapters (media_item_id, chapter_number, folder_path) VALUES ($1, 3, $2)
+    ON CONFLICT (folder_path) DO UPDATE SET chapter_number = 3 RETURNING id`, [media, strip])
+  stripChapter = String(c3.rows[0].id)
 })
 
 describe('manga pages prepared by the server', () => {
@@ -86,6 +94,18 @@ describe('manga pages prepared by the server', () => {
       .buffer(true).parse((r, cb) => { const b: Buffer[] = []; r.on('data', (c) => b.push(c)); r.on('end', () => cb(null, Buffer.concat(b))) })
     expect(res.status).toBe(200)
     expect((await sharp(res.body as Buffer).metadata()).width).toBe(800)
+  })
+
+  it('a page too tall for WebP (a long webtoon strip) comes as a JPEG', async () => {
+    const url = `/api/media/chapters/${stripChapter}/page/1?w=1080&${stream()}`
+    const res = await request(app).get(url).buffer(true).parse((r, cb) => { const b: Buffer[] = []; r.on('data', (c) => b.push(c)); r.on('end', () => cb(null, Buffer.concat(b))) })
+    expect(res.status).toBe(200)
+    expect(res.headers['content-type']).toBe('image/jpeg')
+    const meta = await sharp(res.body as Buffer).metadata()
+    expect(meta).toMatchObject({ format: 'jpeg', width: 720, height: 20000 })   // never enlarged
+    const again = await request(app).get(url)
+    expect(again.status).toBe(200)
+    expect(again.headers['content-type']).toBe('image/jpeg')   // from the disk cache
   })
 
   it('refuses missing pages and requests without a token', async () => {
