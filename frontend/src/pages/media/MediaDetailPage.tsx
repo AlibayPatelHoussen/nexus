@@ -17,6 +17,7 @@ import Artwork from '@/components/media/Artwork'
 import Skeleton from '@/components/ui/Skeleton'
 import ChaptersSection from '@/components/media/ChaptersSection'
 import { readingState } from '@/components/media/readingState'
+import { regularEpisodes, watchState } from '@/components/media/watchState'
 import { chapterVersions } from '@/components/media/chapterVersions'
 import { readingService } from '@/services/readingService'
 import { mediaService } from '@/services/mediaService'
@@ -178,17 +179,18 @@ export default function MediaDetailPage() {
   const isReading = ['manga', 'webtoon'].includes(media.type)
   const isShow    = isShowType(media.type)
 
-  // Streaming-style "next up": resume the last episode in progress, or the one
-  // after the last finished episode, otherwise the first episode
+  // Streaming-style "next up": resume the episode in progress, or the one after the furthest
+  // watched; everything watched: from the first episode again
   const progressByEpisode = new Map(episodesProgress.map((p) => [p.episodeId, p]))
-  const lastWatched = episodesProgress[0]
-  const lastIndex   = lastWatched ? episodes.findIndex((e) => e.id === lastWatched.episodeId) : -1
-  const nextEpisode = lastIndex === -1
-    ? episodes[0]
-    : lastWatched.completed ? (episodes[lastIndex + 1] ?? episodes[lastIndex]) : episodes[lastIndex]
-  const nextProgress = nextEpisode ? progressByEpisode.get(nextEpisode.id) : undefined
-  const nextResumes  = !!nextProgress && !nextProgress.completed && nextProgress.progress > 30
+  const watch = watchState(episodes, episodesProgress)
+  const nextEpisode = watch.next?.episode ?? regularEpisodes(episodes)[0]
+  const nextResumes  = !!watch.next?.resume
   const currentSeason = activeSeason ?? nextEpisode?.season ?? seasons[0] ?? 1
+  async function markEpisodes(ids: string[], watched: boolean) {
+    const rows = await mediaService.markEpisodes(id!, ids, watched)
+    qc.setQueryData(['episodes-progress', id], rows)
+    void qc.invalidateQueries({ queryKey: ['media', 'continue'] })
+  }
 
   const resumeEpisode = nextEpisode
 
@@ -241,9 +243,9 @@ export default function MediaDetailPage() {
   const playLabel = isShow
     ? episodes.length === 0
       ? 'Aucun épisode'
-      : episodesProgress.length === 0 && nextEpisode?.id === episodes[0]?.id
+      : !watch.started && nextEpisode?.id === regularEpisodes(episodes)[0]?.id
         ? 'Lire le premier épisode'
-        : `${nextResumes ? 'Reprendre' : 'Lire'} · S${nextEpisode?.season ?? 1} É${nextEpisode?.episodeNumber}`
+        : `${watch.finished ? 'Revoir' : nextResumes ? 'Reprendre' : 'Lire'} · S${nextEpisode?.season ?? 1} É${nextEpisode?.episodeNumber}`
     : isReading
       ? chapters.length === 0 ? 'Aucun chapitre'
         : !reading.started || !continueTo ? 'Commencer'
@@ -286,7 +288,7 @@ export default function MediaDetailPage() {
           favBusy={favorites.busy}
           onDownload={openDownload}
           downloadBusy={dlBusy}
-          upNext={nextEpisode && isShow && episodesProgress.length > 0 ? `S${nextEpisode.season ?? 1}, É${nextEpisode.episodeNumber}${nextEpisode.title ? ` · ${nextEpisode.title}` : ''}` : null}
+          upNext={nextEpisode && isShow && watch.started && !watch.finished ? `S${nextEpisode.season ?? 1}, É${nextEpisode.episodeNumber}${nextEpisode.title ? ` · ${nextEpisode.title}` : ''}` : null}
         />
       )}
     >
@@ -356,8 +358,9 @@ export default function MediaDetailPage() {
           activeSeason={currentSeason}
           onSeasonChange={setActiveSeason}
           progress={progressByEpisode}
-          nextEpisodeId={nextEpisode?.id}
+          nextEpisodeId={watch.finished ? undefined : nextEpisode?.id}
           onPlay={(epId) => play(epId)}
+          onMark={markEpisodes}
         />
       )}
       {isShow && episodes.length === 0 && !isPlaceholderData && (

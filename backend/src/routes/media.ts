@@ -10,6 +10,7 @@ import { MediaScanner, hasTmdbKey } from '../services/scanner'
 import { isLibraryType, scanLibrary } from '../services/libraryScan'
 import { ConflictError } from '../utils/errors'
 import { markChapters, readingOf, saveReading } from '../services/readProgress'
+import { markEpisodes } from '../services/watchedEpisodes'
 
 const router = Router()
 // The media library: accounts that have the media
@@ -82,6 +83,10 @@ router.post('/:id/progress', asyncHandler(async (req: Request, res: Response) =>
 router.get('/:id/episodes/progress', asyncHandler(async (req: Request, res: Response) => {
   const items = await MediaService.getEpisodesProgress(req.user!.userId, req.params.id)
   res.json({ success: true, data: items })
+}))
+// Séries / animes: « Marquer comme vu / non vu » ({ episodeIds, watched })
+router.post('/:id/episodes/watched', asyncHandler(async (req: Request, res: Response) => {
+  res.json({ success: true, data: await markEpisodes(req.user!.userId, req.params.id, req.body?.episodeIds, req.body?.watched) })
 }))
 
 // Mangas: what this account read (chapters, page reached), « Marquer comme lu », the reader's page

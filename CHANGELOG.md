@@ -4,6 +4,12 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Added — Séries and animes: « Marquer comme vu », the episodes watched
+- Like the mangas' chapters: a long press (right click on a computer) on an episode — **« Marquer comme vu / non vu »**, « Marquer comme vus jusqu’à S2, É5 » (the seasons before included, to catch up in one go), « Marquer la saison 2 comme vue » — or **« Sélectionner »** next to the season: tap the episodes (shift-click a range), « Tout sélectionner », then « Marquer comme vu (N) » / « Non vu »
+- The episodes say it: « Épisode 3 · Vu » and its ✓; the season says « 10 épisodes · 4 vus » (« tous vus »). An episode watched to the end by the player counts as before
+- The play button follows: « Reprendre · S1 É4 » (the episode in progress), else « Lire · » the one after the furthest watched (into the next season; a gap left behind comes after), « Revoir · S1 É1 » once everything is watched (specials aside). The player opened without an episode goes to the same one. Marking keeps the season shown
+- « Non vu » forgets the episode (position included, out of « Reprendre »); « Vu » takes it out of « Reprendre ». Per account. Server: `POST /api/media/:id/episodes/watched` (`services/watchedEpisodes.ts`)
+
 ### Fixed — Manga reader: « Page N illisible »
 - **Long webtoon strips**: the server turns each page into a light WebP, and WebP stops at 16 383 px high — a taller strip always failed (« Page 3 illisible »). Such a page now comes as a JPEG (never enlarged); a page the server cannot prepare is written in its log with the reason
 - A page that fails is asked again once by itself, then shows **« Réessayer »**; a reader left open longer than its reading permission (6 h) gets a new one and goes on; a copy on the device that cannot be read back is downloaded again

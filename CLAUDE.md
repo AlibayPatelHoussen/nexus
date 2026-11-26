@@ -89,6 +89,11 @@ npm workspaces (`frontend`, `backend`); run from the repo root unless noted.
   `utils/saveFile.tsx` with a link built inside the tap (`hooks/useStreamToken.ts`, token fetched ahead): in place in a
   browser; in the iPhone home-screen app the share sheet (≤ 1 GB) or the in-app browser sheet — never a page opened
   first and filled later (it stays « about:blank » there).
+- **Episodes watched** (séries / animes, per account): `watch_history` (the player's progress; completed past 90 %), plus
+  « Marquer comme vu / non vu » (`services/watchedEpisodes.ts`, `POST /api/media/:id/episodes/watched`; non vu deletes the row).
+  `components/media/watchState.ts` (watched, `next` = in progress else after the furthest watched, specials aside) drives the play
+  button (`MediaDetailPage`) and `PlayerPage` without `?ep`; long-press menu and « Sélectionner » in `EpisodesSection`
+  (iPhone toolbar `components/ui/SelectionBar.tsx`, shared with the chapters).
 - **Reading progress** (mangas, per account): `read_history` (page reached per chapter, `completed`), `services/readProgress.ts`
   (`GET|POST /api/media/:id/reading` « Marquer comme lu / non lu » — non lu clears that number in every version —,
   `POST /api/media/chapters/:id/reading` from the reader, debounced; the last page = read). Frontend:
