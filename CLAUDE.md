@@ -89,6 +89,12 @@ npm workspaces (`frontend`, `backend`); run from the repo root unless noted.
   `utils/saveFile.tsx` with a link built inside the tap (`hooks/useStreamToken.ts`, token fetched ahead): in place in a
   browser; in the iPhone home-screen app the share sheet (≤ 1 GB) or the in-app browser sheet — never a page opened
   first and filled later (it stays « about:blank » there).
+- **Reading progress** (mangas, per account): `read_history` (page reached per chapter, `completed`), `services/readProgress.ts`
+  (`GET|POST /api/media/:id/reading` « Marquer comme lu / non lu » — non lu clears that number in every version —,
+  `POST /api/media/chapters/:id/reading` from the reader, debounced; the last page = read). Frontend:
+  `components/media/readingState.ts` (read numbers across versions, `next` = chapter being read at its page, else the one after
+  the furthest read) → « Commencer / Continuer · Chapitre N / Relire » in `MediaDetailPage`, « Lu » / « Page X sur Y » rows,
+  long-press menu and « Sélectionner » mode in `ChaptersSection`; the reader opens at `?page=N`.
 - **Mangas offline** (PWA, « Hors ligne » in `components/media/ChaptersSection.tsx`, off by default):
   `services/offlineManga.ts` keeps, per title, the next chapters from the one read last (`wantedChapters`, 5 / 10 / 25 /
   all) and the chapters chosen one by one (`index.manual`, ↓ on a row: kept until removed) in the reader's Cache Storage (`services/readerCache.ts`, same page keys; kept chapters are pinned out of its LRU

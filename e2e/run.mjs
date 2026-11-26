@@ -367,6 +367,55 @@ test('UI: manga reader loads image pages and PDF chapters', async () => {
   await page.context().close()
 })
 
+test('UI: manga reading progress — a chapter read to its end is « Lu », « Continuer » opens the next one at the page left, chapters marked read by selection', async () => {
+  const nested = sql(`SELECT id FROM media_items WHERE title = 'Nested Manga'`)
+  const chs = sql(`SELECT id FROM chapters WHERE media_item_id='${nested}' ORDER BY chapter_number`).split('\n')
+  const aliceId = sql(`SELECT id FROM users WHERE username = 'alice'`)
+  sql(`DELETE FROM read_history WHERE user_id = '${aliceId}' AND media_item_id = '${nested}'`)
+  const page = await newPage(alice)
+  await page.addInitScript(() => localStorage.setItem('nexus-reader-mode', 'page'))
+  const play = page.locator('button.bg-accent-fill', { hasText: /^(Commencer|Continuer|Relire)/ })
+  const button = () => play.innerText()
+  const rowOf = (n) => page.locator('[role="listitem"]', { hasText: `Chapitre ${n}` })
+  await page.goto(`${B}/media/${nested}`, { waitUntil: 'networkidle' })
+  eq((await button()).trim(), 'Commencer', 'nothing read yet')
+  // Chapter 1 read to its last page (2 pages): read
+  await play.click()
+  await page.waitForURL(`**/reader/${nested}?ch=${chs[0]}*`)
+  await page.waitForFunction(() => document.body.innerText.includes('Page 1 sur 2'))
+  await page.keyboard.press('ArrowRight')
+  await page.waitForFunction(() => document.body.innerText.includes('Page 2 sur 2'))
+  for (let i = 0; i < 20 && sql(`SELECT count(*) FROM read_history WHERE user_id='${aliceId}' AND chapter_id='${chs[0]}' AND completed`) !== '1'; i++) await page.waitForTimeout(250)
+  eq(sql(`SELECT completed FROM read_history WHERE user_id='${aliceId}' AND chapter_id='${chs[0]}'`), 't', 'the last page makes chapter 1 read')
+  // Chapter 2 opened, left on its first page
+  await page.goto(`${B}/media/${nested}`, { waitUntil: 'networkidle' })
+  await page.waitForFunction(() => document.body.innerText.includes('Continuer · Chapitre 2'))
+  assert(await rowOf(1).getByText('Lu', { exact: true }).isVisible(), 'chapter 1 shows « Lu »')
+  sql(`INSERT INTO read_history (user_id, media_item_id, chapter_id, current_page) VALUES ('${aliceId}', '${nested}', '${chs[1]}', 1)`)
+  await page.reload({ waitUntil: 'networkidle' })
+  await page.waitForFunction(() => document.body.innerText.includes('Page 2 sur 2'))   // the row of chapter 2: its page
+  eq((await button()).trim(), 'Continuer · Chapitre 2', 'continue the chapter being read')
+  await play.click()
+  await page.waitForURL(`**/reader/${nested}?ch=${chs[1]}*page=1*`)
+  await page.waitForFunction(() => document.body.innerText.includes('Page 2 sur 2'), null, { timeout: 10000 })   // opened at the page left
+  // Selection: chapters 2 and 3 marked read at once
+  await page.goto(`${B}/media/${nested}`, { waitUntil: 'networkidle' })
+  await page.click('button:has-text("Sélectionner")')
+  await rowOf(2).locator('button').first().click()
+  await rowOf(3).locator('button').first().click()
+  await page.click('button:has-text("Marquer comme lu (2)")')
+  await page.waitForFunction(() => document.body.innerText.includes('tous lus'))
+  eq((await button()).trim(), 'Relire · Chapitre 1', 'everything read')
+  eq(sql(`SELECT count(*) FROM read_history WHERE user_id='${aliceId}' AND media_item_id='${nested}' AND completed`), '3', 'three chapters read')
+  await page.screenshot({ path: `${SHOTS}/manga-progress.png` })
+  // A long press: chapter 3 unread again
+  await rowOf(3).locator('button').first().click({ button: 'right' })
+  await page.click('[role="menuitem"]:has-text("Marquer comme non lu")')
+  await page.waitForFunction(() => document.body.innerText.includes('Continuer · Chapitre 3'))
+  sql(`DELETE FROM read_history WHERE user_id = '${aliceId}' AND media_item_id = '${nested}'`)
+  await page.context().close()
+})
+
 test('UI: manga reader on a phone — two fingers zoom in (the bars stay their size), a double tap zooms out and in again, in both modes', async () => {
   const ber = sql(`SELECT id FROM media_items WHERE title LIKE '%Berserk%'`)
   const pch = sql(`SELECT id FROM chapters WHERE media_item_id='${ber}' LIMIT 1`)

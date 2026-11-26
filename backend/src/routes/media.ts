@@ -9,6 +9,7 @@ import { deleteMediaEverywhere } from '../services/libraryDelete'
 import { MediaScanner, hasTmdbKey } from '../services/scanner'
 import { isLibraryType, scanLibrary } from '../services/libraryScan'
 import { ConflictError } from '../utils/errors'
+import { markChapters, readingOf, saveReading } from '../services/readProgress'
 
 const router = Router()
 // The media library: accounts that have the media
@@ -81,6 +82,17 @@ router.post('/:id/progress', asyncHandler(async (req: Request, res: Response) =>
 router.get('/:id/episodes/progress', asyncHandler(async (req: Request, res: Response) => {
   const items = await MediaService.getEpisodesProgress(req.user!.userId, req.params.id)
   res.json({ success: true, data: items })
+}))
+
+// Mangas: what this account read (chapters, page reached), « Marquer comme lu », the reader's page
+router.get('/:id/reading', asyncHandler(async (req: Request, res: Response) => {
+  res.json({ success: true, data: await readingOf(req.user!.userId, req.params.id) })
+}))
+router.post('/:id/reading', asyncHandler(async (req: Request, res: Response) => {
+  res.json({ success: true, data: await markChapters(req.user!.userId, req.params.id, req.body?.chapterIds, req.body?.read) })
+}))
+router.post('/chapters/:chapterId/reading', asyncHandler(async (req: Request, res: Response) => {
+  res.json({ success: true, data: await saveReading(req.user!.userId, req.params.chapterId, req.body?.page, req.body?.total) })
 }))
 
 router.get('/:id/progress', asyncHandler(async (req: Request, res: Response) => {

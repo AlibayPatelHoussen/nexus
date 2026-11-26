@@ -18,6 +18,8 @@ import { getStreamToken, withStreamToken } from '@/services/streamToken'
 import type { Chapter } from '@/types'
 import { usePdfDocument } from '@/hooks/usePdfDocument'
 import { DOUBLE_TAP_MS, tapTracker } from '@/utils/doubleTap'
+import { readingService } from '@/services/readingService'
+import { useQueryClient } from '@tanstack/react-query'
 import { usePanZoom, useWidthZoom } from '@/components/media/readerZoom'
 import { useCoarsePointer } from '@/hooks/useDevice'
 import ReaderPage from '@/components/media/ReaderPage'
@@ -187,10 +189,69 @@ export default function MangaReaderPage() {
     if (id && chapterId) noteRead(id, chapterId, chapters.find((c) => c.id === chapterId)?.language ?? null)
   }, [id, chapterId, chapters])
 
-  // Save read progress
+  // ── Reading progress (per account): the page reached, the last page makes the chapter read ──
+  const qc = useQueryClient()
+  // Where « Continuer » left off (title page), for the chapter it opened
+  const startPage = Math.max(0, Number(searchParams.get('page')) || 0)
+  // Vertical reading: the page in the middle of the screen (the last one once the chapter's end shows)
+  const [vPage, setVPage] = useState(0)
+  useEffect(() => { setVPage(0) }, [chapterId])
   useEffect(() => {
-    if (!id || !chapterId || !pages.length) return
-  }, [currentPage, id, chapterId, pages.length])
+    if (mode !== 'vertical' || !pages.length) return
+    const target: HTMLElement | Window = fullscreen && containerRef.current ? containerRef.current : window
+    let raf = 0
+    const onScroll = () => {
+      cancelAnimationFrame(raf)
+      raf = requestAnimationFrame(() => {
+        const kids = [...(columnRef.current?.children ?? [])] as HTMLElement[]
+        if (!kids.length) return
+        const h = window.innerHeight
+        if (kids[kids.length - 1].getBoundingClientRect().bottom <= h + 2) { setVPage(kids.length - 1); return }
+        setVPage(Math.max(0, kids.findIndex((k) => k.getBoundingClientRect().bottom > h / 2)))
+      })
+    }
+    target.addEventListener('scroll', onScroll, { passive: true })
+    return () => { target.removeEventListener('scroll', onScroll); cancelAnimationFrame(raf) }
+  }, [mode, pages.length, fullscreen, chapterId])
+  // Opened at the page where it was left (else at the top)
+  const placed = useRef<string | null>(null)
+  useEffect(() => {
+    if (!chapterId || !pages.length || placed.current === chapterId) return
+    placed.current = chapterId
+    const p = Math.min(startPage, pages.length - 1)
+    if (mode !== 'vertical') { setCurrentPage(p); return }
+    setVPage(p)
+    requestAnimationFrame(() => {
+      const el = columnRef.current?.children[p] as HTMLElement | undefined
+      if (p > 0 && el) el.scrollIntoView({ block: 'start' })
+      else (fullscreen && containerRef.current ? containerRef.current : window).scrollTo({ top: 0 })
+    })
+  }, [chapterId, pages.length, mode, startPage, fullscreen])
+  const readPage = mode === 'vertical' ? vPage : currentPage
+  const pendingSave = useRef<{ ch: string; page: number; total: number } | null>(null)
+  const lastSaved = useRef('')
+  const saveTimer = useRef<ReturnType<typeof setTimeout>>()
+  const flushSave = useCallback(() => {
+    clearTimeout(saveTimer.current)
+    const p = pendingSave.current
+    pendingSave.current = null
+    if (!p || lastSaved.current === `${p.ch}:${p.page}`) return
+    lastSaved.current = `${p.ch}:${p.page}`
+    // (no connection: not kept, the reading goes on)
+    readingService.save(p.ch, p.page, p.total)
+      .then(() => { if (id) void qc.invalidateQueries({ queryKey: ['reading', id] }) })
+      .catch(() => { lastSaved.current = '' })
+  }, [id, qc])
+  useEffect(() => {
+    if (!chapterId || !pages.length || placed.current !== chapterId) return
+    pendingSave.current = { ch: chapterId, page: Math.min(readPage, pages.length - 1), total: pages.length }
+    clearTimeout(saveTimer.current)
+    // The end of the chapter: read at once; else a moment later (pages turned quickly: one save)
+    if (readPage >= pages.length - 1) flushSave()
+    else saveTimer.current = setTimeout(flushSave, 1500)
+  }, [chapterId, readPage, pages.length, flushSave])
+  // Leaving the chapter or the reader: the page reached is kept
+  useEffect(() => () => flushSave(), [chapterId, flushSave])
 
   // Touch: a tap toggles the reader UI — a moment later, in case it is a double tap (zoom)
   function toggleSoon() {
@@ -223,6 +284,7 @@ export default function MangaReaderPage() {
     setSearchParams(params)
     setCurrentPage(0)
     containerRef.current?.scrollTo(0, 0)
+    window.scrollTo(0, 0)
   }
 
   // Proportions of the pages already shown (the page turn draws them at their real size)
