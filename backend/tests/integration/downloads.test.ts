@@ -9,7 +9,7 @@ import { signedImage } from '../../src/services/images'
 import {
   requeueInterrupted, setDownloadsNamespace, startDownloadWorker, stopDownloadWorker, _test,
 } from '../../src/services/downloads'
-import { checkDueFollows } from '../../src/services/follows'
+import { checkDueFollows, checkLatest, forgetLatest } from '../../src/services/follows'
 import { MediaScanner } from '../../src/services/scanner'
 import { FIXTURES, makeToken } from '../helpers'
 
@@ -32,7 +32,15 @@ def out(**o):
 def arg(k):
     return args[args.index(k) + 1] if k in args else None
 print("human message on stderr", file=sys.stderr)
-if '--refresh-catalogue' in args:
+if '--latest' in args:                     # anime-sama's latest additions: latest.json
+    try:
+        cards = json.load(open(os.path.join(os.path.dirname(sys.argv[0]), 'latest.json')))
+    except Exception:
+        cards = []
+    for c in cards:
+        out(type='latest', **c)
+    out(type='done')
+elif '--refresh-catalogue' in args:
     d = os.path.join(os.path.dirname(sys.argv[0]), 'data'); os.makedirs(d, exist_ok=True)
     json.dump([{'title': 'A', 'slug': 'a'}, {'title': 'B', 'slug': 'b'}, {'title': 'Naruto', 'slug': 'naruto'}], open(os.path.join(d, 'catalogue.json'), 'w'))
     open(os.path.join(d, 'catalogue.updated'), 'w').write('2026-01-02T03:04:05Z\\n')
@@ -373,6 +381,8 @@ describe('Downloads: queue', () => {
 })
 
 describe('Follow a title (automatic downloads, off by default)', () => {
+  // (the same database run again: no follow left by an earlier run)
+  beforeAll(async () => { await query(`DELETE FROM follows WHERE source_id IN ('anisama:manga:one-piece', 'movix:tv:243875')`) })
   it('is off until switched on, then only queues what is new', async () => {
     fs.writeFileSync(path.join(DIR, 'count.txt'), '3')
     const id = 'anisama:manga:one-piece'
@@ -412,6 +422,42 @@ describe('Follow a title (automatic downloads, off by default)', () => {
       "SELECT selection FROM downloads WHERE source_id = $1 ORDER BY created_at DESC LIMIT 1", [id])
     expect(rows[0].selection.episodes).toEqual([3])
     await request(app).put('/api/downloads/follows').set(admin).send({ id, enabled: false })
+  })
+
+  it('anime-sama: a followed title in the latest additions is checked at once, once per new card', async () => {
+    forgetLatest()
+    const id = 'anisama:manga:one-piece'
+    const latest = (cards: object[]) => fs.writeFileSync(path.join(DIR, 'latest.json'), JSON.stringify(cards))
+    const checks = () => fs.readFileSync(ARGS_LOG, 'utf8').split('\n').filter((l) => l.includes('"--details"') && l.includes(`"${id}"`)).length
+    const other = { kind: 'manga', slug: 'autre', id: 'anisama:manga:autre', path: '/catalogue/autre/scan/vf/', info: 'Chapitre 2' }
+    // Nothing followed on anime-sama: the site is not asked
+    latest([other])
+    const asked = () => fs.readFileSync(ARGS_LOG, 'utf8').split('\n').filter((l) => l.includes('"--latest"')).length
+    const before = asked()
+    expect(await checkLatest()).toBe(0)
+    expect(asked()).toBe(before)
+    fs.writeFileSync(path.join(DIR, 'count.txt'), '3')
+    await request(app).put('/api/downloads/follows').set(admin).send({ id, title: 'One Piece', lang: 'VF', enabled: true })
+    // Other titles only: nothing checked
+    const n = checks()
+    expect(await checkLatest()).toBe(0)
+    expect(checks()).toBe(n)
+    // Chapter 4 comes out: its card shows, the title is checked at once and the chapter queued
+    fs.writeFileSync(path.join(DIR, 'count.txt'), '4')
+    latest([{ kind: 'manga', slug: 'one-piece', id, path: '/catalogue/one-piece/scan/vf/', info: 'Chapitre 4' }, other])
+    expect(await checkLatest()).toBe(1)
+    const { rows } = await query<{ selection: { chapters: number[] } }>(
+      'SELECT selection FROM downloads WHERE source_id = $1 ORDER BY created_at DESC LIMIT 1', [id])
+    expect(rows[0].selection.chapters).toEqual([4])
+    // Ten minutes later, the same card: not checked again
+    expect(await checkLatest()).toBe(0)
+    expect(checks()).toBe(n + 1)
+    // Chapter 5: a new card
+    fs.writeFileSync(path.join(DIR, 'count.txt'), '5')
+    latest([{ kind: 'manga', slug: 'one-piece', id, path: '/catalogue/one-piece/scan/vf/', info: 'Chapitre 5' }])
+    expect(await checkLatest()).toBe(1)
+    await request(app).put('/api/downloads/follows').set(admin).send({ id, enabled: false })
+    latest([])
   })
 
   it('finds the source of a library title: from its downloads, else by its name', async () => {

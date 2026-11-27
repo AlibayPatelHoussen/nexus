@@ -1748,10 +1748,52 @@ def json_download(args):
     return 0 if stats["failed"] == 0 else 2
 
 
+# ── Latest additions (Nexus: the followed titles are checked as soon as they show here) ──
+
+def latest_cards(html: str) -> list:
+    """The home page's « Derniers scans ajoutés » / « Derniers épisodes ajoutés »: one entry per card
+    (title slug, the page it links to, « Chapitre 13 à 15 » / « S1 · Épisode 4 », when)."""
+    soup = BeautifulSoup(html, "html.parser")
+    out = []
+    for kind, box_id in (("manga", "containerAjoutsScans"), ("anime", "containerAjoutsAnimes")):
+        box = soup.find(id=box_id)
+        if not box:
+            continue
+        for card in box.select(".as-carte"):
+            link = card.select_one("a[href]")
+            href = (link.get("href") if link else "") or ""
+            m = re.search(r"/catalogue/([a-z0-9][a-z0-9-]{0,150})/", card.get("data-url") or href)
+            if not m:
+                continue
+            spans = [x.get_text(" ", strip=True) for x in card.select(".as-carte-info span")]
+            when = card.select_one(".as-carte-temps")
+            out.append({
+                "kind": kind, "slug": m.group(1), "id": f"anisama:{kind}:{m.group(1)}",
+                "path": re.sub(r"^https?://[^/]+", "", href),
+                "info": next((x for x in spans if not when or x != when.get_text(" ", strip=True)), ""),
+                "when": when.get_text(" ", strip=True) if when else "",
+            })
+    return out
+
+
+def json_latest():
+    r = get(BASE_URL + "/")
+    if not r:
+        nexus_cli.fail("Page d'accueil d'anime-sama injoignable")
+    cards = latest_cards(r.text)
+    if not cards:
+        nexus_cli.fail("Derniers ajouts introuvables sur la page d'accueil (le site a changé ?)")
+    for card in cards:
+        nexus_cli.emit("latest", **card)
+
+
 def json_main():
     args = nexus_cli.parser("anisama.py — mode Nexus").parse_args()
     try:
-        if args.refresh_catalogue:
+        if args.latest:
+            json_latest()
+            nexus_cli.emit("done")
+        elif args.refresh_catalogue:
             json_refresh_catalogue()
             nexus_cli.emit("done")
         elif args.search is not None:

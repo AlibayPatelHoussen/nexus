@@ -114,6 +114,11 @@ export interface Follow {
   last_checked_at: string | null; last_error: string | null
 }
 
+/** How fast a followed title's new episodes / chapters are found: anime-sama's latest additions are read
+ *  every 10 minutes, the other sites are asked every 6 hours (server: services/follows.ts) */
+export const followCadence = (sourceId: string | undefined) =>
+  sourceId?.startsWith('anisama:') ? 'dès leur sortie (vérifié toutes les 10 min)' : 'vérifié toutes les 6 h'
+
 export interface CatalogueInfo { count: number; updatedAt: string | null; refreshing: boolean; last: { at: string; added: number; error: string | null } | null }
 
 /** The films site's address (films.py follows it when it moves; an admin can paste the new one) */

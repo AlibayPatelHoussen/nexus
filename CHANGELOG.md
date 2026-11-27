@@ -4,6 +4,11 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Changed — Automatic downloads: anime-sama's new chapters and episodes as soon as they come out
+- anime-sama's home page lists what was just added (« Derniers scans ajoutés », « Derniers épisodes ajoutés »). Nexus now reads it **every 10 minutes** (`anisama.py --json --latest`, one page): a followed title that shows there with something new (« Chapitre 13 à 15 ») is checked at once and its new chapters / episodes are queued — a chapter is downloaded within minutes of its release instead of up to a day later. A card already seen is not checked again; with no anime-sama title followed, the site is not asked at all
+- Every followed title (anime-sama and movix) is also checked **every 6 hours** (was once a day), in case one never showed on the home page
+- The switch says how fast: « dès leur sortie (vérifié toutes les 10 min) » for anime-sama, « vérifié toutes les 6 h » for the others
+
 ### Added — The films site's address follows the site
 - The films site (`films.py`) changes domain now and then (tiprov.com → **zotrof.com**, the new address, now the default). The script no longer has its address written once for all: the one that works is kept in `downloaders/data/films_site.json` (kept by updates), and **when it stops answering, the script finds the new one by itself** — a redirect to the new domain, a « nouvelle adresse » link (or a domain written next to it) on the page that still answers, the other addresses the site showed while it worked (links shaped like its home, `/<code>/home/<nom>`). The address that works is remembered at once; nothing to change in the script
 - A film found before the move is downloaded from the new domain (same film, new code in its address)

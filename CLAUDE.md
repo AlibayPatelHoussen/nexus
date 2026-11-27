@@ -59,7 +59,8 @@ npm workspaces (`frontend`, `backend`); run from the repo root unless noted.
   (`/api/images/media/:id/:field`).
 - **Downloads**: `services/downloadScripts.ts` runs the Python scripts of `downloaders/` in `--json`
   mode (argument arrays, validated values, minimal env); `services/downloads.ts` keeps the queue,
-  `follows.ts` auto-downloads new episodes, `downloadNotifications.ts` + `push.ts` send web push.
+  `follows.ts` auto-downloads new episodes (every title every 6 h; anime-sama's home « derniers ajouts » read every 10 min by
+  `anisama.py --latest`, a followed title showing with a new card is checked at once — `checkLatest`), `downloadNotifications.ts` + `push.ts` send web push.
   `downloaders/` are copies of the owner's scripts with a non-interactive mode.
   The films site moves domains: `films.py` keeps the working address in `downloaders/data/films_site.json` and follows
   the site itself (`site_url()`: redirect, « nouvelle adresse » page, addresses seen before; never private hosts); admins
