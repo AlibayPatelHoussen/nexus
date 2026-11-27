@@ -1654,7 +1654,7 @@ test('detail page: artwork is whole (contain), 2:3, and never covered by the tex
       const img = [...document.querySelectorAll('section img')].find((i) => i.alt && i.naturalWidth > 0)
       const frame = img.parentElement.getBoundingClientRect()
       const h1 = document.querySelector('section h2').getBoundingClientRect()
-      const btn = [...document.querySelectorAll('button')].find((b) => /Lire|Lecture|Aucun chapitre/.test(b.textContent)).getBoundingClientRect()
+      const btn = [...document.querySelectorAll('button')].find((b) => /^(Lire|Lecture|Aucun chapitre|Commencer|Continuer|Relire)/.test(b.textContent.trim())).getBoundingClientRect()
       const overlap = (a, b) => !(a.right <= b.left || b.right <= a.left || a.bottom <= b.top || b.bottom <= a.top)
       return {
         fit: getComputedStyle(img).objectFit,

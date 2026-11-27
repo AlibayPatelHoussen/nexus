@@ -158,11 +158,202 @@ def fix_url(url):
 
 # ── Détection automatique de la structure du site ────────────────────────────
 
-def detect_site_config(base_url):
+# ── Adresse du site (elle change souvent) ─────────────────────────────────────
+# Nexus: the site moves from one domain to another (tiprov.com → zotrof.com…). The address that
+# works is kept in data/films_site.json (out of Git: updates keep it; Nexus' Réglages can set it).
+# When it stops answering, the script follows the site by itself: a redirect to its new domain,
+# a « nouvelle adresse » link on the page that still answers, the other addresses the site
+# showed while it worked — and remembers the one that works.
+
+import json as _json
+
+DEFAULT_SITE_URL = "https://zotrof.com/770fbb7/home/zotrof"
+SITE_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "data", "films_site.json")
+# The site's home: /<code>/home/<name> (/770fbb7/home/zotrof)
+_HOME_PATH = re.compile(r"^/[0-9a-z]{4,16}/home/[^/?#]+/?$", re.I)
+_MOVED = re.compile(
+    r"nouvel(?:le)?s?\s+(?:adresse|lien|domaine|url|site)|adresse\s+officielle|lien\s+officiel|"
+    r"d[ée]m[ée]nag|nous\s+avons\s+chang|a\s+chang[ée]\s+d.adresse|new\s+(?:address|domain|url)|moved\s+to",
+    re.I)
+_DOMAIN = re.compile(r"\b((?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,24})(/[^\s\"'<>]*)?", re.I)
+_MAX_TRIES = 12
+
+
+def _load_site():
+    try:
+        with open(SITE_FILE, encoding="utf-8") as f:
+            data = _json.load(f)
+        return data if isinstance(data, dict) else {}
+    except (OSError, ValueError):
+        return {}
+
+
+def _save_site(data):
+    try:
+        os.makedirs(os.path.dirname(SITE_FILE), exist_ok=True)
+        tmp = f"{SITE_FILE}.{os.getpid()}.tmp"
+        with open(tmp, "w", encoding="utf-8") as f:
+            _json.dump(data, f, ensure_ascii=False, indent=2)
+        os.replace(tmp, SITE_FILE)
+    except OSError:
+        pass
+
+
+def _http_url(u):
+    """A usable http(s) address, else None"""
+    if not isinstance(u, str):
+        return None
+    u = u.strip()
+    if not u:
+        return None
+    if not re.match(r"https?://", u, re.I):
+        u = "https://" + u
+    p = urlparse(u)
+    if p.scheme not in ("http", "https") or not p.hostname or "@" in p.netloc:
+        return None
+    return u
+
+
+_ALLOW_PRIVATE = False   # (tests: local servers)
+
+
+def _public(u):
+    """An address found on a page never sends the server to its own network"""
+    if _ALLOW_PRIVATE:
+        return True
+    import ipaddress
+    host = (urlparse(u).hostname or "").lower()
+    if not host or host == "localhost" or host.endswith((".local", ".localhost", ".internal", ".lan", ".home")):
+        return False
+    try:
+        ip = ipaddress.ip_address(host)
+    except ValueError:
+        return "." in host
+    return ip.is_global
+
+
+def _is_site(r):
+    """The films site itself: a page with its film cards / links to films (/<code>/b/<titre>/<id>)"""
+    return bool(r is not None and r.status_code < 400 and re.search(
+        r"""href=["'][^"']*/b/[^"']+|class=["'][^"']*\b(?:trend-card|film-card)\b""", r.text or ""))
+
+
+def _other_addresses(r):
+    """Where a page says the site is (another domain): links shaped like its home, links and
+    domains written next to « nouvelle adresse »."""
+    here = urlparse(r.url).netloc
+    found = []
+
+    def add(u):
+        u = _http_url(u)
+        if u and urlparse(u).netloc != here and u not in found and _public(u):
+            found.append(u)
+
+    soup = BeautifulSoup(r.text or "", "html.parser")
+    for a in soup.find_all("a", href=True):
+        url = urljoin(r.url, a["href"].strip())
+        p = urlparse(url)
+        if p.scheme not in ("http", "https"):
+            continue
+        context = a.get_text(" ", strip=True) + " " + (a.parent.get_text(" ", strip=True)[:300] if a.parent else "")
+        if _HOME_PATH.match(p.path or "") or _MOVED.search(context):
+            add(url)
+    text = soup.get_text(" ", strip=True)
+    for m in _MOVED.finditer(text):
+        for d in _DOMAIN.finditer(text[m.end(): m.end() + 160]):
+            if "." in d.group(1) and not d.group(1).lower().endswith((".png", ".jpg", ".gif", ".webp", ".js", ".css")):
+                add(d.group(1) + (d.group(2) or ""))
+    return found[:8]
+
+
+def _probe(url):
+    """One try (an address that is gone must not cost three)"""
+    try:
+        return _request("GET", url)
+    except requests.RequestException:
+        return None
+
+
+_SITE = {}
+
+
+def site_url():
+    """The address of the films site that answers now (see above); remembered for next time.
+    None when nothing answers."""
+    if "url" in _SITE:
+        return _SITE["url"]
+    saved = _load_site()
+    queue = []
+    for u in [saved.get("url"), DEFAULT_SITE_URL] + list(saved.get("seen") or []):
+        u = _http_url(u)
+        if u and u not in queue:
+            queue.append(u)
+    used = queue[0] if queue else None   # the address used until now
+    stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+    answering = None
+    i = 0
+    while i < len(queue) and i < _MAX_TRIES:
+        u = queue[i]
+        i += 1
+        r = _probe(u)
+        if r is None:
+            continue
+        if _is_site(r):
+            # The address that answers (a redirect gives the new one) and the others it shows
+            now = r.url
+            seen = [x for x in _other_addresses(r) if urlparse(x).netloc != urlparse(now).netloc]
+            seen += [x for x in (saved.get("seen") or []) if x not in seen and urlparse(x).netloc != urlparse(now).netloc]
+            # ok / down_since / lost: what Nexus tells the admins (« en panne », « nouvelle adresse »)
+            data = dict(saved, url=now, seen=seen[:20], checked=stamp, ok=True)
+            data.pop("down_since", None)
+            if now != saved.get("url"):
+                data["previous"] = saved.get("url")
+                data["found"] = stamp
+                data["lost"] = used if used and u != used else None   # the old address stopped answering
+                data["how"] = "redirect" if urlparse(u).netloc != urlparse(now).netloc else (
+                    "default" if u == DEFAULT_SITE_URL else "mirror" if i > 2 else "saved")
+                if urlparse(now).netloc != urlparse(saved.get("url") or now).netloc:
+                    info(f"Nouvelle adresse du site : {urlparse(now).netloc}")
+            _save_site(data)
+            _SITE["url"] = now
+            return now
+        if answering is None and r.status_code < 400:
+            answering = u
+        # Not the site (a parked domain, « nous avons déménagé »…): where does it say it went?
+        for other in _other_addresses(r):
+            if other not in queue:
+                queue.append(other)
+    # Nothing looks like the site: the old behaviour (the first address that answers), and the
+    # site is down for Nexus until an address works again
+    _save_site(dict(saved, ok=False, checked=stamp, down_since=saved.get("down_since") or stamp,
+                    url=saved.get("url") or used))
+    _SITE["url"] = answering
+    return answering
+
+
+def on_current_site(url):
+    """A film's address found before the site moved: the same film on its new domain."""
+    site = site_url()
+    if not site:
+        return url
+    s, u = urlparse(site), urlparse(url)
+    if not u.netloc or u.netloc == s.netloc:
+        return url
+    path = u.path
+    old, new = (u.path.split("/") + ["", ""])[1], (s.path.split("/") + ["", ""])[1]
+    # /<code>/b/<titre>/<id>: the code changes with the domain (fc3e940 → 770fbb7)
+    if re.fullmatch(r"[0-9a-z]{4,16}", old or "", re.I) and re.fullmatch(r"[0-9a-z]{4,16}", new or "", re.I) and "/b/" in path:
+        path = "/" + new + path[len(old) + 1:]
+    return u._replace(scheme=s.scheme, netloc=s.netloc, path=path).geturl()
+
+
+def detect_site_config(base_url, page=None):
     step("Analyse de la structure du site...")
-    r = get_page(base_url)
+    r = page or get_page(base_url)
     if not r:
         return None
+    # Redirected (new domain): links and searches from where the site is now
+    base_url = r.url or base_url
     soup = BeautifulSoup(r.text, "html.parser")
     SESSION.headers["Referer"] = base_url
 
@@ -497,7 +688,7 @@ async def main():
     print(c("  ╚══════════════════════════════════════════════════╝", CY))
     print()
 
-    BASE_URL = "https://tiprov.com/fc3e940/home/tiprov"
+    BASE_URL = site_url() or DEFAULT_SITE_URL
 
     print(f"  {c('[1]', B, CY)} Rechercher un film sur le site")
     print(f"  {c('[2]', B, CY)} Télécharger avec un lien direct")
@@ -583,7 +774,6 @@ async def main():
 import base64
 import json
 
-FILMS_BASE_URL = "https://tiprov.com/fc3e940/home/tiprov"   # same site as main()
 TMDB_IMG = "https://image.tmdb.org/t/p/w342"
 _parse_films_original = parse_films_from_page
 
@@ -682,9 +872,12 @@ def _why_unreachable(url):
 def json_search(query, limit):
     global parse_films_from_page
     parse_films_from_page = _parse_films_with_posters
-    config = detect_site_config(FILMS_BASE_URL)
+    base = site_url()
+    config = detect_site_config(base) if base else None
     if not config:
-        nexus_cli.fail(f"Site de films inaccessible : {_why_unreachable(FILMS_BASE_URL)}")
+        tried = base or _load_site().get("url") or DEFAULT_SITE_URL
+        nexus_cli.fail(f"Site de films inaccessible : {_why_unreachable(tried)}. Sa nouvelle adresse n’a pas été trouvée "
+                       "toute seule : colle-la dans Réglages › Bibliothèque › Site de films")
     films = search_online(config, query)
     q = query.lower()
     films.sort(key=lambda f: (q not in f["title"].lower(), f["title"].lower()))
@@ -736,7 +929,7 @@ def _ffmpeg_json(m3u8_url, m3u8_headers, cookies, referer, output_file):
 
 async def json_download(args):
     global FILMS_DIR, run_ffmpeg
-    url = _decode_id(args.download)
+    url = on_current_site(_decode_id(args.download))
     if args.dest:
         FILMS_DIR = args.dest
         os.makedirs(FILMS_DIR, exist_ok=True)
@@ -757,7 +950,12 @@ async def json_download(args):
 
 def json_main():
     args = nexus_cli.parser("films.py — mode Nexus").parse_args()
-    if args.search is not None:
+    if args.site:
+        url = site_url()
+        data = _load_site()
+        nexus_cli.emit("site", ok=bool(data.get("ok")), url=url or data.get("url"))
+        nexus_cli.emit("done")
+    elif args.search is not None:
         json_search(args.search, args.limit)
         nexus_cli.emit("done")
     elif args.details:

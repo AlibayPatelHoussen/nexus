@@ -116,7 +116,27 @@ export interface Follow {
 
 export interface CatalogueInfo { count: number; updatedAt: string | null; refreshing: boolean; last: { at: string; added: number; error: string | null } | null }
 
+/** The films site's address (films.py follows it when it moves; an admin can paste the new one) */
+export interface FilmsSite {
+  url:      string
+  host:     string
+  /** Answering the last time the script tried (null: not tried yet) */
+  ok:       boolean | null
+  how:      'default' | 'saved' | 'redirect' | 'mirror' | 'manual' | null
+  found:    string | null
+  checked:  string | null
+  previous: string | null
+}
+
 export const downloadsService = {
+  async filmsSite(): Promise<FilmsSite | null> {
+    const { data } = await api.get<{ data: FilmsSite | null }>('/downloads/films-site')
+    return data.data
+  },
+  async setFilmsSite(url: string): Promise<FilmsSite> {
+    const { data } = await api.put<{ data: FilmsSite }>('/downloads/films-site', { url })
+    return data.data
+  },
   catalogue: async () => (await api.get<{ data: CatalogueInfo }>('/downloads/catalogue')).data.data,
   refreshCatalogue: async () => (await api.post<{ data: CatalogueInfo }>('/downloads/catalogue/refresh')).data.data,
   follow: async (id: string) => (await api.get<{ data: Follow | null }>('/downloads/follows', { params: { id } })).data.data,

@@ -15,6 +15,7 @@ import { useConfirm } from '@/components/ui/useConfirm'
 import type { Appearance } from '@/types'
 import NotificationsGroup from './NotificationsGroup'
 import RenameRows from './RenameRows'
+import FilmsSiteRows from './FilmsSiteRows'
 import { useAccess } from '@/components/shell/access'
 import { ACCESS_LABEL } from '@/services/usersService'
 import { DevicesGroup, SignInsGroup, UsersGroup } from './AccountsGroups'
@@ -111,6 +112,7 @@ export default function SettingsPage() {
           </ListRow>
           {/* The files on the server: admins */}
           {isAdmin && !access.iptvHost && <RenameRows />}
+          {isAdmin && !access.iptvHost && <FilmsSiteRows />}
         </Group>}
 
         {/* Notifications: the downloads (and, for admins, new devices): with the media */}

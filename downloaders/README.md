@@ -24,6 +24,12 @@ Output: one JSON object per line — `result`, `details`, `item_start`, `progres
   copied from `/media/scripts/catalogue.json` the first time; posters and
   synopses found during searches are added to it.
 - Files being downloaded are named `.part-…` and renamed when complete.
+- `films.py`: the site moves from one domain to another. The address that works is kept in
+  `data/films_site.json` (not versioned; Réglages › Bibliothèque › Site de films writes it too, tried first);
+  when it stops answering, `site_url()` follows the site (redirect, « nouvelle adresse » page, the other
+  addresses it showed while it worked — never a local address) and remembers the new one.
+  `DEFAULT_SITE_URL` is the last address known when the script was written. `--json --site` only looks for the
+  site (Nexus runs it every 6 hours and tells the admins when it is down, moved or must be pasted).
 
 ## IPTV (`iptv_cli.py` + package `iptv/`)
 
