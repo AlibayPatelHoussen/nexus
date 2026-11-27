@@ -120,6 +120,8 @@ export interface CatalogueInfo { count: number; updatedAt: string | null; refres
 export interface FilmsSite {
   url:      string
   host:     string
+  /** Answering the last time the script tried (null: not tried yet) */
+  ok:       boolean | null
   how:      'default' | 'saved' | 'redirect' | 'mirror' | 'manual' | null
   found:    string | null
   checked:  string | null

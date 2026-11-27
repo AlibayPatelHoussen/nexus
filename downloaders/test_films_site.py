@@ -107,6 +107,8 @@ class SiteAddressTest(unittest.TestCase):
         self.assertEqual(data["url"], new.base + "/770fbb7/home/zotrof")
         self.assertEqual(data["previous"], old.base + "/fc3e940/home/tiprov")
         self.assertEqual(data["how"], "redirect")
+        self.assertTrue(data["ok"])
+        self.assertIsNone(data["lost"])      # the old address still led to the site
 
     def test_a_page_that_says_where_the_site_went(self):
         new = self.site({"/770fbb7/home/zotrof": (200, SITE % b"#", {})})
@@ -121,16 +123,26 @@ class SiteAddressTest(unittest.TestCase):
     def test_the_old_domain_gone_an_address_seen_before_is_tried(self):
         new = self.site({"/770fbb7/home/zotrof": (200, SITE % b"#", {})})
         gone = "http://127.0.0.1:%d/fc3e940/home/tiprov" % free_port()
-        self.save({"url": gone, "seen": [new.base + "/770fbb7/home/zotrof"]})
+        self.save({"url": gone, "seen": [new.base + "/770fbb7/home/zotrof"], "ok": False, "down_since": "2026-11-27T08:00:00Z"})
         self.ns["DEFAULT_SITE_URL"] = gone
         self.assertEqual(self.ns["site_url"](), new.base + "/770fbb7/home/zotrof")
+        data = self.saved()
+        self.assertTrue(data["ok"])
+        self.assertEqual(data["lost"], gone)     # Nexus says « en panne » then « nouvelle adresse »
+        self.assertNotIn("down_since", data)
 
     def test_nothing_answers_nothing_is_forgotten(self):
         gone = "http://127.0.0.1:%d/fc3e940/home/tiprov" % free_port()
         self.save({"url": gone, "seen": []})
         self.ns["DEFAULT_SITE_URL"] = gone
         self.assertIsNone(self.ns["site_url"]())
-        self.assertEqual(self.saved()["url"], gone)
+        data = self.saved()
+        self.assertEqual(data["url"], gone)
+        self.assertFalse(data["ok"])             # Nexus: « nouvelle adresse introuvable »
+        since = data["down_since"]
+        self.ns["_SITE"].clear()
+        self.ns["site_url"]()
+        self.assertEqual(self.saved()["down_since"], since)   # down since the first time
 
     def test_a_link_set_in_nexus_comes_first(self):
         mine = self.site({"/aaaa111/home/x": (200, SITE % b"#", {})})

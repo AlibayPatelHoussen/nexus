@@ -9,6 +9,7 @@ import { formatDay } from '@/utils'
 
 /** How the address came: the script's, found by itself when the site moved, pasted here */
 function howText(site: FilmsSite): string {
+  if (site.ok === false) return 'Ne répond plus et sa nouvelle adresse n’a pas été trouvée : colle-la ici'
   const when = site.found ? ` le ${formatDay(site.found)}` : ''
   switch (site.how) {
     case 'redirect':
@@ -21,7 +22,8 @@ function howText(site: FilmsSite): string {
 
 /**
  * Réglages › Bibliothèque (admins): the films site (films.py) moves from one domain to another. The
- * script follows it by itself; when it could not, the new link is pasted here (tried first).
+ * script follows it by itself; when it could not, the new link is pasted here (tried first). The
+ * admins get a notification when it goes down, moves, or must be pasted here.
  */
 export default function FilmsSiteRows() {
   const qc = useQueryClient()
@@ -38,7 +40,7 @@ export default function FilmsSiteRows() {
     try {
       const next = await downloadsService.setFilmsSite(link)
       qc.setQueryData(['downloads', 'films-site'], next)
-      toast.success(`Site de films : ${next.host}`)
+      toast.success(site?.ok === false ? `Site de films : ${next.host} · une notification te dira dès que ça remarche` : `Site de films : ${next.host}`)
       setEditing(false); setLink('')
     } catch (err) {
       const status = (err as { response?: { status?: number } })?.response?.status
@@ -49,7 +51,7 @@ export default function FilmsSiteRows() {
 
   return (
     <>
-      <ListRow wrap title={`Site de films · ${site.host}`} subtitle={howText(site)}>
+      <ListRow wrap title={`Site de films · ${site.host}`} subtitle={howText(site)} status={site.ok === false ? 'error' : undefined}>
         {!editing && <Button size="small" onClick={() => { setEditing(true); setLink('') }}>Changer…</Button>}
       </ListRow>
       {editing && (

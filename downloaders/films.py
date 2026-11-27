@@ -288,6 +288,8 @@ def site_url():
         u = _http_url(u)
         if u and u not in queue:
             queue.append(u)
+    used = queue[0] if queue else None   # the address used until now
+    stamp = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
     answering = None
     i = 0
     while i < len(queue) and i < _MAX_TRIES:
@@ -301,10 +303,13 @@ def site_url():
             now = r.url
             seen = [x for x in _other_addresses(r) if urlparse(x).netloc != urlparse(now).netloc]
             seen += [x for x in (saved.get("seen") or []) if x not in seen and urlparse(x).netloc != urlparse(now).netloc]
-            data = dict(saved, url=now, seen=seen[:20], checked=time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()))
+            # ok / down_since / lost: what Nexus tells the admins (« en panne », « nouvelle adresse »)
+            data = dict(saved, url=now, seen=seen[:20], checked=stamp, ok=True)
+            data.pop("down_since", None)
             if now != saved.get("url"):
                 data["previous"] = saved.get("url")
-                data["found"] = data["checked"]
+                data["found"] = stamp
+                data["lost"] = used if used and u != used else None   # the old address stopped answering
                 data["how"] = "redirect" if urlparse(u).netloc != urlparse(now).netloc else (
                     "default" if u == DEFAULT_SITE_URL else "mirror" if i > 2 else "saved")
                 if urlparse(now).netloc != urlparse(saved.get("url") or now).netloc:
@@ -318,7 +323,10 @@ def site_url():
         for other in _other_addresses(r):
             if other not in queue:
                 queue.append(other)
-    # Nothing looks like the site: the old behaviour (the first address that answers)
+    # Nothing looks like the site: the old behaviour (the first address that answers), and the
+    # site is down for Nexus until an address works again
+    _save_site(dict(saved, ok=False, checked=stamp, down_since=saved.get("down_since") or stamp,
+                    url=saved.get("url") or used))
     _SITE["url"] = answering
     return answering
 
@@ -942,7 +950,12 @@ async def json_download(args):
 
 def json_main():
     args = nexus_cli.parser("films.py — mode Nexus").parse_args()
-    if args.search is not None:
+    if args.site:
+        url = site_url()
+        data = _load_site()
+        nexus_cli.emit("site", ok=bool(data.get("ok")), url=url or data.get("url"))
+        nexus_cli.emit("done")
+    elif args.search is not None:
         json_search(args.search, args.limit)
         nexus_cli.emit("done")
     elif args.details:

@@ -123,6 +123,12 @@ process.on('exit', () => {
   }
 })
 
+// Called each time a script ends (the films site's state, for instance)
+const endListeners = new Map<ScriptName, Array<() => void>>()
+export function onScriptEnd(source: ScriptName, fn: () => void) {
+  endListeners.set(source, [...(endListeners.get(source) ?? []), fn])
+}
+
 /** Starts a script with --json and calls onEvent for each JSON line. */
 export function runScript(source: ScriptName, args: string[], onEvent: (e: ScriptEvent) => void, timeoutMs = 0): RunHandle {
   const file = path.join(scriptsDir(), SCRIPT_FILE[source])
@@ -170,6 +176,9 @@ export function runScript(source: ScriptName, args: string[], onEvent: (e: Scrip
       live.delete(child)
       if (timer) clearTimeout(timer)
       resolve({ code, signal, log })
+      for (const fn of endListeners.get(source) ?? []) {
+        try { fn() } catch (err) { logger.warn(`After ${source}: ${(err as Error).message}`) }
+      }
     })
   })
   return { child, done, kill }
