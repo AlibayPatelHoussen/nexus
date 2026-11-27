@@ -97,7 +97,16 @@ export async function setFilmsSite(raw: unknown): Promise<FilmsSite> {
 const TOLD = 'films_site'
 const where = '/settings'
 
-export async function syncFilmsSite(): Promise<string[]> {
+// One comparison at a time: two at once (a search ending during the 6-hour check) would read the same
+// « told » and send the same notification twice
+let queue: Promise<unknown> = Promise.resolve()
+export function syncFilmsSite(): Promise<string[]> {
+  const run = queue.then(syncNow)
+  queue = run.catch(() => undefined)
+  return run
+}
+
+async function syncNow(): Promise<string[]> {
   const saved = await readSaved()
   const url = str(saved.url)
   if (typeof saved.ok !== 'boolean' || !url) return []        // not tried by the script yet
@@ -149,6 +158,12 @@ let checking: Promise<void> | null = null
 export function checkFilmsSite(): Promise<void> {
   checking ??= collect('films', ['--site'], 5 * 60_000).then(() => undefined, () => undefined).finally(() => { checking = null })
   return checking
+}
+
+/** Once the check running and the notifications it led to are done (tests) */
+export async function filmsSiteIdle(): Promise<void> {
+  if (checking) await checking
+  await queue
 }
 
 let timer: NodeJS.Timeout | null = null

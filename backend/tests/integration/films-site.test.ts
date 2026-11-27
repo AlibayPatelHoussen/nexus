@@ -5,7 +5,7 @@ import request from 'supertest'
 import { app } from '../../src/index'
 import { query } from '../../src/config/database'
 import * as push from '../../src/services/push'
-import { syncFilmsSite } from '../../src/services/filmsSite'
+import { filmsSiteIdle, syncFilmsSite } from '../../src/services/filmsSite'
 import { makeToken } from '../helpers'
 
 const admin = { Authorization: `Bearer ${makeToken('admin')}` }
@@ -65,7 +65,11 @@ describe('the admins are told when the films site goes down, moves, comes back',
     fs.writeFileSync(path.join(dir, 'data', 'films_site.json'), JSON.stringify(data))
   }
   let sent: jest.SpyInstance
-  beforeAll(async () => { await query(`DELETE FROM app_settings WHERE key = 'films_site'`) })
+  beforeAll(async () => {
+    // The link pasted above was tried at once: that check and what it told are done first
+    await filmsSiteIdle()
+    await query(`DELETE FROM app_settings WHERE key = 'films_site'`)
+  })
   beforeEach(() => { sent = jest.spyOn(push, 'sendPush').mockResolvedValue(1) })
   afterEach(() => sent.mockRestore())
 
@@ -83,6 +87,14 @@ describe('the admins are told when the films site goes down, moves, comes back',
     const { rows } = await query<{ id: string }>(`SELECT id FROM users WHERE role = 'admin'`)
     expect(sent.mock.calls[0][0].sort()).toEqual(rows.map((r) => r.id).sort())
     expect(await syncFilmsSite()).toEqual([])      // still down: not told again
+  })
+
+  it('two comparisons at once (a search ending during the check) tell once', async () => {
+    write({ url: 'https://zotrof.com/770fbb7/home/zotrof', ok: true })
+    const both = await Promise.all([syncFilmsSite(), syncFilmsSite()])
+    expect(both.flat()).toEqual(['Site de films : ça remarche'])
+    write({ url: 'https://zotrof.com/770fbb7/home/zotrof', ok: false })
+    expect((await Promise.all([syncFilmsSite(), syncFilmsSite()])).flat()).toEqual(['Site de films en panne', 'Site de films : à toi de jouer'])
   })
 
   it('a link pasted that works: « ça remarche »', async () => {
