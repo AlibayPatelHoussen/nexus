@@ -4,7 +4,7 @@ import { AlertTriangle, Check } from 'lucide-react'
 import toast from 'react-hot-toast'
 import { isAxiosError } from 'axios'
 import {
-  SOURCE_INFO, downloadsService, langLabel, originalImage, type DetailChapter, type DetailEpisode, type SearchResult, type TorrentGroup,
+  SOURCE_INFO, downloadsService, followCadence, langLabel, originalImage, type DetailChapter, type DetailEpisode, type SearchResult, type TorrentGroup,
 } from '@/services/downloadsService'
 import { useShell } from '@/components/shell/shellContext'
 import Sheet from '@/components/ui/Sheet'
@@ -288,7 +288,7 @@ function StandardSheet({ result, onClose }: { result: SearchResult | null; onClo
                   <p className="text-body text-label">Télécharger automatiquement les {r.kind === 'manga' ? 'nouveaux chapitres' : 'nouveaux épisodes'}</p>
                   <p className="text-caption text-label2 mt-0.5">
                     {follow?.enabled
-                      ? `${[follow.options.season ? seasonIds.find(([id]) => id === String(follow.options.season))?.[1] ?? follow.options.season : null, follow.options.lang && langName(follow.options.lang)].filter(Boolean).join(' · ')} · vérifié chaque jour${follow.last_error ? ` · dernier essai : ${follow.last_error}` : ''}`
+                      ? `${[follow.options.season ? seasonIds.find(([id]) => id === String(follow.options.season))?.[1] ?? follow.options.season : null, follow.options.lang && langName(follow.options.lang)].filter(Boolean).join(' · ')} · ${followCadence(r.id)}${follow.last_error ? ` · dernier essai : ${follow.last_error}` : ''}`
                       : 'Désactivé : rien ne se télécharge sans toi.'}
                   </p>
                 </div>

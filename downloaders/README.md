@@ -7,6 +7,7 @@ originals (menus, questions).
 ```
 python3 anisama.py --json --search "one piece"
 python3 anisama.py --json --details anisama:anime:one-piece
+python3 anisama.py --json --latest            # the home page's latest additions (scans, episodes)
 python3 anisama.py --json --download anisama:anime:one-piece --season saison1 --lang VOSTFR --episodes 1-12 --dest /media/animes
 python3 anisama.py --json --download anisama:manga:one-piece --lang VF --chapters 1-50 --dest /media/scans
 python3 movix.py   --json --download movix:tv:37854 --lang VF --season 1 --episodes 1-12 --dest /media/series

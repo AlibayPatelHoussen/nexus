@@ -7,9 +7,12 @@ import { collect, type ScriptEvent } from './downloadScripts'
 
 /**
  * « Télécharger automatiquement les nouveautés »: off unless switched on in
- * the detail sheet of an anime, series or manga. Once a day the followed
- * titles are checked; episodes / chapters that did not exist when the switch
- * was turned on (or at the last check) are added to the queue.
+ * the detail sheet of an anime, series or manga. Every followed title is
+ * checked every 6 hours; episodes / chapters that did not exist when the switch
+ * was turned on (or at the last check) are added to the queue. anime-sama's
+ * titles go faster: its home page lists what was just added (« Derniers scans
+ * / épisodes ajoutés »), read every 10 minutes — a followed title that shows
+ * there with something new is checked at once.
  */
 
 export interface FollowRow {
@@ -28,7 +31,8 @@ export interface FollowRow {
   created_at: string
 }
 
-const CHECK_EVERY_MS = () => Number(process.env.FOLLOW_CHECK_INTERVAL_MS) || 24 * 3600_000
+const CHECK_EVERY_MS = () => Number(process.env.FOLLOW_CHECK_INTERVAL_MS) || 6 * 3600_000
+const LATEST_EVERY_MS = () => Number(process.env.FOLLOW_LATEST_INTERVAL_MS) || 10 * 60_000
 
 /** Numbers available right now for this title / season / language. */
 async function available(sourceId: string, kind: FollowRow['kind'], options: FollowRow['options']): Promise<number[]> {
@@ -118,7 +122,7 @@ export async function checkFollow(f: FollowRow): Promise<number[]> {
   }
 }
 
-/** Every enabled title whose last check is older than a day. */
+/** Every enabled title whose last check is older than 6 hours. */
 export async function checkDueFollows(force = false): Promise<number> {
   const { rows } = await query<FollowRow>(
     `SELECT * FROM follows WHERE enabled AND ($1 OR last_checked_at IS NULL OR last_checked_at < NOW() - ($2 || ' milliseconds')::interval)
@@ -128,13 +132,53 @@ export async function checkDueFollows(force = false): Promise<number> {
   return queued
 }
 
+// ─── anime-sama: what was just added ─────────────────────────────────────────
+// A card seen before (same title, same « Chapitre 13 à 15 ») is not checked again
+const seenCards = new Set<string>()
+let latestRunning: Promise<number> | null = null
+
+/**
+ * Reads anime-sama's latest additions and checks at once the followed titles that show there with
+ * something new (the first time: every followed title that shows). Nothing followed on anime-sama:
+ * the site is not even asked. Returns how many episodes / chapters were queued.
+ */
+export function checkLatest(): Promise<number> {
+  latestRunning ??= (async () => {
+    const { rows: follows } = await query<FollowRow>(`SELECT * FROM follows WHERE enabled AND source_script = 'anisama'`)
+    if (!follows.length) return 0
+    const { events } = await collect('anisama', ['--latest'], 2 * 60_000)
+    const cards = events.filter((e) => e.type === 'latest' && typeof e.id === 'string') as (ScriptEvent & { id: string; path?: string; info?: string })[]
+    const fresh = new Set<string>()
+    for (const c of cards) {
+      const key = `${c.id}|${c.path ?? ''}|${c.info ?? ''}`
+      if (!seenCards.has(key)) { seenCards.add(key); fresh.add(c.id) }
+    }
+    if (seenCards.size > 2000) [...seenCards].slice(0, seenCards.size - 1000).forEach((k) => seenCards.delete(k))
+    let queued = 0
+    // anisama:manga:slug, and its other scans (anisama:manga:slug~scan_…)
+    for (const f of follows) {
+      if (fresh.has(f.source_id.split('~')[0])) queued += (await checkFollow(f)).length
+    }
+    return queued
+  })().finally(() => { latestRunning = null })
+  return latestRunning
+}
+
+/** Tests: forget the cards already seen */
+export function forgetLatest() { seenCards.clear() }
+
 let timer: NodeJS.Timeout | null = null
+let latestTimer: NodeJS.Timeout | null = null
 export function startFollowChecker() {
   if (timer) return
-  // Checked every hour; each title at most once a day
+  // Every title every 6 hours (looked for every hour), anime-sama's latest additions every 10 minutes
   timer = setInterval(() => { void checkDueFollows().catch(() => {}) }, 3600_000)
   timer.unref()
   setTimeout(() => { void checkDueFollows().catch(() => {}) }, 5 * 60_000).unref()
+  latestTimer = setInterval(() => {
+    void checkLatest().catch((err: Error) => logger.warn(`anime-sama latest additions: ${err.message}`))
+  }, LATEST_EVERY_MS())
+  latestTimer.unref()
 }
 
 // ─── From a title of the library ───────────────────────────────────────────

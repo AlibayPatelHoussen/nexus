@@ -3,7 +3,7 @@ import { isAxiosError } from 'axios'
 import toast from 'react-hot-toast'
 import { useState } from 'react'
 import { useDownloadTarget, type DownloadTarget } from '@/hooks/useDownloadTarget'
-import { downloadsService, langLabel } from '@/services/downloadsService'
+import { downloadsService, followCadence, langLabel } from '@/services/downloadsService'
 import { Group, ListRow } from '@/components/ui/GroupedList'
 import Toggle from '@/components/ui/Toggle'
 import Spinner from '@/components/ui/Spinner'
@@ -43,7 +43,7 @@ export default function FollowGroup({ mediaId, kind }: { mediaId: string; kind: 
     : error
       ? (isAxiosError(error) && error.response?.data?.error) || 'Titre introuvable sur le site'
       : on
-        ? `Les ${noun} · ${where} · vérifié chaque jour${target?.follow?.last_error ? ` · dernier essai : ${target.follow.last_error}` : ''}`
+        ? `Les ${noun} · ${where} · ${followCadence(target?.sourceId)}${target?.follow?.last_error ? ` · dernier essai : ${target.follow.last_error}` : ''}`
         : `Désactivé : rien ne se télécharge sans toi.${where ? ` Une fois activé : les ${noun} (${where}).` : ''}`
 
   return (
