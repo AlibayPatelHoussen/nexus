@@ -6,6 +6,7 @@ import {
 } from '../services/downloads'
 import { ValidationError } from '../utils/errors'
 import { catalogueInfo, refreshCatalogue } from '../services/catalogue'
+import { filmsSite, setFilmsSite } from '../services/filmsSite'
 import { checkDueFollows, followTarget, getFollow, listFollows, setFollow, type FollowInput } from '../services/follows'
 
 // « Téléchargements »: every account searches and downloads; a « user » account sees and
@@ -44,6 +45,14 @@ router.post('/follows/check', requireAdmin, asyncHandler(async (_req: Request, r
 }))
 
 // anime-sama catalogue: size, last update, rebuild now
+// The films site's address (it moves; films.py follows it, an admin can paste the new one)
+router.get('/films-site', requireAdmin, asyncHandler(async (_req: Request, res: Response) => {
+  res.json({ success: true, data: await filmsSite() })
+}))
+router.put('/films-site', requireAdmin, asyncHandler(async (req: Request, res: Response) => {
+  res.json({ success: true, data: await setFilmsSite(req.body?.url) })
+}))
+
 router.get('/catalogue', asyncHandler(async (_req: Request, res: Response) => {
   res.json({ success: true, data: await catalogueInfo() })
 }))

@@ -5,6 +5,8 @@ name = os.path.basename(sys.argv[0]).split('.')[0]
 IMG = 'http://localhost:4010/img'
 def out(**o): print(json.dumps(o, ensure_ascii=False), flush=True)
 def arg(k): return args[args.index(k) + 1] if k in args else None
+# The films site's address, as in downloaders/films.py (Réglages › Bibliothèque › Site de films)
+DEFAULT_SITE_URL = "https://films.example/abc1234/home/films"
 
 if '--search' in args:
     q = arg('--search')

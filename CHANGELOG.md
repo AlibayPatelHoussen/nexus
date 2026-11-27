@@ -4,6 +4,13 @@ All notable changes to Nexus will be documented here.
 
 ## [Unreleased]
 
+### Added — The films site's address follows the site
+- The films site (`films.py`) changes domain now and then (tiprov.com → **zotrof.com**, the new address, now the default). The script no longer has its address written once for all: the one that works is kept in `downloaders/data/films_site.json` (kept by updates), and **when it stops answering, the script finds the new one by itself** — a redirect to the new domain, a « nouvelle adresse » link (or a domain written next to it) on the page that still answers, the other addresses the site showed while it worked (links shaped like its home, `/<code>/home/<nom>`). The address that works is remembered at once; nothing to change in the script
+- A film found before the move is downloaded from the new domain (same film, new code in its address)
+- **Réglages › Bibliothèque › Site de films** (admins): the address used and how it came (« Nouvelle adresse trouvée toute seule le … »); **Changer…** to paste a new link when the site could not be followed (it is tried first). When nothing answers, the error of the search says so
+- An address found on a page never points the server to its own network (localhost, private addresses)
+- The original in `/media/scripts` is untouched: it keeps its own address
+
 ### Added — Séries and animes: « Marquer comme vu », the episodes watched
 - Like the mangas' chapters: a long press (right click on a computer) on an episode — **« Marquer comme vu / non vu »**, « Marquer comme vus jusqu’à S2, É5 » (the seasons before included, to catch up in one go), « Marquer la saison 2 comme vue » — or **« Sélectionner »** next to the season: tap the episodes (shift-click a range), « Tout sélectionner », then « Marquer comme vu (N) » / « Non vu »
 - The episodes say it: « Épisode 3 · Vu » and its ✓; the season says « 10 épisodes · 4 vus » (« tous vus »). An episode watched to the end by the player counts as before

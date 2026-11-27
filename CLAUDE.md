@@ -61,6 +61,9 @@ npm workspaces (`frontend`, `backend`); run from the repo root unless noted.
   mode (argument arrays, validated values, minimal env); `services/downloads.ts` keeps the queue,
   `follows.ts` auto-downloads new episodes, `downloadNotifications.ts` + `push.ts` send web push.
   `downloaders/` are copies of the owner's scripts with a non-interactive mode.
+  The films site moves domains: `films.py` keeps the working address in `downloaders/data/films_site.json` and follows
+  the site itself (`site_url()`: redirect, « nouvelle adresse » page, addresses seen before; never private hosts); admins
+  see / paste it in Réglages › Bibliothèque › Site de films (`services/filmsSite.ts`, `GET|PUT /api/downloads/films-site`).
 - **IPTV**: `downloaders/iptv/` (standard library only) builds one catalogue from the iptv-org API and the
   Free-TV playlist (`freetv.py`), checks streams, and looks up the stream behind a YouTube / Twitch /
   Dailymotion live page with yt-dlp (`resolver.py`). `services/iptv.ts` keeps it in the `iptv_*` tables
